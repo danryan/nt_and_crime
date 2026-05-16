@@ -754,11 +754,11 @@ git commit -m "feat(harness): NT_drawShapeF placeholder (non-AA, replaced post-A
 
 The NT API ships `distingnt/serialisation.h` declaring `class _NT_jsonStream` and `class _NT_jsonParse`. Provide a host-compatible implementation that backs onto a `std::string` buffer.
 
-- [ ] **Step 1: Read the upstream header and mirror its public surface**
+- [x] **Step 1: Read the upstream header and mirror its public surface**
 
 Reference: `vendor/distingNT_API/include/distingnt/serialisation.h`. Copy or `#include` directly (preferred — single source of truth). Update the harness's include path so plug-ins find the same header at the same path on both targets.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `harness/tests/test_json.cpp`:
 
@@ -792,15 +792,15 @@ TEST_CASE("serialise roundtrip: simple object", "[json]") {
 }
 ```
 
-- [ ] **Step 3: Implement using a writer + a tokenising parser**
+- [x] **Step 3: Implement using a writer + a tokenising parser**
 
 Implementation is mechanical JSON read/write over `std::string`. The host-only helper `nt::make_json_stream()` returns a unique_ptr to a concrete subclass of `_NT_jsonStream`; same for parse. Buffer-backed.
 
 Expected line count: ~250 LoC. Decompose into helpers if it grows past 300.
 
-- [ ] **Step 4: Run the test and confirm it passes**
+- [x] **Step 4: Run the test and confirm it passes**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add harness/

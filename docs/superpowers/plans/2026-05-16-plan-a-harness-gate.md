@@ -1009,7 +1009,7 @@ git commit -m "build: host simulator binary linked against gainCustomUI"
 
 - Modify: `Makefile`
 
-- [ ] **Step 1: Add ARM rule**
+- [x] **Step 1: Add ARM rule**
 
 ```makefile
 ARM_REF_SRCS := vendor/distingNT_API/examples/gainCustomUI.cpp \
@@ -1022,7 +1022,7 @@ build/arm/%.o: vendor/distingNT_API/examples/%.cpp
 arm: build/arm/gainCustomUI.o build/arm/gain.o
 ```
 
-- [ ] **Step 2: Verify toolchain present**
+- [x] **Step 2: Verify toolchain present**
 
 ```bash
 which arm-none-eabi-c++ || echo "ARM toolchain missing"
@@ -1030,7 +1030,7 @@ which arm-none-eabi-c++ || echo "ARM toolchain missing"
 
 If missing, install via `brew install --cask gcc-arm-embedded` (macOS) or distro equivalent. Required for hardware deploy.
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 ```bash
 make arm
@@ -1038,7 +1038,7 @@ make arm
 
 Expected: `build/arm/gainCustomUI.o` and `build/arm/gain.o` exist, no warnings under `-Wall`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Makefile

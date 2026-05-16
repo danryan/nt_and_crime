@@ -1510,7 +1510,7 @@ git commit -m "feat(applets): screen_dump.cpp + hem_dump_helper.h"
 
 Algorithm: every frame, advance one glyph index, clear the screen, call `NT_drawText` for that glyph at a known position, then `_nt_hem_dump_screen()` to capture. Loop through all 95 printable ASCII glyphs per font size. The harness watches the SysEx stream and decodes per-glyph.
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 ```cpp
 #include <distingnt/api.h>
@@ -1603,7 +1603,7 @@ extern "C" uintptr_t pluginEntry(_NT_selector selector, uint32_t data) {
 }
 ```
 
-- [ ] **Step 2: Build and commit**
+- [x] **Step 2: Build and commit**
 
 ```bash
 make arm

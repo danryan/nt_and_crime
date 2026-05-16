@@ -901,7 +901,7 @@ git commit -m "feat(harness): NT_setParameter* with explicit routing semantics"
 
 The harness loads plug-ins by static-linking their `.cpp` file directly with `harness/src/*.cpp`. The loader's job is to call `pluginEntry()` and unpack the factory.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```cpp
 TEST_CASE("loader can resolve a plugin's factory and call construct", "[loader]") {
@@ -914,11 +914,11 @@ TEST_CASE("loader can resolve a plugin's factory and call construct", "[loader]"
 }
 ```
 
-- [ ] **Step 2: Implement and verify**
+- [x] **Step 2: Implement and verify**
 
 `nt::load_plugin()` calls `pluginEntry(kNT_selector_factoryInfo, 0)`, then `calculateRequirements`, then `construct` with malloc'd memory regions. Stores the factory and constructed algorithm in a struct.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add harness/

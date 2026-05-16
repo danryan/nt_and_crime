@@ -6,8 +6,9 @@ build/
 *.dylib
 *.elf
 
-# Vendor sources (fetched on demand)
-vendor/
+# Vendor sources (fetched on demand) — keep the placeholder, ignore the contents
+vendor/*
+!vendor/.gitkeep
 
 # Worktrees
 .worktrees/

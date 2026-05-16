@@ -205,14 +205,14 @@ git commit -m "chore: top-level Makefile and dir skeleton"
 - Create: `.gitmodules`
 - Modify: `Makefile` (vendor target body already exists; we add a verify rule)
 
-- [ ] **Step 1: Add the two submodules**
+- [x] **Step 1: Add the two submodules**
 
 ```bash
 git submodule add https://github.com/expertsleepersltd/distingNT_API.git vendor/distingNT_API
 git submodule add -b phazerville https://github.com/djphazer/O_C-Phazerville.git vendor/O_C-Phazerville
 ```
 
-- [ ] **Step 2: Pin to specific SHAs**
+- [x] **Step 2: Pin to specific SHAs**
 
 ```bash
 cd vendor/distingNT_API
@@ -228,7 +228,7 @@ echo "O_C-Phazerville @ $PHAZ_SHA"
 
 Record the two SHAs in the commit message of Step 4 so a reader can find them without `git submodule status`.
 
-- [ ] **Step 3: Sanity-check the expected files exist**
+- [x] **Step 3: Sanity-check the expected files exist**
 
 ```bash
 test -f vendor/distingNT_API/include/distingnt/api.h
@@ -242,7 +242,7 @@ echo OK
 
 Expected: prints `OK`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .gitmodules vendor/distingNT_API vendor/O_C-Phazerville

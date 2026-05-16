@@ -1257,7 +1257,7 @@ git commit -m "feat(harness): bit-faithful diff util with optional LSB tolerance
 
 - Create: `applets/bus_probe.cpp` (plain NT plug-in, not shim-based)
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 ```cpp
 #include <distingnt/api.h>
@@ -1345,7 +1345,7 @@ extern "C" uintptr_t pluginEntry(_NT_selector selector, uint32_t data) {
 }
 ```
 
-- [ ] **Step 2: Add Makefile rule**
+- [x] **Step 2: Add Makefile rule**
 
 ```makefile
 build/arm/bus_probe.o: applets/bus_probe.cpp
@@ -1355,12 +1355,12 @@ build/arm/bus_probe.o: applets/bus_probe.cpp
 
 Add `build/arm/bus_probe.o` to the `arm` target's prerequisites.
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 Run: `make arm`
 Expected: clean build, no warnings.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add applets/bus_probe.cpp Makefile

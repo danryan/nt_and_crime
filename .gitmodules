@@ -1,0 +1,7 @@
+[submodule "vendor/distingNT_API"]
+	path = vendor/distingNT_API
+	url = https://github.com/expertsleepersltd/distingNT_API.git
+[submodule "vendor/O_C-Phazerville"]
+	path = vendor/O_C-Phazerville
+	url = https://github.com/djphazer/O_C-Phazerville.git
+	branch = phazerville

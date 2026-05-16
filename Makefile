@@ -95,6 +95,19 @@ build/host/sim_gainCustomUI: $(HARNESS_LIB_SRCS) vendor/distingNT_API/examples/g
 .PHONY: host
 host: build/host/sim_gainCustomUI
 
+ARM_REF_SRCS := vendor/distingNT_API/examples/gainCustomUI.cpp \
+                vendor/distingNT_API/examples/gain.cpp
+
+build/arm/gainCustomUI.o: vendor/distingNT_API/examples/gainCustomUI.cpp
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+
+build/arm/gain.o: vendor/distingNT_API/examples/gain.cpp
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+
+arm: build/arm/gainCustomUI.o build/arm/gain.o
+
 vendor:
 	git submodule update --init --recursive
 

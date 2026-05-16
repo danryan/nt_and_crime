@@ -7,7 +7,7 @@ struct LoadedPlugin {
     _NT_algorithm*     algorithm;
 };
 LoadedPlugin* load_test_algorithm();  // a stub algorithm used by param tests
-// LoadedPlugin* load_plugin();        // <-- introduced in Task 10
+LoadedPlugin* load_plugin();          // resolves the single statically linked plug-in
 
 // Test helpers: introspect the stub algorithm's parameterChanged call counter.
 int test_parameter_changed_count();

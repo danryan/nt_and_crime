@@ -2,6 +2,16 @@
 #include "nt_runtime.h"
 #include <cstring>
 #include <stdint.h>
+#include <vector>
+
+// Weak fallback for test binaries that do not link a real plug-in.
+// When a real plug-in's .cpp is linked its pluginEntry() takes precedence;
+// otherwise load_plugin() sees a null factory and returns nullptr safely.
+extern "C" __attribute__((weak))
+uintptr_t pluginEntry(_NT_selector selector, uint32_t data) {
+    (void)selector; (void)data;
+    return 0;
+}
 
 // File-local state tracking calls to parameterChanged on the stub algorithm.
 static int s_param_changed_count = 0;
@@ -96,6 +106,22 @@ static uint8_t s_algorithm_sram[sizeof(_NT_algorithm)];
 
 static nt::LoadedPlugin s_plugin = { nullptr, nullptr };
 
+// ---- load_plugin() singleton state ----
+// Memory regions for the real statically linked plug-in.
+// Held in std::vector<uint8_t> so they outlive the loader call.
+struct RealPluginStore {
+    std::vector<uint8_t> sram;
+    std::vector<uint8_t> dram;
+    std::vector<uint8_t> dtc;
+    std::vector<uint8_t> itc;
+    std::vector<uint8_t> static_dram;
+    std::vector<int16_t> v;
+    nt::LoadedPlugin plugin;
+};
+
+static RealPluginStore s_real_store;
+static bool s_real_loaded = false;
+
 namespace nt {
 
 void reset_plugin_loader() {
@@ -105,6 +131,9 @@ void reset_plugin_loader() {
     // The singleton is re-registered on the next load_test_algorithm() call.
     s_plugin.factory   = nullptr;
     s_plugin.algorithm = nullptr;
+    // Reset the real plugin singleton so it can be re-loaded cleanly.
+    s_real_loaded = false;
+    s_real_store = RealPluginStore{};
 }
 
 LoadedPlugin* load_test_algorithm() {
@@ -137,6 +166,83 @@ LoadedPlugin* load_test_algorithm() {
     nt::register_algorithm(&s_plugin);
 
     return &s_plugin;
+}
+
+LoadedPlugin* load_plugin() {
+    if (s_real_loaded) {
+        return &s_real_store.plugin;
+    }
+
+    // Step 1: obtain the factory from the statically linked plug-in.
+    uintptr_t raw = pluginEntry(kNT_selector_factoryInfo, 0);
+    const _NT_factory* factory = reinterpret_cast<const _NT_factory*>(raw);
+    if (!factory) {
+        return nullptr;
+    }
+
+    // Step 2: calculateStaticRequirements + initialise (both optional).
+    if (factory->calculateStaticRequirements) {
+        _NT_staticRequirements sreq;
+        sreq.dram = 0;
+        factory->calculateStaticRequirements(sreq);
+        if (sreq.dram > 0) {
+            s_real_store.static_dram.assign(sreq.dram, 0);
+        }
+        if (factory->initialise) {
+            _NT_staticMemoryPtrs sptrs;
+            sptrs.dram = s_real_store.static_dram.empty() ? nullptr : s_real_store.static_dram.data();
+            factory->initialise(sptrs, sreq);
+        }
+    }
+
+    // Step 3: calculateRequirements.
+    _NT_algorithmRequirements areq;
+    areq.numParameters = 0;
+    areq.sram = 0;
+    areq.dram = 0;
+    areq.dtc  = 0;
+    areq.itc  = 0;
+    factory->calculateRequirements(areq, nullptr);
+
+    // Step 4: allocate the four memory regions.
+    // sram must be large enough for the algorithm struct (at minimum sizeof(_NT_algorithm));
+    // gainCustomUI uses placement-new of _gainAlgorithm which is larger.
+    uint32_t sram_size = areq.sram > 0 ? areq.sram : static_cast<uint32_t>(sizeof(_NT_algorithm));
+    s_real_store.sram.assign(sram_size, 0);
+    if (areq.dram > 0) { s_real_store.dram.assign(areq.dram, 0); }
+    if (areq.dtc  > 0) { s_real_store.dtc.assign(areq.dtc,   0); }
+    if (areq.itc  > 0) { s_real_store.itc.assign(areq.itc,   0); }
+
+    _NT_algorithmMemoryPtrs aptrs;
+    aptrs.sram = s_real_store.sram.data();
+    aptrs.dram = s_real_store.dram.empty() ? nullptr : s_real_store.dram.data();
+    aptrs.dtc  = s_real_store.dtc.empty()  ? nullptr : s_real_store.dtc.data();
+    aptrs.itc  = s_real_store.itc.empty()  ? nullptr : s_real_store.itc.data();
+
+    // Step 5: construct the algorithm instance.
+    _NT_algorithm* alg = factory->construct(aptrs, areq, nullptr);
+    if (!alg) {
+        return nullptr;
+    }
+
+    // Step 6: allocate v[] and wire it into the algorithm.
+    // algorithm->v is const int16_t*; the host owns the backing store.
+    // Default each parameter value to its declared def.
+    uint32_t num_params = areq.numParameters;
+    s_real_store.v.assign(num_params, 0);
+    for (uint32_t i = 0; i < num_params; ++i) {
+        s_real_store.v[i] = alg->parameters ? alg->parameters[i].def : 0;
+    }
+    const_cast<int16_t*&>(alg->v) = s_real_store.v.data();
+
+    // Step 7: populate the LoadedPlugin and register it.
+    s_real_store.plugin.factory   = factory;
+    s_real_store.plugin.algorithm = alg;
+
+    nt::register_algorithm(&s_real_store.plugin);
+
+    s_real_loaded = true;
+    return &s_real_store.plugin;
 }
 
 int test_parameter_changed_count() {

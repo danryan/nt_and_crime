@@ -71,6 +71,16 @@ build/host/test_params: harness/tests/test_params.cpp harness/src/plugin_loader.
 test-params: build/host/test_params
 	./build/host/test_params
 
+build/host/test_loader: harness/tests/test_loader.cpp \
+                        vendor/distingNT_API/examples/gainCustomUI.cpp \
+                        $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
+
+.PHONY: test-loader
+test-loader: build/host/test_loader
+	./build/host/test_loader
+
 vendor:
 	git submodule update --init --recursive
 

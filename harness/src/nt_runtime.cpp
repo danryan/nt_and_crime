@@ -1,5 +1,6 @@
 #include "nt_runtime.h"
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstring>
 #include <cstdint>
@@ -109,8 +110,11 @@ void set_bus_frame_count(int frames) {
 }
 float* bus_pointer(int bus_index, int numFrames) {
     if (bus_index <= 0 || bus_index > num_buses()) return nullptr;
-    if ((int)g_bus_storage.size() < num_buses() * numFrames)
-        set_bus_frame_count(numFrames);
+    // Pointer invariant: callers must call set_bus_frame_count(numFrames) once at
+    // setup. We do NOT implicitly resize here because that would invalidate any
+    // outstanding bus pointer; audio-callback paths (Task 10) hold these across
+    // step() calls. Fail loudly instead.
+    assert(numFrames == g_bus_frames && "bus_pointer: numFrames mismatch; call set_bus_frame_count first");
     return &g_bus_storage[(size_t)(bus_index - 1) * (size_t)numFrames];
 }
 float* bus_frames_base() {

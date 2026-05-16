@@ -23,7 +23,7 @@ help:
 	@echo "make deploy   - copy build/arm/*.o to DEVICE (default: /Volumes/NT)"
 	@echo "make clean    - remove build/"
 
-HARNESS_SRCS := harness/src/nt_runtime.cpp harness/src/font_placeholder.cpp harness/src/catch_main.cpp
+HARNESS_SRCS := harness/src/nt_runtime.cpp harness/src/font_placeholder.cpp harness/src/catch_main.cpp harness/src/nt_jsonstream.cpp
 
 build/host/test_nt_runtime: harness/tests/test_nt_runtime.cpp $(HARNESS_SRCS)
 	mkdir -p build/host
@@ -54,6 +54,14 @@ build/host/test_draw_shape: harness/tests/test_draw_shape.cpp $(HARNESS_SRCS)
 .PHONY: test-draw-shape
 test-draw-shape: build/host/test_draw_shape
 	./build/host/test_draw_shape
+
+build/host/test_json: harness/tests/test_json.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
+
+.PHONY: test-json
+test-json: build/host/test_json
+	./build/host/test_json
 
 vendor:
 	git submodule update --init --recursive

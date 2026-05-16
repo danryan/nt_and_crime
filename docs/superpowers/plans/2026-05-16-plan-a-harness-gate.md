@@ -10,9 +10,111 @@
 
 **Plan decomposition note.** This is Plan A of three. Plan B (shim core + Tier 1 applets) and Plan C (Tier 2 applets) follow after Plan A executes. The spec's "Open questions for user" (NT deployment mechanism, MIDI control-surface mapping) are resolved during Stage A.5; the answers feed back into Plan B.
 
+**Revision-1 changelog (post-review):**
+
+- P2: PyYAML committed to in Task 13; hand-rolled subset removed.
+- P3: Task 9 expanded to specify `NT_setParameterFromUi` semantics — writes to `v[p]` then invokes `parameterChanged(self, p)` on the loaded plug-in.
+- P1: New Task 23b ("font verification") inserted between font capture (23) and Stage B (25). Asserts captured glyphs render byte-identical to hardware for a curated set, isolating font correctness from compositional drawing.
+- P7: New Task 18a ("deploy mechanism verification") inserted before all hardware tasks. Tries USB MSC first, falls back to SD card / dedicated tool, documents what worked.
+- New Task 0 ("bootstrap"): `bootstrap.sh` checks/installs all host-side deps so a fresh clone can `./bootstrap.sh && make host && make arm`.
+- P4 (absorbed inline): each hardware task now lists explicit task dependencies in its header.
+- P5 (absorbed inline): Task 26 iteration loop now requires recording (hypothesis, diff-before, diff-after, did-it-shrink). Abort if no shrink after one cycle (not after three iterations).
+- P6 (absorbed inline): Task 24 expanded to probe one bus from each range (physical input 1, physical output 13, aux 21).
+- Smaller: Task 11 main.cpp interface now enumerated (flags, stdin format, exit codes).
+- Smaller: Task 22 instrumentation regex now permissive (handles `const`, named params, varied whitespace) and fails loudly on zero or multiple matches.
+
 ---
 
 ## Stage 0 — Repository scaffold
+
+### Task 0: bootstrap.sh — verify and install host-side dependencies
+
+**Files:**
+
+- Create: `bootstrap.sh`
+- Create: `requirements.txt`
+
+The brief calls for reproducibility from a clean clone. `bootstrap.sh` is the documented entry point: it checks for required toolchain components, installs missing Python deps via pip, and surfaces any host-side gaps the engineer needs to resolve.
+
+- [ ] **Step 1: Write the failing test**
+
+`bootstrap.sh` self-test: run it on a host with one dep missing (simulate by temporarily renaming `arm-none-eabi-c++`); script should exit non-zero with a clear message. Document the test sequence:
+
+```bash
+# happy path
+./bootstrap.sh && echo OK
+
+# unhappy path (manual simulation)
+sudo mv $(which arm-none-eabi-c++) $(which arm-none-eabi-c++).bak
+./bootstrap.sh   # expected: exit 1, names the missing tool
+sudo mv $(which arm-none-eabi-c++).bak $(which arm-none-eabi-c++)
+```
+
+- [ ] **Step 2: Implement bootstrap.sh**
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+REQUIRED_BINS=(git make python3 pip3 curl arm-none-eabi-c++)
+MISSING=()
+for bin in "${REQUIRED_BINS[@]}"; do
+    if ! command -v "$bin" >/dev/null 2>&1; then
+        MISSING+=("$bin")
+    fi
+done
+
+# Host C++ compiler: either clang++ or g++ is acceptable
+if ! command -v clang++ >/dev/null 2>&1 && ! command -v g++ >/dev/null 2>&1; then
+    MISSING+=("clang++ or g++")
+fi
+
+if [ ${#MISSING[@]} -gt 0 ]; then
+    echo "bootstrap: missing host-side tools:" >&2
+    for m in "${MISSING[@]}"; do echo "  - $m" >&2; done
+    echo "Install hints:" >&2
+    echo "  macOS: brew install --cask gcc-arm-embedded; brew install python3" >&2
+    echo "  Debian/Ubuntu: apt-get install gcc-arm-none-eabi python3 python3-pip curl" >&2
+    exit 1
+fi
+
+# Python deps
+pip3 install --user -r requirements.txt
+
+# Submodules
+git submodule update --init --recursive
+
+# Verify Catch2 header presence (downloaded by Task 3 normally; idempotent here)
+if [ ! -f harness/include/catch.hpp ]; then
+    mkdir -p harness/include harness/src
+    curl -sSL -o harness/include/catch.hpp \
+        https://github.com/catchorg/Catch2/releases/download/v3.5.4/catch_amalgamated.hpp
+    curl -sSL -o harness/src/catch_main.cpp \
+        https://github.com/catchorg/Catch2/releases/download/v3.5.4/catch_amalgamated.cpp
+fi
+
+echo "bootstrap: OK"
+```
+
+- [ ] **Step 3: Implement requirements.txt**
+
+```text
+PyYAML>=6.0
+```
+
+- [ ] **Step 4: Run bootstrap.sh on a clean host**
+
+Expected: prints `bootstrap: OK`, exit 0. Submodules populated.
+
+- [ ] **Step 5: Commit**
+
+```bash
+chmod +x bootstrap.sh
+git add bootstrap.sh requirements.txt
+git commit -m "chore: bootstrap.sh + requirements.txt for reproducible setup"
+```
+
+---
 
 ### Task 1: Top-level Makefile and directory skeleton
 
@@ -710,27 +812,63 @@ git commit -m "feat(harness): _NT_jsonStream and _NT_jsonParse host-side impl"
 - Modify: `harness/src/nt_runtime.cpp`
 - Create: `harness/tests/test_params.cpp`
 
-The harness hosts exactly one algorithm slot for the validation gate. Implement `NT_algorithmIndex`, `NT_algorithmCount`, `NT_parameterOffset`, `NT_setParameterFromUi`, `NT_setParameterFromAudio`, `NT_setParameterGrayedOut`. All trivial against a single slot.
+The harness hosts exactly one algorithm slot for the validation gate. Implement `NT_algorithmIndex`, `NT_algorithmCount`, `NT_parameterOffset`, `NT_setParameterFromUi`, `NT_setParameterFromAudio`, `NT_setParameterGrayedOut`.
 
-- [ ] **Step 1: Write the failing test**
+**Routing semantics (specified explicitly because Task 10 and Task 27 depend on this):**
+
+`NT_setParameterFromUi(algIdx, paramIdx, value)` performs exactly these steps in order:
+
+1. Look up the algorithm by `algIdx` (the single slot the harness hosts).
+2. Bounds-check `paramIdx - NT_parameterOffset()` against the algorithm's `parameters[]` table. Out-of-bounds → silently no-op (matches NT firmware's documented forgiveness).
+3. Write `value` into the algorithm's `v[paramIdx - NT_parameterOffset()]`. (`v` is mutable from inside the harness; on hardware the firmware owns it. Cast away const in the harness implementation; document the cast.)
+4. Invoke the algorithm's `factory->parameterChanged(self, paramIdx - NT_parameterOffset())`.
+
+`NT_setParameterFromAudio` is identical except the doc says it's safe to call from audio-rate callbacks; in the host harness this distinction is moot (no thread separation), but the routing is the same.
+
+`NT_setParameterGrayedOut(algIdx, paramIdx, bool)` records the gray state in a per-parameter side table; it does not call `parameterChanged`. The state is queryable via `nt::is_parameter_grayed_out(algIdx, paramIdx)` for test assertions.
+
+- [ ] **Step 1: Write the failing tests (three assertions)**
 
 ```cpp
-TEST_CASE("NT_setParameterFromUi triggers parameterChanged", "[params]") {
+TEST_CASE("NT_setParameterFromUi writes v[p] and calls parameterChanged", "[params]") {
     nt::reset_runtime();
     auto* alg = nt::load_test_algorithm();
     int triggers_before = nt::test_parameter_changed_count();
-    NT_setParameterFromUi(NT_algorithmIndex(alg), 0 + NT_parameterOffset(), 75);
-    REQUIRE(nt::test_parameter_changed_count() == triggers_before + 1);
+    int p = 0;
+    NT_setParameterFromUi(NT_algorithmIndex(alg->algorithm), p + NT_parameterOffset(), 75);
+
+    REQUIRE(alg->algorithm->v[p] == 75);                    // step 3: value written
+    REQUIRE(nt::test_parameter_changed_count() == triggers_before + 1);   // step 4: invoked
+    REQUIRE(nt::test_last_changed_param() == p);            // step 4: with correct index
+}
+
+TEST_CASE("NT_setParameterFromUi with out-of-bounds param is a no-op", "[params]") {
+    nt::reset_runtime();
+    auto* alg = nt::load_test_algorithm();
+    int triggers_before = nt::test_parameter_changed_count();
+    NT_setParameterFromUi(NT_algorithmIndex(alg->algorithm), 999 + NT_parameterOffset(), 1);
+    REQUIRE(nt::test_parameter_changed_count() == triggers_before);
+}
+
+TEST_CASE("NT_setParameterGrayedOut records state without invoking parameterChanged", "[params]") {
+    nt::reset_runtime();
+    auto* alg = nt::load_test_algorithm();
+    int triggers_before = nt::test_parameter_changed_count();
+    NT_setParameterGrayedOut(NT_algorithmIndex(alg->algorithm), 0 + NT_parameterOffset(), true);
+    REQUIRE(nt::is_parameter_grayed_out(NT_algorithmIndex(alg->algorithm), 0 + NT_parameterOffset()));
+    REQUIRE(nt::test_parameter_changed_count() == triggers_before);
 }
 ```
 
-`nt::load_test_algorithm` constructs a tiny stub algorithm with one parameter that increments a counter on every `parameterChanged`. Lives in the test-only fixture.
+`nt::load_test_algorithm` returns a `nt::LoadedPlugin` (defined in Task 10 — forward declared here) wrapping a stub algorithm with one parameter and a global counter that increments on every `parameterChanged`.
 
 - [ ] **Step 2: Implement, verify, commit**
 
+Implementation note: `nt::load_test_algorithm` is *the same code path* as `nt::load_plugin` from Task 10. To avoid forward-declaration order issues, put the loader scaffold (the `LoadedPlugin` struct and the basic resolver) into Task 9 and have Task 10 only add the public `load_plugin()` entry point. Re-order if simpler.
+
 ```bash
 git add harness/
-git commit -m "feat(harness): single-slot parameter mutation API"
+git commit -m "feat(harness): NT_setParameter* with explicit routing semantics"
 ```
 
 ---
@@ -795,15 +933,48 @@ build/host/sim_gainCustomUI: $(HARNESS_SRCS) vendor/distingNT_API/examples/gainC
 host: build/host/sim_gainCustomUI
 ```
 
-- [ ] **Step 2: Smoke test — link and run with --help**
+- [ ] **Step 2: Specify `harness/src/main.cpp` interface**
 
-`harness/src/main.cpp` exposes `--help` printing usage. Run:
+The binary is a single-shot scenario runner driven from the command line. Interface:
+
+```text
+usage: sim_<plugin> --scenario PATH [--output-dir DIR] [--write-golden] [--quiet]
+
+flags:
+  --scenario PATH    YAML scenario file (required)
+  --output-dir DIR   where to write out_bus.bin, out_screen.bin, out_params.log
+                     (default: ./out/)
+  --write-golden     overwrite tests/golden/<plugin>/<scenario-name>/ with the
+                     simulator's output. Use to bootstrap a golden master.
+  --quiet            suppress per-step progress output
+
+stdin:  unused
+stdout: progress lines like "frame 256: pot C -> 0.75"
+exit codes:
+  0  scenario completed; outputs written
+  1  scenario failed to parse
+  2  plugin construction failed
+  3  scenario runtime error (e.g. out-of-bounds param)
+```
+
+`main.cpp` is a thin shell: parse args, read the scenario via `harness/scripts/run_scenario.py` *no* — `main.cpp` parses YAML itself via the Python driver invoking the binary with flags. Simpler split: the Python driver parses YAML, the C++ binary receives parsed scenario as JSON on stdin (or via a temp file). This decouples C++ from YAML parsing entirely.
+
+Revised flow:
+
+1. `harness/scripts/run_scenario.py` reads YAML, converts to JSON, invokes the C++ binary with `--scenario-json -` and pipes JSON on stdin.
+2. C++ binary parses JSON via `harness/src/nt_jsonstream.cpp` (already vendored for the serialisation surface).
+3. C++ binary runs the scenario, writes outputs to `--output-dir`.
+4. Python driver diffs outputs against golden, exits with combined status.
+
+This keeps YAML out of the C++ build entirely. Update Step 1's `--scenario` to `--scenario-json` and remove YAML parsing from main.cpp.
+
+- [ ] **Step 3: Smoke test — link and run with --help**
 
 ```bash
 make host && ./build/host/sim_gainCustomUI --help
 ```
 
-Expected: prints scenarios and flags, exit 0.
+Expected: prints usage block above, exit 0.
 
 - [ ] **Step 3: Commit**
 
@@ -867,7 +1038,7 @@ git commit -m "build: ARM .o output for gainCustomUI and gain"
 - Create: `harness/scripts/run_scenario.py`
 - Create: `tests/scenarios/gainCustomUI/zero_signal.yaml`
 
-Choose YAML for human readability. Parser uses Python's `yaml` stdlib alternative (`PyYAML` via `pip install pyyaml` or, to avoid the dep, hand-roll a tiny key-value parser since scenarios are simple).
+Choose YAML for human readability. Parser uses PyYAML (`import yaml`, already installed by `bootstrap.sh` via `requirements.txt`). Hand-rolling a YAML subset was rejected as a footgun: future scenarios will inevitably hit edge cases the hand-roller misses, and the diff between sim and golden will silently mask the parse error as a test failure.
 
 **Scenario shape:**
 
@@ -913,35 +1084,67 @@ expect:
 
 ```python
 #!/usr/bin/env python3
+"""Drive a host-simulator binary through a YAML scenario; diff outputs vs golden."""
 import argparse
-import os
-import struct
+import json
 import subprocess
 import sys
+import yaml
 from pathlib import Path
 
-def load_scenario(path):
-    text = Path(path).read_text()
-    out = {}
-    # minimal YAML subset: top-level key:value, two-space-indented sub-keys
-    # (sufficient for scenario shape; PyYAML if it grows)
-    ...
+def load_scenario(path: Path) -> dict:
+    return yaml.safe_load(path.read_text())
 
-def main():
+def run_simulator(binary: Path, scenario_json: str, output_dir: Path) -> int:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        [str(binary), "--scenario-json", "-", "--output-dir", str(output_dir)],
+        input=scenario_json,
+        text=True,
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        sys.stderr.write(proc.stderr)
+    return proc.returncode
+
+def diff_or_write_golden(actual_dir: Path, scenario: dict, write_golden: bool) -> int:
+    expected = scenario.get("expect", {})
+    rc = 0
+    for kind, golden_path in expected.items():
+        actual = actual_dir / f"out_{kind}.bin"
+        golden = Path(golden_path)
+        if write_golden:
+            golden.parent.mkdir(parents=True, exist_ok=True)
+            golden.write_bytes(actual.read_bytes())
+            print(f"wrote golden: {golden}")
+        else:
+            r = subprocess.run(["python3", "harness/scripts/diff_outputs.py",
+                               kind.replace("_", "-"), str(golden), str(actual)])
+            if r.returncode != 0:
+                rc = r.returncode
+    return rc
+
+def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("scenario")
-    parser.add_argument("--binary", default="build/host/sim_gainCustomUI")
+    parser.add_argument("scenario", type=Path)
+    parser.add_argument("--binary", default=None, type=Path,
+                       help="path to sim binary; default derived from scenario.plugin")
     parser.add_argument("--write-golden", action="store_true")
+    parser.add_argument("--output-dir", default=Path("out/"), type=Path)
     args = parser.parse_args()
+
     scenario = load_scenario(args.scenario)
-    # ... invoke binary with the scenario serialised to stdin or as flags
-    # ... compare or write golden
+    binary = args.binary or Path(f"build/host/sim_{scenario['plugin']}")
+    rc = run_simulator(binary, json.dumps(scenario), args.output_dir)
+    if rc != 0:
+        return rc
+    return diff_or_write_golden(args.output_dir, scenario, args.write_golden)
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
 ```
 
-Full implementation in the same commit. Decompose helpers as needed.
+Full implementation in the commit; decompose helpers as needed.
 
 - [ ] **Step 3: Add Makefile target**
 
@@ -1396,7 +1599,7 @@ git commit -m "feat(applets): font_dump.cpp iterating printable ASCII"
 
 This stage is partially manual: it touches physical hardware. The plan documents the exact steps and acceptance criteria; the engineer runs them.
 
-### Task 18: Deployment script
+### Task 18: Deployment script (USB MSC default)
 
 **Files:**
 
@@ -1405,7 +1608,7 @@ This stage is partially manual: it touches physical hardware. The plan documents
 
 - [ ] **Step 1: Add deploy target**
 
-Until the actual mechanism is known (Open Question 1), assume USB MSC:
+Until the actual mechanism is verified by Task 18a, assume USB MSC:
 
 ```makefile
 DEVICE ?= /Volumes/NT
@@ -1415,24 +1618,87 @@ deploy: arm
 	@echo "Deployed to $(DEVICE)/plugins/. Power-cycle the NT to pick up new plug-ins."
 ```
 
-- [ ] **Step 2: Commit, then have the engineer run with the NT plugged in**
+- [ ] **Step 2: Commit**
 
 ```bash
-make deploy DEVICE=/Volumes/NT  # adjust path for actual mount
-```
-
-If deploy fails because the mechanism is different, fix the target. Document what worked in `docs/hardware-deploy.md`.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add Makefile harness/scripts/deploy.sh docs/
-git commit -m "feat(deploy): make deploy target (USB MSC default)"
+git add Makefile harness/scripts/deploy.sh
+git commit -m "feat(deploy): make deploy target (USB MSC default; verified in Task 18a)"
 ```
 
 ---
 
+### Task 18a: Verify deploy mechanism on actual hardware
+
+**Depends on:** Task 18 committed, NT module connected.
+
+**Files:**
+
+- Modify: `Makefile` (only if USB MSC is not the answer)
+- Create: `docs/hardware-deploy.md`
+
+This task answers spec Open Question 1. Every subsequent hardware task (19-28) assumes `make deploy` works; if it doesn't, every downstream task is blocked.
+
+- [ ] **Step 1: Try USB MSC**
+
+Plug the NT into the host machine. Check if it mounts as a USB Mass Storage device:
+
+```bash
+ls /Volumes/         # macOS
+ls /media/$USER/     # Linux
+```
+
+If a volume appears that contains a `plugins/` directory, USB MSC is the answer. Note the mount path.
+
+- [ ] **Step 2: Run deploy with a single .o**
+
+```bash
+make arm
+make deploy DEVICE=<discovered-path>
+```
+
+Power-cycle the NT. Verify the plug-in appears in the "add algorithm" menu on the NT's UI.
+
+- [ ] **Step 3: If USB MSC fails — fallback A: SD card**
+
+Eject the NT, remove its SD card, mount on the host. Copy `build/arm/*.o` to `plugins/` on the SD card. Reinsert. Power-cycle.
+
+If this works, update `Makefile` `deploy` target:
+
+```makefile
+DEVICE ?= /Volumes/NT_SD
+deploy: arm
+	@test -d "$(DEVICE)/plugins" || { echo "DEVICE=$(DEVICE) does not contain plugins/"; exit 1; }
+	cp build/arm/*.o $(DEVICE)/plugins/
+	@echo "Copied to $(DEVICE). Reinsert SD card and power-cycle."
+```
+
+- [ ] **Step 4: If both fail — fallback B: dedicated tool**
+
+Consult the disting NT manual / Expert Sleepers community resources for the official plug-in deploy method. Whatever it is (custom CLI, web uploader, MIDI SysEx), wrap it in `harness/scripts/deploy.sh` and have the `Makefile` `deploy` target call the script.
+
+- [ ] **Step 5: Document what worked**
+
+Write `docs/hardware-deploy.md` capturing:
+
+- Confirmed deploy mechanism (USB MSC / SD / tool).
+- Exact mount path or tool invocation.
+- Time-to-deploy: how long from `make deploy` to plug-in available on NT.
+- Any quirks: does the NT need a power cycle, or does it hot-reload?
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add Makefile harness/scripts/deploy.sh docs/hardware-deploy.md
+git commit -m "feat(deploy): confirmed deploy mechanism (<USB MSC|SD|tool>)"
+```
+
+If neither fallback works, abort: this is a project-blocking Open Question with no answer.
+
+---
+
 ### Task 19: Stage A.1 — Verify bus count and routing on hardware
+
+**Depends on:** Task 15 (`bus_probe.o` built), Task 18a (deploy mechanism confirmed).
 
 **Hardware procedure (manual, agent waits for human confirmation):**
 
@@ -1453,6 +1719,8 @@ If `kNT_lastBus == 64` does not match observed accessible buses, raise this as a
 
 ### Task 20: Stage A.2 — Verify screen_dump round-trip integrity
 
+**Depends on:** Task 16 (`screen_dump.o` built), Task 18a (deploy mechanism confirmed), Task 19 (deploy + load mechanics validated via `bus_probe`).
+
 - [ ] **Step 1:** Load `screen_dump` alone in slot 1 of a preset.
 - [ ] **Step 2:** Send a SysEx test pattern of 256 bytes to the NT via USB MIDI: `F0 7D 01 ... F7` where `...` is the test payload. The harness's `screen_dump` shouldn't respond to this exact opcode (it expects `01`), but the test verifies the NT accepts inbound SysEx of that size.
 - [ ] **Step 3:** Adjust the test: send `F0 7D 01 F7` (dump request). Expect a multi-message reply totalling 8192 + framing bytes.
@@ -1468,6 +1736,8 @@ git commit -m "test(reference): SysEx roundtrip integrity verified"
 ---
 
 ### Task 21: Stage A.3 — Verify slot-order draw
+
+**Depends on:** Tasks 19 and 20 both passed.
 
 - [ ] **Step 1:** Load `bus_probe` in slot 1, `screen_dump` in slot 2. `bus_probe`'s `draw()` writes "Probe bus: N" to NT_screen.
 - [ ] **Step 2:** Send dump-request. Capture screen via `screen_dump`.
@@ -1488,12 +1758,38 @@ git commit -m "test(reference): slot-order draw verified"
 
 Only execute if Task 21 fails.
 
+**Depends on:** Task 21 failed.
+
 **Files:**
 
 - Create: `harness/scripts/instrument_plugin.py`
 - Modify: `Makefile`
 
-- [ ] **Step 1:** Python script that copies `vendor/distingNT_API/examples/<name>.cpp` to `build/instrumented/<name>.cpp`, prepends `#include "hem_dump_helper.h"`, and injects `nt_hem::_nt_hem_dump_screen();` immediately before the closing `}` of the `draw()` function (regex anchored to `bool\s+draw\s*\(\s*_NT_algorithm\s*\*.*\)\s*\n?\s*\{`).
+- [ ] **Step 1:** Python script that copies `vendor/distingNT_API/examples/<name>.cpp` to `build/instrumented/<name>.cpp`, prepends `#include "hem_dump_helper.h"`, and injects `nt_hem::_nt_hem_dump_screen();` immediately before the closing `}` of the `draw()` function.
+
+The match must accommodate real-world signature variations. Use a permissive regex over the function signature:
+
+```python
+import re
+DRAW_SIGNATURE = re.compile(
+    r"""^\s*                                  # leading whitespace
+        bool\s+draw\s*\(\s*                   # 'bool draw(' with flexible whitespace
+        (?:const\s+)?                         # optional const
+        _NT_algorithm\s*\*\s*                 # _NT_algorithm*
+        [A-Za-z_][A-Za-z0-9_]*                # parameter name (any identifier)
+        \s*\)\s*                              # close paren
+        (?:const\s*)?                         # optional trailing const
+        \{                                    # opening brace
+    """,
+    re.MULTILINE | re.VERBOSE,
+)
+```
+
+The script must:
+
+- Match exactly once. Zero matches → fail loudly: `"could not locate draw() in <file>"`. Two or more matches → fail loudly: `"ambiguous draw() match (N occurrences) in <file>"`. Either case exits non-zero so the build halts.
+- After matching, locate the corresponding closing `}` by tracking brace depth (don't just regex it — `draw()` may contain nested braces).
+- Inject `nt_hem::_nt_hem_dump_screen();\n` immediately before the closing `}`.
 - [ ] **Step 2:** Makefile rule `build/arm/<name>_instrumented.o` that runs the instrumenter then compiles.
 - [ ] **Step 3:** Re-run Task 21 with the instrumented gainCustomUI in slot 1, screen_dump in slot 2.
 - [ ] **Step 4:** Commit:
@@ -1508,6 +1804,8 @@ If Plan B also fails, **abort A1**.
 ---
 
 ### Task 23: Stage A.4 — Capture firmware font tables
+
+**Depends on:** Task 17 (`font_dump.o` built), Task 20 (SysEx roundtrip), Task 21 or Task 22 (capture path).
 
 - [ ] **Step 1:** Load `font_dump` in slot 1, `screen_dump` in slot 2.
 - [ ] **Step 2:** For each font size (tiny, normal, large), iterate through all 95 ASCII glyphs, capturing each.
@@ -1524,16 +1822,103 @@ git commit -m "feat(harness): replace placeholder font with hardware-captured gl
 
 ---
 
-### Task 24: Stage A.5 — Verify CV scaling on hardware
+### Task 23b: Font verification (isolation test before Stage B)
 
-- [ ] **Step 1:** Build a quick test plug-in `cv_calibrate.cpp` that writes `1.0f` to bus 13.
-- [ ] **Step 2:** Measure bus 13 with a multimeter and a tuner. Confirm 1.0V output, 1V/oct convention.
-- [ ] **Step 3:** Write `2.0f`, confirm 2.0V. Sweep.
-- [ ] **Step 4:** Record findings to `tests/reference/cv_scaling.txt`. If 1.0f != 1V on the bus, the spec's CV scaling rule needs to change before Plan B (the shim).
+**Depends on:** Task 23 complete.
+
+This task isolates font correctness from compositional drawing. If the captured font has subtly wrong glyph metrics (wrong baseline, wrong advance, antialias differences in large-font), the failure shows up here cleanly rather than as a confusing cascade in Stage B's parity tests.
+
+**Files:**
+
+- Create: `tests/scenarios/font_verify/all_glyphs.yaml`
+- Create: `tests/golden/font_verify/all_glyphs/`
+- Modify: `Makefile` (`test` target depends on font verification)
+
+- [ ] **Step 1: Build a host-side test plug-in `applets/font_verify.cpp`**
+
+Identical interface to `font_dump.cpp` but built for both targets. It iterates printable ASCII glyphs and renders each into a known screen region. Used both on hardware (paired with `screen_dump`) and on the host (rendered into `NT_screen` directly).
+
+- [ ] **Step 2: Capture hardware reference**
+
+Deploy `font_verify` + `screen_dump`, capture all 95 × 3 = 285 glyphs into `tests/golden/font_verify/all_glyphs/`.
+
+- [ ] **Step 3: Run host simulator producing the same scenario output**
+
+The simulator uses `harness/src/font_captured.cpp` (the table from Task 23). The output should be byte-identical to hardware.
+
+- [ ] **Step 4: Diff with zero tolerance**
+
+```bash
+python3 harness/scripts/run_scenario.py tests/scenarios/font_verify/all_glyphs.yaml
+```
+
+Expected: zero divergence across all 285 glyph captures.
+
+If any glyph differs:
+
+- For tiny/normal (1-bit pixels): the captured glyph table or the simulator's `set_pixel` is wrong. The diff visualisation (`harness/scripts/diff_outputs.py screen ...`) names the specific glyph and pixel coordinates.
+- For large (4-bit antialiased): the simulator's `NT_drawText` with `kNT_textLarge` is using a wrong rasteriser. Treat as a Task-26-class divergence and apply the same shrink-rule iteration discipline (see Task 26).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add applets/font_verify.cpp tests/scenarios/font_verify/ tests/golden/font_verify/ harness/
+git commit -m "test(font): byte-faithful font verification across all printable ASCII"
+```
+
+Until this passes with zero divergence, Stage B (which depends on `NT_drawText`) is blocked.
+
+---
+
+### Task 24: Stage A.5 — Verify CV scaling on hardware (multi-bus)
+
+**Depends on:** Task 19 (bus map), Task 18a (deploy).
+
+CV scaling could in principle differ between bus ranges (physical input 1-12, physical output 13-20, aux 21-64). The shim and applets need scaling correctness on whichever buses they end up routed to, not just bus 13.
+
+- [ ] **Step 1: Build `cv_calibrate.cpp`**
+
+```cpp
+// applets/cv_calibrate.cpp — writes a configured level to a configured bus.
+// One parameter "Bus" (1..64), one parameter "Level" (volts, -10.0..10.0).
+// Deployed as a hardware test fixture only.
+```
+
+Implementation mirrors `bus_probe.cpp` from Task 15 but writes `level` as a float (not as a fraction).
+
+- [ ] **Step 2: Test bus 1 (physical input range)**
+
+Set Bus=1, Level=1.0. Measure bus 1's physical connector with a multimeter. Record exact reading. Repeat for Level = 0.0, -1.0, 2.0, 5.0.
+
+- [ ] **Step 3: Test bus 13 (physical output range)**
+
+Same procedure on bus 13. Expected: same V-per-unit as bus 1.
+
+- [ ] **Step 4: Test bus 21 (aux range)**
+
+Aux buses aren't routed to a physical connector. Test by loading a second algorithm (any audio plug-in) on a different slot that consumes bus 21, and check whether the consumed signal matches the level written. If aux buses aren't accessible at all from a plug-in, document that and skip.
+
+- [ ] **Step 5: Record findings**
+
+`tests/reference/cv_scaling.txt`:
+
+```text
+bus  level_set  level_measured  notes
+1    1.000      X.XXX           physical input
+1    2.000      X.XXX
+1    5.000      X.XXX
+13   1.000      X.XXX           physical output
+13   2.000      X.XXX
+21   1.000      X.XXX           aux, measured via consumer plug-in
+```
+
+If `level_measured` ≠ `level_set` to within ±0.001 V on any bus, **the spec's CV scaling rule (1.0f = 1V) is wrong for that bus range and the shim's mapping must adjust** before Plan B begins. If aux buses cannot be probed, note the limitation and proceed; the shim only maps applet CV to physical outputs by default.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add applets/cv_calibrate.cpp tests/reference/cv_scaling.txt
-git commit -m "test(reference): CV scaling on bus 13 confirms 1.0f = 1V"
+git commit -m "test(reference): CV scaling verified on bus ranges 1/13/21"
 ```
 
 ---
@@ -1541,6 +1926,8 @@ git commit -m "test(reference): CV scaling on bus 13 confirms 1.0f = 1V"
 ## Stage B — gainCustomUI parity
 
 ### Task 25: Audio path parity
+
+**Depends on:** Task 12 (gainCustomUI built for ARM), Task 18a (deploy mechanism), Task 24 (CV scaling verified).
 
 - [ ] **Step 1:** Define scenario `tests/scenarios/gainCustomUI/sine_50pct.yaml`: sine 440 Hz at 0.5 amplitude on bus 1, Gain = 50, Output bus = 13, 1024 frames.
 - [ ] **Step 2:** Run on the simulator, capture `out_bus.bin`. Store under `tests/golden/gainCustomUI/sine_50pct/`.
@@ -1564,11 +1951,24 @@ git commit -m "test(gainCustomUI): sine_50pct audio parity within 1 LSB"
 
 ### Task 26: Screen path parity
 
+**Depends on:** Task 23b (font verified in isolation), Task 25 (audio parity working).
+
 - [ ] **Step 1:** Same scenario as Task 25 but capture `out_screen.bin` from both targets (sim via direct buffer read; hardware via `screen_dump` SysEx).
 - [ ] **Step 2:** Diff bit-faithfully. Zero tolerance.
-- [ ] **Step 3:** If divergence:
-  - If the divergent pixels are within `NT_drawText` regions → font table mismatch; redo Task 23.
-  - If divergent pixels are within `NT_drawShapeF` regions → adjust the antialiased rasteriser in `harness/src/nt_runtime.cpp` to match hardware. Each cycle: hypothesise rasteriser change, implement, re-run scenario. Max 3 iterations per A1.
+- [ ] **Step 3:** If divergence, run the shrink-discipline iteration loop.
+
+**Iteration discipline (also applies to Task 23b for the large font, and any future bit-faithful divergence task):**
+
+For each iteration cycle:
+
+1. **Hypothesis.** State in one sentence what specific simulator component is wrong. Example: "NT_drawShapeF circle rasteriser uses Bresenham; hardware uses a midpoint-with-AA-correction."
+2. **Diff-before.** Record the current divergence: how many pixels diverge, in which regions, by what magnitude. Save as `tests/divergence/<scenario>/iter-N-before.log`.
+3. **Change.** Make the targeted simulator change.
+4. **Diff-after.** Re-run the scenario, record the new divergence as `tests/divergence/<scenario>/iter-N-after.log`.
+5. **Did the diff shrink?** Compare diff-before vs diff-after. If divergent pixel count went down or magnitude went down, this hypothesis class is on the right track; continue with refinements. If neither went down (or one went down while the other went up), the hypothesis class is wrong — stop refining this hypothesis.
+
+Abort condition: if any single iteration produces no shrink, **abort A1 on that scenario**. Three iterations of no shrink is not better than one; the failure mode is the hypothesis class, not the cycle count.
+
 - [ ] **Step 4:** Commit when zero diff achieved:
 
 ```bash
@@ -1579,6 +1979,10 @@ git commit -m "test(gainCustomUI): screen parity byte-faithful"
 ---
 
 ### Task 27: Custom UI parity
+
+**Depends on:** Task 26 (screen path parity), and spec Open Question 2 answered (MIDI control-surface transport for UI event replay).
+
+If Open Question 2 has no good answer (the NT does not expose a control-surface MIDI mapping for pots/buttons), build a small `applets/ui_inject.cpp` plug-in that consumes inbound SysEx commands of the shape `{manuf_id, opcode, control_id, value}` and synthesises a `_NT_uiData` for the target plug-in. Co-load it like `screen_dump`. Document in `docs/hardware-notes.md`.
 
 - [ ] **Step 1:** Define scenario `tests/scenarios/gainCustomUI/ui_events.yaml`: scripted pot+encoder events that drive the Gain parameter from 50 to 75 to 0.
 - [ ] **Step 2:** Simulator: drive customUi events, log every `parameterChanged(p, value)` call to `out_params.log`.
@@ -1597,6 +2001,8 @@ git commit -m "test(gainCustomUI): custom UI parity byte-faithful"
 
 ### Task 28: gain.cpp parity (audio only)
 
+**Depends on:** Task 25 (gainCustomUI audio parity passed; same audio path is reused here).
+
 `gain.cpp` has no custom UI; this verifies audio-path validation works without UI coupling.
 
 - [ ] **Step 1:** Scenarios mirror Task 25 with `plugin: gain` instead of `gainCustomUI`. Three scenarios: zero_signal, sine_50pct, sine_100pct.
@@ -1614,19 +2020,27 @@ git commit -m "test(gain): audio parity across three signal levels"
 
 All of the following hold:
 
-- `make arm`, `make host`, `make test` exit zero.
-- All Stage A.5 hardware verifications complete with recorded results in `tests/reference/`.
+- `./bootstrap.sh && make arm && make host && make test` exits zero from a clean clone.
+- Task 18a confirmed the deploy mechanism; `make deploy` works.
+- All Stage A.5 hardware verifications complete with recorded results in `tests/reference/`:
+  - `tests/reference/bus_map.txt` (Task 19)
+  - `tests/reference/sysex_roundtrip.log` (Task 20)
+  - `tests/reference/slot_order_check.txt` (Task 21)
+  - `tests/reference/nt_fonts/{tiny,normal,large}.bin` (Task 23)
+  - `tests/reference/cv_scaling.txt` (Task 24, with three bus ranges probed)
+- Task 23b font verification passes byte-faithfully across all 285 glyphs (95 × 3 sizes).
 - Stage B and Stage C scenarios pass with zero divergence (screen, params) and ±1 LSB tolerance (audio).
 - Open Question 1 (deployment mechanism) and Open Question 2 (UI event transport) have concrete answers documented in `docs/hardware-notes.md`.
-- No `*.placeholder.cpp` files remain in `harness/src/`.
+- No `*placeholder*.cpp` files remain in `harness/src/`.
 
 When Plan A is done, signal readiness for Plan B (shim core + Tier 1 applets).
 
 ---
 
-## Self-review
+## Self-review (revision 1)
 
-- **Spec coverage:** Stage 0 covers repo scaffold and submodule pinning per spec's Repo layout. Stage A.1 covers Host simulator (NT_screen, NT_globals, drawing, JSON, params, loader) per spec's Host simulator section. Stages A.4/A.5 cover hardware capture infrastructure including the four Stage A assumptions (slot order, persistence, SysEx round-trip, throughput) per spec's Hardware screen capture section. Plan B for instrumented reference plug-ins is a conditional task (22), engaged only on failure of Task 21. Stages B and C cover the harness-validation gate per spec.
-- **Placeholder scan:** Two `...` ellipses remain inside Python helper scripts (Task 13, Task 14). These are not specification gaps — the surrounding text describes the function's purpose and the engineer implements the body. Acceptable for a plan document. The `nt_jsonstream` task (Task 8) says "Expected line count: ~250 LoC. Decompose into helpers if it grows past 300." rather than dictating exact code; intentional, since serialisation is mechanical and there are multiple reasonable shapes. Acceptable.
-- **Type consistency:** `_NT_factory` field names cross-referenced against api.h. `nt::reset_runtime`, `nt::num_buses`, `nt::bus_pointer`, `nt::load_test_algorithm`, `nt::load_plugin`, `nt_hem::_nt_hem_dump_screen`, `nt_hem::emit_capture_if_pending` all consistent across tasks.
-- Spec Open Questions are surfaced in Tasks 19 (deployment) and 27 (UI event transport), with abort criteria documented if they can't be answered.
+- **Spec coverage:** Stage 0 covers bootstrap, repo scaffold and submodule pinning. Stage A.1 covers Host simulator (NT_screen, NT_globals, drawing, JSON, params, loader) per spec's Host simulator section. Stages A.4/A.5 cover hardware capture infrastructure including the four Stage A assumptions (slot order, persistence, SysEx round-trip, throughput) per spec's Hardware screen capture section. Plan B for instrumented reference plug-ins is a conditional task (22). Task 23b isolates font correctness. Task 24 covers CV scaling across three bus ranges (P6). Stages B and C cover the harness-validation gate per spec.
+- **Placeholder scan:** Two `...` ellipses remain inside Python helper scripts (Task 14 diff helpers). These are not specification gaps — the surrounding text describes the function's purpose and the engineer implements the body. Task 8 (`nt_jsonstream`) explicitly leaves the LoC budget flexible because the shape is mechanical and has multiple reasonable forms. No other placeholders.
+- **Type consistency:** `_NT_factory` field names cross-referenced against api.h. `nt::reset_runtime`, `nt::num_buses`, `nt::bus_pointer`, `nt::load_test_algorithm`, `nt::load_plugin`, `nt::is_parameter_grayed_out`, `nt::test_parameter_changed_count`, `nt::test_last_changed_param`, `nt_hem::_nt_hem_dump_screen`, `nt_hem::emit_capture_if_pending`, `nt_hem::kManufacturerId`, `nt_hem::kCmdDumpRequest`, `nt_hem::kCmdDumpReply` all consistent across tasks.
+- **Spec Open Questions:** Task 18a (deployment) and Task 27's preamble (UI event transport via `ui_inject.cpp` fallback) provide concrete paths and abort criteria.
+- **Iteration discipline:** Task 26 codifies shrink-rule iteration (P5). Same rule referenced from Task 23b.

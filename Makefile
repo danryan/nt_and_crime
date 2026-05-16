@@ -23,19 +23,29 @@ help:
 	@echo "make deploy   - copy build/arm/*.o to DEVICE (default: /Volumes/NT)"
 	@echo "make clean    - remove build/"
 
-build/host/test_nt_runtime: harness/tests/test_nt_runtime.cpp harness/src/nt_runtime.cpp harness/src/catch_main.cpp
+HARNESS_SRCS := harness/src/nt_runtime.cpp harness/src/font_placeholder.cpp harness/src/catch_main.cpp
+
+build/host/test_nt_runtime: harness/tests/test_nt_runtime.cpp $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
 
 test-runtime: build/host/test_nt_runtime
 	./build/host/test_nt_runtime
 
-build/host/test_buses: harness/tests/test_buses.cpp harness/src/nt_runtime.cpp harness/src/catch_main.cpp
+build/host/test_buses: harness/tests/test_buses.cpp $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
 
 test-buses: build/host/test_buses
 	./build/host/test_buses
+
+build/host/test_draw_text: harness/tests/test_draw_text.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
+
+.PHONY: test-draw
+test-draw: build/host/test_draw_text
+	./build/host/test_draw_text
 
 vendor:
 	git submodule update --init --recursive

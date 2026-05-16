@@ -3,6 +3,34 @@
 #include <cstdint>
 #include <vector>
 
+namespace nt { extern const uint8_t* font_6x8_glyph(char c); }
+
+static inline void set_pixel(int x, int y, int colour) {
+    if (x < 0 || x >= 256 || y < 0 || y >= 64) return;
+    int byte_index  = y * 128 + (x >> 1);
+    uint8_t mask    = (x & 1) ? 0xf0 : 0x0f;
+    uint8_t shifted = (uint8_t)((colour & 0x0f) << ((x & 1) ? 4 : 0));
+    NT_screen[byte_index] = (uint8_t)((NT_screen[byte_index] & ~mask) | shifted);
+}
+
+extern "C" void NT_drawText(int x, int y, const char* str, int colour,
+                            _NT_textAlignment align, _NT_textSize size) {
+    (void)align; (void)size;
+    if (!str) return;
+    int cx = x;
+    for (; *str; ++str) {
+        const uint8_t* g = nt::font_6x8_glyph(*str);
+        for (int col = 0; col < 6; ++col) {
+            uint8_t bits = g[col];
+            for (int row = 0; row < 8; ++row) {
+                if (bits & (1u << row))
+                    set_pixel(cx + col, y + row, colour);
+            }
+        }
+        cx += 6;
+    }
+}
+
 uint8_t NT_screen[128 * 64];
 
 static std::vector<float> g_bus_storage;

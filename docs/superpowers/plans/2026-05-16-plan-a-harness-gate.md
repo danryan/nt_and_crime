@@ -277,7 +277,7 @@ curl -sL https://github.com/catchorg/Catch2/releases/download/v3.5.4/catch_amalg
 `harness/tests/test_nt_runtime.cpp`:
 
 ```cpp
-#define CATCH_CONFIG_MAIN
+// Catch2 v3 amalgamated: catch_main.cpp provides int main; do not define CATCH_CONFIG_MAIN
 #include "catch.hpp"
 #include "nt_runtime.h"
 #include <distingnt/api.h>
@@ -358,7 +358,7 @@ void reset_runtime() {
 - [x] **Step 5: Run the test and confirm it passes**
 
 Run: `make test-runtime`
-Expected: `All tests passed (2 assertions in 2 test cases)`.
+Expected: exit 0; Catch2 reports passing test cases (assertion count includes the per-byte loop in the zero-check test, so the printed total is in the thousands, not 2).
 
 - [x] **Step 6: Commit**
 

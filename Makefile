@@ -106,7 +106,11 @@ build/arm/gain.o: vendor/distingNT_API/examples/gain.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o
+build/arm/bus_probe.o: applets/bus_probe.cpp
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o
 
 test: host
 	python3 harness/scripts/run_scenario.py tests/scenarios/gainCustomUI/zero_signal.yaml

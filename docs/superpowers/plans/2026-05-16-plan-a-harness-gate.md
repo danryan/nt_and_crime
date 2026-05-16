@@ -1624,7 +1624,7 @@ This stage is partially manual: it touches physical hardware. The plan documents
 - Modify: `Makefile`
 - Create: `harness/scripts/deploy.sh`
 
-- [ ] **Step 1: Add deploy target**
+- [x] **Step 1: Add deploy target**
 
 Until the actual mechanism is verified by Task 18a, assume USB MSC:
 
@@ -1636,7 +1636,7 @@ deploy: arm
 	@echo "Deployed to $(DEVICE)/plugins/. Power-cycle the NT to pick up new plug-ins."
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add Makefile harness/scripts/deploy.sh

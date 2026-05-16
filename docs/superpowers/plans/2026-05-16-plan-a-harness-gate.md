@@ -1203,7 +1203,7 @@ git commit -m "feat(harness): scenario driver and zero_signal golden master"
 
 - Create: `harness/scripts/diff_outputs.py`
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 ```python
 #!/usr/bin/env python3
@@ -1232,15 +1232,15 @@ def main():
     ...
 ```
 
-- [ ] **Step 2: Smoke-test against two identical files**
+- [x] **Step 2: Smoke-test against two identical files**
 
 Expected: exit 0, no output.
 
-- [ ] **Step 3: Smoke-test against two differing files**
+- [x] **Step 3: Smoke-test against two differing files**
 
 Expected: exit 1, prints first divergence with byte offset.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add harness/scripts/diff_outputs.py

@@ -1,0 +1,11 @@
+plugin: gainCustomUI
+params:
+  Input: 1
+  Output: 13
+  Gain: 0
+input_buses:
+  1: silence
+duration_frames: 64
+events: []
+expect:
+  bus_out: tests/golden/gainCustomUI/zero_signal/out_bus.bin

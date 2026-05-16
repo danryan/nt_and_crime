@@ -108,6 +108,9 @@ build/arm/gain.o: vendor/distingNT_API/examples/gain.cpp
 
 arm: build/arm/gainCustomUI.o build/arm/gain.o
 
+test: host
+	python3 harness/scripts/run_scenario.py tests/scenarios/gainCustomUI/zero_signal.yaml
+
 vendor:
 	git submodule update --init --recursive
 

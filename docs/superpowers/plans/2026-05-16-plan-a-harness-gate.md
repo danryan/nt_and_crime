@@ -41,7 +41,7 @@
 
 The brief calls for reproducibility from a clean clone. `bootstrap.sh` is the documented entry point: it checks for required toolchain components, installs missing Python deps via pip, and surfaces any host-side gaps the engineer needs to resolve.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `bootstrap.sh` self-test: run it on a host with one dep missing (simulate by temporarily renaming `arm-none-eabi-c++`); script should exit non-zero with a clear message. Document the test sequence:
 
@@ -55,7 +55,7 @@ sudo mv $(which arm-none-eabi-c++) $(which arm-none-eabi-c++).bak
 sudo mv $(which arm-none-eabi-c++).bak $(which arm-none-eabi-c++)
 ```
 
-- [ ] **Step 2: Implement bootstrap.sh**
+- [x] **Step 2: Implement bootstrap.sh**
 
 ```bash
 #!/usr/bin/env bash
@@ -101,17 +101,17 @@ fi
 echo "bootstrap: OK"
 ```
 
-- [ ] **Step 3: Implement requirements.txt**
+- [x] **Step 3: Implement requirements.txt**
 
 ```text
 PyYAML>=6.0
 ```
 
-- [ ] **Step 4: Run bootstrap.sh on a clean host**
+- [x] **Step 4: Run bootstrap.sh on a clean host**
 
 Expected: prints `bootstrap: OK`, exit 0. Submodules populated.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 chmod +x bootstrap.sh

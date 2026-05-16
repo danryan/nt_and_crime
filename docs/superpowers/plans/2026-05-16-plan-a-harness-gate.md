@@ -134,7 +134,7 @@ git commit -m "chore: bootstrap.sh + requirements.txt for reproducible setup"
 - Create: `tests/reference/.gitkeep`
 - Create: `vendor/.gitkeep`
 
-- [ ] **Step 1: Create top-level Makefile**
+- [x] **Step 1: Create top-level Makefile**
 
 ```makefile
 # nt_and_crime top-level Makefile
@@ -169,7 +169,7 @@ clean:
 	rm -rf build/
 ```
 
-- [ ] **Step 2: Create dir skeleton**
+- [x] **Step 2: Create dir skeleton**
 
 ```bash
 mkdir -p harness/include/distingnt harness/src \
@@ -182,12 +182,12 @@ touch harness/.gitkeep shim/.gitkeep applets/.gitkeep \
       vendor/.gitkeep
 ```
 
-- [ ] **Step 3: Verify make help runs**
+- [x] **Step 3: Verify make help runs**
 
 Run: `make help`
 Expected: lists the five targets above, exit 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Makefile harness/.gitkeep shim/.gitkeep applets/.gitkeep \

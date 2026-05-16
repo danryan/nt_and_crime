@@ -377,7 +377,7 @@ git commit -m "feat(harness): NT_screen and NT_globals BSS stubs with reset_runt
 - Modify: `harness/src/nt_runtime.cpp`
 - Create: `harness/tests/test_buses.cpp`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `harness/tests/test_buses.cpp`:
 
@@ -403,7 +403,7 @@ TEST_CASE("bus 0 is the unmapped sentinel", "[runtime]") {
 }
 ```
 
-- [ ] **Step 2: Run the test and confirm it fails**
+- [x] **Step 2: Run the test and confirm it fails**
 
 Add to `Makefile`:
 
@@ -419,7 +419,7 @@ test-buses: build/host/test_buses
 Run: `make test-buses`
 Expected: compile error, `nt::num_buses` etc. not defined.
 
-- [ ] **Step 3: Implement bus storage**
+- [x] **Step 3: Implement bus storage**
 
 Add to `harness/include/nt_runtime.h`:
 
@@ -462,12 +462,12 @@ float* bus_frames_base() {
 
 Also extend `nt::reset_runtime()` to call `set_bus_frame_count(32)`.
 
-- [ ] **Step 4: Run the test and confirm it passes**
+- [x] **Step 4: Run the test and confirm it passes**
 
 Run: `make test-buses`
 Expected: `All tests passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add harness/ Makefile

@@ -120,6 +120,12 @@ build/arm/font_dump.o: applets/font_dump.cpp shim/include/hem_dump_helper.h
 
 arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/screen_dump.o build/arm/font_dump.o
 
+DEVICE ?= /Volumes/NT
+deploy: arm
+	@test -d "$(DEVICE)" || { echo "DEVICE=$(DEVICE) not mounted"; exit 1; }
+	cp build/arm/*.o $(DEVICE)/plugins/
+	@echo "Deployed to $(DEVICE)/plugins/. Power-cycle the NT to pick up new plug-ins."
+
 test: host
 	python3 harness/scripts/run_scenario.py tests/scenarios/gainCustomUI/zero_signal.yaml
 

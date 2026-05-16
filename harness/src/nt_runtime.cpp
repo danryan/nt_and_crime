@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdint>
+#include <cstdio>
 #include <map>
 #include <utility>
 #include <vector>
@@ -110,6 +111,10 @@ static nt::LoadedPlugin* g_slot = nullptr;
 // Gray-out side table: maps (algIdx, paramIdx) -> bool.
 static std::map<std::pair<int,int>, bool> g_gray_out;
 
+// Sim-binary parameter log: when non-null, NT_setParameterFromUi writes
+// "idx value\n" here before calling parameterChanged.
+static FILE* g_param_log = nullptr;
+
 namespace nt {
 int  num_buses()       { return 64; }
 int  bus_frame_count() { return g_bus_frames; }
@@ -134,7 +139,12 @@ void reset_runtime() {
     set_bus_frame_count(32);
     g_slot = nullptr;
     g_gray_out.clear();
+    g_param_log = nullptr;
     nt::reset_plugin_loader();
+}
+
+void set_param_log(FILE* f) {
+    g_param_log = f;
 }
 bool shape_rasteriser_is_placeholder() { return true; }
 
@@ -206,7 +216,12 @@ void NT_setParameterFromUi(uint32_t algorithmIndex, uint32_t parameter, int16_t 
     int16_t* writable_v = const_cast<int16_t*>(lp->algorithm->v);
     writable_v[paramIdx] = value;
 
-    // Step 4: invoke parameterChanged.
+    // Step 4: log parameter change if a log file is set.
+    if (g_param_log) {
+        std::fprintf(g_param_log, "%d %d\n", paramIdx, (int)value);
+    }
+
+    // Step 5: invoke parameterChanged.
     if (lp->factory->parameterChanged) {
         lp->factory->parameterChanged(lp->algorithm, paramIdx);
     }

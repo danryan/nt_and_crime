@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <cstdio>
 #include <distingnt/api.h>
 
 // Forward declaration to avoid a circular include with plugin_loader.h.
@@ -23,4 +24,9 @@ bool   is_parameter_grayed_out(int algIdx, int paramIdx);
 
 // Hook called by reset_runtime() to allow plugin_loader to clear its state.
 void   reset_plugin_loader();
+
+// Sim-binary hook: when non-null, NT_setParameterFromUi writes one line
+// "idx value\n" to this FILE* before calling parameterChanged.
+// Pass nullptr to disable logging.
+void   set_param_log(FILE* f);
 }

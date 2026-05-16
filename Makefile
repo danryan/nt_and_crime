@@ -18,12 +18,19 @@ HOST_FLAGS := -std=c++14 -fno-rtti -fno-exceptions -Wall -O2 \
 help:
 	@echo "make vendor   - fetch pinned upstream sources via submodules"
 	@echo "make arm      - build all NT plug-ins under build/arm/"
-	@echo "make host     - build host simulator at build/host/sim"
+	@echo "make host     - build host simulator at build/host/sim_gainCustomUI"
 	@echo "make test     - run all scripted scenarios"
 	@echo "make deploy   - copy build/arm/*.o to DEVICE (default: /Volumes/NT)"
 	@echo "make clean    - remove build/"
 
-HARNESS_SRCS := harness/src/nt_runtime.cpp harness/src/font_placeholder.cpp harness/src/catch_main.cpp harness/src/nt_jsonstream.cpp harness/src/plugin_loader.cpp
+# Sources shared by every host build (no Catch2 main).
+HARNESS_LIB_SRCS := harness/src/nt_runtime.cpp \
+                    harness/src/font_placeholder.cpp \
+                    harness/src/nt_jsonstream.cpp \
+                    harness/src/plugin_loader.cpp
+
+# Test builds add catch_main.cpp which supplies Catch2's main().
+HARNESS_SRCS := $(HARNESS_LIB_SRCS) harness/src/catch_main.cpp
 
 build/host/test_nt_runtime: harness/tests/test_nt_runtime.cpp $(HARNESS_SRCS)
 	mkdir -p build/host
@@ -80,6 +87,13 @@ build/host/test_loader: harness/tests/test_loader.cpp \
 .PHONY: test-loader
 test-loader: build/host/test_loader
 	./build/host/test_loader
+
+build/host/sim_gainCustomUI: $(HARNESS_LIB_SRCS) vendor/distingNT_API/examples/gainCustomUI.cpp harness/src/main.cpp
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
+
+.PHONY: host
+host: build/host/sim_gainCustomUI
 
 vendor:
 	git submodule update --init --recursive

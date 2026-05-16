@@ -1378,7 +1378,7 @@ git commit -m "feat(applets): bus_probe.cpp for Stage A bus enumeration"
 
 `hem_dump_helper.h` is the header-only static-inline that both `screen_dump.cpp` and any Plan-B-instrumented reference plug-in include.
 
-- [ ] **Step 1: Implement the helper**
+- [x] **Step 1: Implement the helper**
 
 ```cpp
 #pragma once
@@ -1422,7 +1422,7 @@ static inline void emit_capture_if_pending(uint32_t destination = kNT_destinatio
 } // namespace nt_hem
 ```
 
-- [ ] **Step 2: Implement screen_dump.cpp**
+- [x] **Step 2: Implement screen_dump.cpp**
 
 ```cpp
 #include <distingnt/api.h>
@@ -1485,7 +1485,7 @@ extern "C" uintptr_t pluginEntry(_NT_selector selector, uint32_t data) {
 }
 ```
 
-- [ ] **Step 3: Add to Makefile and build**
+- [x] **Step 3: Add to Makefile and build**
 
 ```bash
 make arm
@@ -1493,7 +1493,7 @@ make arm
 
 Expected: `build/arm/screen_dump.o` clean build.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add shim/include/hem_dump_helper.h applets/screen_dump.cpp Makefile

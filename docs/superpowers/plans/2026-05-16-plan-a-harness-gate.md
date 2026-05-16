@@ -485,7 +485,7 @@ git commit -m "feat(harness): bus frame storage with bus 0 = unmapped sentinel"
 - Create: `harness/src/font_placeholder.cpp` (placeholder until Stage A.4 captures real font)
 - Create: `harness/tests/test_draw_text.cpp`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `harness/tests/test_draw_text.cpp`:
 
@@ -517,12 +517,12 @@ TEST_CASE("NT_drawText with empty string is a no-op", "[draw]") {
 }
 ```
 
-- [ ] **Step 2: Run the test and confirm it fails**
+- [x] **Step 2: Run the test and confirm it fails**
 
 Run after extending the Makefile with a `test-draw` target analogous to prior tasks.
 Expected: link error, `NT_drawText` not defined.
 
-- [ ] **Step 3: Implement placeholder 6x8 font and NT_drawText**
+- [x] **Step 3: Implement placeholder 6x8 font and NT_drawText**
 
 `harness/src/font_placeholder.cpp`:
 
@@ -572,12 +572,12 @@ extern "C" void NT_drawText(int x, int y, const char* str, int colour,
 }
 ```
 
-- [ ] **Step 4: Run the test and confirm it passes**
+- [x] **Step 4: Run the test and confirm it passes**
 
 Run: `make test-draw`
 Expected: `All tests passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add harness/ Makefile

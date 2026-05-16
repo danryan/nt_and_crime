@@ -1,4 +1,6 @@
 #include "nt_runtime.h"
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <cstdint>
 #include <vector>
@@ -11,6 +13,54 @@ static inline void set_pixel(int x, int y, int colour) {
     uint8_t mask    = (x & 1) ? 0xf0 : 0x0f;
     uint8_t shifted = (uint8_t)((colour & 0x0f) << ((x & 1) ? 4 : 0));
     NT_screen[byte_index] = (uint8_t)((NT_screen[byte_index] & ~mask) | shifted);
+}
+
+extern "C" void NT_drawShapeI(_NT_shape shape, int x0, int y0, int x1, int y1, int colour) {
+    switch (shape) {
+    case kNT_point: set_pixel(x0, y0, colour); break;
+    case kNT_line: {
+        int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+        int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+        int err = dx + dy;
+        for (;;) {
+            set_pixel(x0, y0, colour);
+            if (x0 == x1 && y0 == y1) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
+        }
+    } break;
+    case kNT_box: {
+        NT_drawShapeI(kNT_line, x0, y0, x1, y0, colour);
+        NT_drawShapeI(kNT_line, x1, y0, x1, y1, colour);
+        NT_drawShapeI(kNT_line, x1, y1, x0, y1, colour);
+        NT_drawShapeI(kNT_line, x0, y1, x0, y0, colour);
+    } break;
+    case kNT_rectangle: {
+        int lo_x = std::min(x0, x1), hi_x = std::max(x0, x1);
+        int lo_y = std::min(y0, y1), hi_y = std::max(y0, y1);
+        for (int y = lo_y; y <= hi_y; ++y)
+            for (int x = lo_x; x <= hi_x; ++x)
+                set_pixel(x, y, colour);
+    } break;
+    case kNT_circle: {
+        int r = (int)std::sqrt((double)((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)));
+        int x = r, y = 0, err = 0;
+        while (x >= y) {
+            set_pixel(x0 + x, y0 + y, colour);
+            set_pixel(x0 + y, y0 + x, colour);
+            set_pixel(x0 - y, y0 + x, colour);
+            set_pixel(x0 - x, y0 + y, colour);
+            set_pixel(x0 - x, y0 - y, colour);
+            set_pixel(x0 - y, y0 - x, colour);
+            set_pixel(x0 + y, y0 - x, colour);
+            set_pixel(x0 + x, y0 - y, colour);
+            ++y;
+            if (err <= 0) { err += 2 * y + 1; }
+            else          { --x; err -= 2 * x + 1; }
+        }
+    } break;
+    }
 }
 
 extern "C" void NT_drawText(int x, int y, const char* str, int colour,

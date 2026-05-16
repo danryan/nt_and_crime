@@ -47,6 +47,14 @@ build/host/test_draw_text: harness/tests/test_draw_text.cpp $(HARNESS_SRCS)
 test-draw: build/host/test_draw_text
 	./build/host/test_draw_text
 
+build/host/test_draw_shape: harness/tests/test_draw_shape.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
+
+.PHONY: test-draw-shape
+test-draw-shape: build/host/test_draw_shape
+	./build/host/test_draw_shape
+
 vendor:
 	git submodule update --init --recursive
 

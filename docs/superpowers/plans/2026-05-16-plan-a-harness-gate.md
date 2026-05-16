@@ -935,7 +935,7 @@ git commit -m "feat(harness): static-link plugin loader with factory unpack"
 
 - Modify: `Makefile`
 
-- [ ] **Step 1: Add host-build target for the simulator binary linked against gainCustomUI**
+- [x] **Step 1: Add host-build target for the simulator binary linked against gainCustomUI**
 
 ```makefile
 HARNESS_SRCS := harness/src/nt_runtime.cpp \
@@ -951,7 +951,7 @@ build/host/sim_gainCustomUI: $(HARNESS_SRCS) vendor/distingNT_API/examples/gainC
 host: build/host/sim_gainCustomUI
 ```
 
-- [ ] **Step 2: Specify `harness/src/main.cpp` interface**
+- [x] **Step 2: Specify `harness/src/main.cpp` interface**
 
 The binary is a single-shot scenario runner driven from the command line. Interface:
 
@@ -986,7 +986,7 @@ Revised flow:
 
 This keeps YAML out of the C++ build entirely. Update Step 1's `--scenario` to `--scenario-json` and remove YAML parsing from main.cpp.
 
-- [ ] **Step 3: Smoke test — link and run with --help**
+- [x] **Step 3: Smoke test — link and run with --help**
 
 ```bash
 make host && ./build/host/sim_gainCustomUI --help

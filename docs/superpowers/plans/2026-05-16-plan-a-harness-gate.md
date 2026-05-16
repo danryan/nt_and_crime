@@ -1078,7 +1078,7 @@ expect:
   params:  tests/golden/gainCustomUI/zero_signal/out_params.log
 ```
 
-- [ ] **Step 1: Write minimal scenario file**
+- [x] **Step 1: Write minimal scenario file**
 
 `tests/scenarios/gainCustomUI/zero_signal.yaml`:
 
@@ -1096,7 +1096,7 @@ expect:
   bus_out: tests/golden/gainCustomUI/zero_signal/out_bus.bin
 ```
 
-- [ ] **Step 2: Write Python driver that parses scenario and drives the sim binary**
+- [x] **Step 2: Write Python driver that parses scenario and drives the sim binary**
 
 `harness/scripts/run_scenario.py`:
 
@@ -1164,14 +1164,14 @@ if __name__ == "__main__":
 
 Full implementation in the commit; decompose helpers as needed.
 
-- [ ] **Step 3: Add Makefile target**
+- [x] **Step 3: Add Makefile target**
 
 ```makefile
 test:
 	python3 harness/scripts/run_scenario.py tests/scenarios/gainCustomUI/zero_signal.yaml
 ```
 
-- [ ] **Step 4: Generate the first golden master**
+- [x] **Step 4: Generate the first golden master**
 
 ```bash
 python3 harness/scripts/run_scenario.py \
@@ -1180,7 +1180,7 @@ python3 harness/scripts/run_scenario.py \
 
 This writes `tests/golden/gainCustomUI/zero_signal/out_bus.bin` from the simulator's output. Inspect manually (it should be all zeros for the zero-signal scenario).
 
-- [ ] **Step 5: Re-run and confirm clean diff**
+- [x] **Step 5: Re-run and confirm clean diff**
 
 ```bash
 make test
@@ -1188,7 +1188,7 @@ make test
 
 Expected: scenario passes (zero diff).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add harness/scripts/ tests/scenarios/ tests/golden/

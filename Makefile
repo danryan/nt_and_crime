@@ -30,6 +30,13 @@ build/host/test_nt_runtime: harness/tests/test_nt_runtime.cpp harness/src/nt_run
 test-runtime: build/host/test_nt_runtime
 	./build/host/test_nt_runtime
 
+build/host/test_buses: harness/tests/test_buses.cpp harness/src/nt_runtime.cpp harness/src/catch_main.cpp
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
+
+test-buses: build/host/test_buses
+	./build/host/test_buses
+
 vendor:
 	git submodule update --init --recursive
 

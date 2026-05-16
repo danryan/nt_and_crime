@@ -705,7 +705,7 @@ git commit -m "feat(harness): NT_drawShapeI line/box/rect/circle (Bresenham)"
 
 The antialiased rasteriser is empirically derived against hardware in Stage A.4. For now, implement a non-AA float-cast wrapper around `NT_drawShapeI`. Track that this is a placeholder via a runtime flag `nt::shape_rasteriser_is_placeholder()` returning `true`; flip to `false` once the rasteriser is replaced.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```cpp
 TEST_CASE("NT_drawShapeF is currently a placeholder", "[draw]") {
@@ -718,7 +718,7 @@ TEST_CASE("NT_drawShapeF degenerates to NT_drawShapeI behaviour for integer coor
 }
 ```
 
-- [ ] **Step 2: Implement and verify pass**
+- [x] **Step 2: Implement and verify pass**
 
 Add to `harness/include/nt_runtime.h`:
 
@@ -735,7 +735,7 @@ extern "C" void NT_drawShapeF(_NT_shape shape, float x0, float y0, float x1, flo
 namespace nt { bool shape_rasteriser_is_placeholder() { return true; } }
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add harness/

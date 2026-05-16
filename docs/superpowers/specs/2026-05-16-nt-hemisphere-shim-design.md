@@ -1,7 +1,19 @@
 # Phazerville Hemisphere → disting NT Compatibility Shim — Design
 
 Date: 2026-05-16
-Status: Revision 3 — addresses revision-2 review
+Status: Revision 4 — addresses revision-3 nits, surfaces deployment question
+
+## Open questions for user (resolve before Stage A starts)
+
+1. **NT deployment mechanism.** USB MSC, SD card, or dedicated tool? Spec assumed USB MSC; the first hardware-touching step in Stage A is to confirm this and rewire `make deploy` accordingly. No other infrastructure is built on top of the assumption.
+2. **MIDI control surface for harness UI replay.** The custom-UI parity test wants encoder and button events delivered via MIDI to the NT. Which control-surface mapping does the NT actually expose? If none, the harness needs a different transport (e.g., direct USB-MIDI SysEx commands that simulate UI events). Verify in Stage A.
+
+## Revision-4 changelog
+
+- Plan-B link target spelled out: `_nt_hem_dump_screen()` lives in a header-only inline (`shim/include/hem_dump_helper.h`); the sed pass injects the include and a tail call into the reference plug-in's `draw()`. No separate .o.
+- Font-dump throughput sanity check for the 21-pt font (95 glyphs × ~220 bytes ≈ 21 KB, ~94 SysEx chunks at 256-byte payload, ≈ 0.2 s at USB-MIDI rate). Anti-aliased 4-bit greys preserved by capturing `NT_screen` bytes verbatim.
+- Output-mode macro semantics verified against `api.h` lines 287-289: `NT_PARAMETER_CV_OUTPUT_WITH_MODE(n,m,d)` expands to `NT_PARAMETER_IO(...kNT_unitCvOutput)` + `NT_PARAMETER_OUTPUT_MODE(n " mode")`, producing two distinct `_NT_parameter` entries. The 2-implicit-params claim in the parameter budget is correct.
+- Deployment mechanism and MIDI control-surface protocol pulled into a top-level "Open questions for user" section so they aren't buried.
 
 ## Revision-3 changelog
 
@@ -348,7 +360,17 @@ These are byte-comparable against `tests/golden/<scenario>/`, which are themselv
 
 ### Font table capture
 
-The NT firmware's font is not in the public API. To populate the simulator with the real glyph table, the harness ships a one-shot capture plug-in `font_dump.cpp` that calls `NT_drawText(0, 0, "...", 15)` for every printable ASCII glyph in turn, then emits the affected `NT_screen` region as SysEx. The output is parsed into a 95-entry table that the simulator's `NT_drawText` uses verbatim. The same approach handles the tiny 3×5 and large 21-pt fonts. Done once per NT firmware revision and cached in `tests/reference/nt_fonts/`.
+The NT firmware's font is not in the public API. To populate the simulator with the real glyph table, the harness ships a one-shot capture plug-in `font_dump.cpp` that calls `NT_drawText(0, 0, "...", 15)` for every printable ASCII glyph in turn, then emits the affected `NT_screen` region as SysEx. The output is parsed into a 95-entry table per font size; the simulator's `NT_drawText` uses these tables verbatim.
+
+**Per-font throughput.** 95 printable glyphs × per-glyph byte cost:
+
+- 3×5 tiny: ~8 bytes packed per glyph (rounded to whole bytes at 4 bpp). 95 × 8 = 760 bytes. One outbound SysEx message.
+- 6×8 normal: ~24 bytes per glyph. 95 × 24 = 2.3 KB. ~9 chunks.
+- 21-pt large: glyphs are antialiased — every pixel is one of 16 grey levels in `NT_screen`'s 4-bit format. Assume 21×21 bounding box = 441 pixels = ~221 bytes packed. 95 × 221 = 21 KB. ~84 chunks at 256-byte payload, ≈ 0.2 s at USB-MIDI rate.
+
+The large-font case is the only one that approaches SysEx-buffer limits. Stage A throughput verification (assumption 4 in "Hardware screen capture") catches that before any font is captured. If the large font cannot be dumped in a single session, dump per-glyph instead of all-at-once.
+
+Done once per NT firmware revision and cached in `tests/reference/nt_fonts/`.
 
 ### Hardware screen capture
 
@@ -372,7 +394,15 @@ For the harness-validation gate (and any future regression checks), `NT_screen` 
 3. *MIDI SysEx round-trip integrity.* Send a 256-byte test pattern in, get the same bytes back. If the NT drops SysEx or corrupts payload, abort A1.
 4. *Throughput.* Capture and emit must finish before the next dump request. 8192 bytes ÷ 256-byte chunks = 32 messages. At ~1 Mbps USB-MIDI ≈ 80 ms. **Verify:** harness can request, receive, and parse a full screen in under 200 ms.
 
-**Plan B (if assumption 1 or 2 fails):** drop the co-load approach. Instead, generate an instrumented build of each reference plug-in via a source-rewrite step: prepend the upstream `.cpp` with `#define NT_HEM_INSTRUMENT_DRAW 1`, and inject a tail call to `_nt_hem_dump_screen()` at the bottom of `draw()` via a Make-time `sed` pass that wraps the function. Document this is *only* used for the harness gate — shipped reference plug-ins remain byte-faithful to upstream. The "unmodified" requirement in the brief applies to *applet* sources, not to the reference plug-ins which are project test fixtures.
+**Plan B (if assumption 1 or 2 fails):** drop the co-load approach. Instead, generate an instrumented build of each reference plug-in via a source-rewrite step. The build pipeline:
+
+1. Copy the upstream `.cpp` to `harness/instrumented/<name>.cpp`.
+2. Make-time `sed` pass injects `#include "hem_dump_helper.h"` at the top and inserts `_nt_hem_dump_screen();` immediately before the closing `}` of the `draw()` function (regex anchored to the function's signature line).
+3. Compile.
+
+`_nt_hem_dump_screen()` is a `static inline` defined in `shim/include/hem_dump_helper.h` (header-only, no separate `.o`, no link-time coupling). Its body captures `NT_screen` into a static buffer and is callable from `draw()` directly. The same header is `#include`'d by `screen_dump.cpp` and by the instrumented reference plug-ins, so there is one implementation for both the co-load and source-rewrite paths.
+
+This is *only* used for the harness gate — shipped reference plug-ins remain byte-faithful to upstream. The "unmodified" requirement in the brief applies to *applet* sources, not to the reference plug-ins which are project test fixtures.
 
 If Plan B also fails (the NT cannot host a plug-in that emits 8 KB of SysEx within one frame), **A1 fires**. The shim work does not begin.
 
@@ -441,6 +471,9 @@ Compiler flags are the brief's flags verbatim for `arm`. Host build uses `-std=c
 
 Verbatim from the brief: no quantizer/scales/MIDI/audio-DSP applets, no `HSApplication` full-screen apps, no multi-applet composition in a single NT slot, no Hemisphere's own preset/snapshot system.
 
-## Open question for user
+## Open questions (also listed at top)
 
-The deployment mechanism for the NT (SD card, USB MSC, network, dedicated tool) is "part of what to learn". This design names it `make deploy DEVICE=...` and treats it as MSC over USB by default. If the actual mechanism turns out to be SD-card-only or requires a specific tool (e.g. `nt-loader`), the `deploy` target rewires to that without changing anything else. Surface this when the harness milestone hits hardware.
+See "Open questions for user" near the top of this document. Pulled out there so they aren't buried under implementation detail. Brief recap:
+
+1. NT deployment mechanism (USB MSC assumed; verify in Stage A).
+2. MIDI control-surface mapping for harness UI event replay (transport for encoder/button events; verify in Stage A).

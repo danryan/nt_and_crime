@@ -1,9 +1,12 @@
 #include "nt_runtime.h"
+#include "plugin_loader.h"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstring>
 #include <cstdint>
+#include <map>
+#include <utility>
 #include <vector>
 
 namespace nt { extern const uint8_t* font_6x8_glyph(char c); }
@@ -101,6 +104,12 @@ const _NT_globals NT_globals = {
     .streamBufferSizeBytes= 0u,
 };
 
+// Single-slot algorithm registry. The harness hosts exactly one algorithm.
+static nt::LoadedPlugin* g_slot = nullptr;
+
+// Gray-out side table: maps (algIdx, paramIdx) -> bool.
+static std::map<std::pair<int,int>, bool> g_gray_out;
+
 namespace nt {
 int  num_buses()       { return 64; }
 int  bus_frame_count() { return g_bus_frames; }
@@ -123,6 +132,128 @@ float* bus_frames_base() {
 void reset_runtime() {
     std::memset(NT_screen, 0, sizeof(NT_screen));
     set_bus_frame_count(32);
+    g_slot = nullptr;
+    g_gray_out.clear();
+    nt::reset_plugin_loader();
 }
 bool shape_rasteriser_is_placeholder() { return true; }
+
+void register_algorithm(LoadedPlugin* plugin) {
+    g_slot = plugin;
 }
+
+LoadedPlugin* registered_algorithm(int algIdx) {
+    if (algIdx == 0 && g_slot != nullptr) return g_slot;
+    return nullptr;
+}
+
+bool is_parameter_grayed_out(int algIdx, int paramIdx) {
+    auto key = std::make_pair(algIdx, paramIdx);
+    auto it = g_gray_out.find(key);
+    if (it == g_gray_out.end()) return false;
+    return it->second;
+}
+} // namespace nt
+
+// Count the number of parameters an algorithm has by walking parameters[]
+// until we reach the end marker. The _NT_algorithm struct stores the table
+// as a pointer; the count comes from _NT_algorithmRequirements.numParameters
+// filled by calculateRequirements(). For the harness we derive it from the
+// factory's calculateRequirements call.
+static int param_count_for(const nt::LoadedPlugin* lp) {
+    if (!lp || !lp->factory) return 0;
+    _NT_algorithmRequirements req;
+    req.numParameters = 0;
+    req.sram = 0; req.dram = 0; req.dtc = 0; req.itc = 0;
+    lp->factory->calculateRequirements(req, nullptr);
+    return (int)req.numParameters;
+}
+
+extern "C" {
+
+int32_t NT_algorithmIndex(const _NT_algorithm* algorithm) {
+    if (g_slot && g_slot->algorithm == algorithm) return 0;
+    return -1;
+}
+
+uint32_t NT_algorithmCount(void) {
+    return g_slot != nullptr ? 1u : 0u;
+}
+
+uint32_t NT_parameterOffset(void) {
+    // The host harness has no common-parameter prefix; offset is always zero.
+    return 0u;
+}
+
+void NT_setParameterFromUi(uint32_t algorithmIndex, uint32_t parameter, int16_t value) {
+    // Step 1: look up the algorithm by index.
+    nt::LoadedPlugin* lp = nt::registered_algorithm((int)algorithmIndex);
+    if (!lp) return;
+
+    // Step 2: bounds-check paramIdx against the algorithm's parameters[] table.
+    // NT_parameterOffset() is always 0, so paramIdx == parameter here.
+    int paramIdx = (int)parameter - (int)NT_parameterOffset();
+    int count    = param_count_for(lp);
+    if (paramIdx < 0 || paramIdx >= count) {
+        // Out-of-bounds: silently no-op, matching NT firmware's documented forgiveness.
+        return;
+    }
+
+    // Step 3: write value into the algorithm's v[paramIdx].
+    // algorithm->v is const int16_t* in api.h; the host backs it with its own
+    // storage (s_param_storage in plugin_loader.cpp) and casts away const here
+    // so the harness can update parameter values on behalf of the UI.
+    int16_t* writable_v = const_cast<int16_t*>(lp->algorithm->v);
+    writable_v[paramIdx] = value;
+
+    // Step 4: invoke parameterChanged.
+    if (lp->factory->parameterChanged) {
+        lp->factory->parameterChanged(lp->algorithm, paramIdx);
+    }
+}
+
+void NT_setParameterFromAudio(uint32_t algorithmIndex, uint32_t parameter, int16_t value) {
+    // Identical to NT_setParameterFromUi. In the real firmware this variant is
+    // safe to call from audio-rate callbacks; in the host harness the distinction
+    // is moot because there is no real-time thread separation.
+    NT_setParameterFromUi(algorithmIndex, parameter, value);
+}
+
+void NT_setParameterGrayedOut(uint32_t algorithmIndex, uint32_t parameter, bool gray) {
+    // Record the gray state in the side table. Does NOT call parameterChanged.
+    auto key = std::make_pair((int)algorithmIndex, (int)parameter);
+    g_gray_out[key] = gray;
+}
+
+// Stubs for other extern "C" functions declared in api.h that tests may link against.
+void     NT_setParameterRange(_NT_parameter* ptr, float init, float min, float max, float step) {
+    (void)ptr; (void)init; (void)min; (void)max; (void)step;
+}
+bool     NT_getSlot(class _NT_slot& slot, uint32_t index) {
+    (void)slot; (void)index;
+    return false;
+}
+void     NT_updateParameterDefinition(uint32_t algIdx, uint32_t paramIdx) {
+    (void)algIdx; (void)paramIdx;
+}
+void     NT_updateParameterPages(uint32_t algIdx) {
+    (void)algIdx;
+}
+uint32_t NT_getCpuCycleCount(void) { return 0u; }
+void     NT_sendMidiByte(uint32_t dest, uint8_t b0) { (void)dest; (void)b0; }
+void     NT_sendMidi2ByteMessage(uint32_t dest, uint8_t b0, uint8_t b1) {
+    (void)dest; (void)b0; (void)b1;
+}
+void     NT_sendMidi3ByteMessage(uint32_t dest, uint8_t b0, uint8_t b1, uint8_t b2) {
+    (void)dest; (void)b0; (void)b1; (void)b2;
+}
+void     NT_sendMidiSysEx(uint32_t dest, const uint8_t* data, uint32_t count, bool end) {
+    (void)dest; (void)data; (void)count; (void)end;
+}
+int      NT_intToString(char* buffer, int32_t value) { (void)buffer; (void)value; return 0; }
+int      NT_floatToString(char* buffer, float value, int decimalPlaces) {
+    (void)buffer; (void)value; (void)decimalPlaces;
+    return 0;
+}
+
+} // extern "C"

@@ -593,7 +593,7 @@ git commit -m "feat(harness): NT_drawText with placeholder 6x8 font; replaced po
 - Modify: `harness/src/nt_runtime.cpp`
 - Create: `harness/tests/test_draw_shape.cpp`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `harness/tests/test_draw_shape.cpp`:
 
@@ -625,11 +625,11 @@ TEST_CASE("NT_drawShapeI rectangle fills the interior", "[draw]") {
 }
 ```
 
-- [ ] **Step 2: Run the test and confirm it fails**
+- [x] **Step 2: Run the test and confirm it fails**
 
 Expected: link error, `NT_drawShapeI` not defined.
 
-- [ ] **Step 3: Implement NT_drawShapeI**
+- [x] **Step 3: Implement NT_drawShapeI**
 
 ```cpp
 extern "C" void NT_drawShapeI(_NT_shape shape, int x0, int y0, int x1, int y1, int colour) {
@@ -683,12 +683,12 @@ extern "C" void NT_drawShapeI(_NT_shape shape, int x0, int y0, int x1, int y1, i
 
 Add `<cmath>` and `<algorithm>` includes if not already present.
 
-- [ ] **Step 4: Run the test and confirm it passes**
+- [x] **Step 4: Run the test and confirm it passes**
 
 Run: `make test-draw-shape`
 Expected: `All tests passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add harness/ Makefile

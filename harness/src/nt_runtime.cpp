@@ -63,6 +63,10 @@ extern "C" void NT_drawShapeI(_NT_shape shape, int x0, int y0, int x1, int y1, i
     }
 }
 
+extern "C" void NT_drawShapeF(_NT_shape shape, float x0, float y0, float x1, float y1, float colour) {
+    NT_drawShapeI(shape, (int)x0, (int)y0, (int)x1, (int)y1, (int)colour);
+}
+
 extern "C" void NT_drawText(int x, int y, const char* str, int colour,
                             _NT_textAlignment align, _NT_textSize size) {
     (void)align; (void)size;
@@ -116,4 +120,5 @@ void reset_runtime() {
     std::memset(NT_screen, 0, sizeof(NT_screen));
     set_bus_frame_count(32);
 }
+bool shape_rasteriser_is_placeholder() { return true; }
 }

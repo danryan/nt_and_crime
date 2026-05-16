@@ -23,3 +23,13 @@ TEST_CASE("NT_drawShapeI rectangle fills the interior", "[draw]") {
         for (int y = 3; y <= 6; ++y)
             REQUIRE(pixel(x, y) == 7);
 }
+
+TEST_CASE("NT_drawShapeF is currently a placeholder", "[draw]") {
+    REQUIRE(nt::shape_rasteriser_is_placeholder());
+}
+
+TEST_CASE("NT_drawShapeF degenerates to NT_drawShapeI behaviour for integer coords", "[draw]") {
+    nt::reset_runtime();
+    NT_drawShapeF(kNT_line, 0.0f, 0.0f, 10.0f, 0.0f, 15.0f);
+    for (int x = 0; x <= 10; ++x) REQUIRE(pixel(x, 0) == 15);
+}

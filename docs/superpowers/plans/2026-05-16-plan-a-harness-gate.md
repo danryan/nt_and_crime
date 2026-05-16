@@ -832,7 +832,7 @@ The harness hosts exactly one algorithm slot for the validation gate. Implement 
 
 `NT_setParameterGrayedOut(algIdx, paramIdx, bool)` records the gray state in a per-parameter side table; it does not call `parameterChanged`. The state is queryable via `nt::is_parameter_grayed_out(algIdx, paramIdx)` for test assertions.
 
-- [ ] **Step 1: Write the failing tests (three assertions)**
+- [x] **Step 1: Write the failing tests (three assertions)**
 
 ```cpp
 TEST_CASE("NT_setParameterFromUi writes v[p] and calls parameterChanged", "[params]") {
@@ -867,7 +867,7 @@ TEST_CASE("NT_setParameterGrayedOut records state without invoking parameterChan
 
 `nt::load_test_algorithm` returns a `nt::LoadedPlugin` (defined in Task 10 — forward declared here) wrapping a stub algorithm with one parameter and a global counter that increments on every `parameterChanged`.
 
-- [ ] **Step 2: Implement, verify, commit**
+- [x] **Step 2: Implement, verify, commit**
 
 Implementation decision (locked, not "re-order if simpler"): the `LoadedPlugin` struct and the loader scaffold are introduced **here in Task 9**, not in Task 10. Task 9 defines:
 

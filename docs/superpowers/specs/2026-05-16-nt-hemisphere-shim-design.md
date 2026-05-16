@@ -1,7 +1,15 @@
 # Phazerville Hemisphere → disting NT Compatibility Shim — Design
 
 Date: 2026-05-16
-Status: Revision 2 — addresses revision-1 review
+Status: Revision 3 — addresses revision-2 review
+
+## Revision-3 changelog
+
+- N1: Hardware screen capture's frame-cycle timing pinned. Four explicit Stage-A assumptions, each verified before the gate proceeds. Plan B (instrumented reference plug-in via Make-time source rewrite) added in case slot ordering or inter-algorithm screen clears defeat the co-load.
+- N2: Sub-window gate resolution math documented (at 48 kHz, 32-frame block, N≈11 sub-windows → ~2.9 frames per sub-window, max resolvable clock rate ≈ 8 kHz; well above any musical clock).
+- N3: `OC::CORE::ticks` block-boundary jitter noted (±1 ISR tick at block boundaries due to `lroundf(N)`; inaudible for control rate; DEVNOTES item).
+- N4: Pitch calibration range widened from ±200 ppm to ±2000 ppm (math verified; ±200 ppm = ±1.44 cents @ 6 V, too tight against the 1-cent abort threshold).
+- Bus enum citation corrected from "lines 65-72" to "lines 66-72" after re-reading `api.h` directly.
 
 ## Revision-2 changelog
 
@@ -17,7 +25,7 @@ Status: Revision 2 — addresses revision-1 review
 
 Every numeric or behavioural claim in this design traces to a specific upstream file. Listed here for auditability.
 
-- **NT bus count**: `vendor/distingNT_API/include/distingnt/api.h` lines 65-72, enum `kNT_numInputBusses = 12, kNT_numOutputBusses = 8, kNT_numAuxBusses = 44, kNT_lastBus = 64`. Note that line 443 in the same file contains a stale comment claiming "28 busses"; the enum is authoritative for `kNT_apiVersion13` (which the comment on line 47 says explicitly "Add bus count constants"). Hardware verification: enumerate accessible bus indices during harness validation by reading `kNT_lastBus` and probing each bus's audibility through a co-loaded debug plug-in.
+- **NT bus count**: `vendor/distingNT_API/include/distingnt/api.h` lines 66-72, enum `kNT_numInputBusses = 12, kNT_numOutputBusses = 8, kNT_numAuxBusses = 44, kNT_lastBus = 64`. Note that lines 442-443 in the same file contain a stale comment claiming "busFrames gives access to all 28 busses"; the enum is authoritative for `kNT_apiVersion13` (which line 47 documents as "Add bus count constants"). Hardware verification: Stage A's `bus_probe` plug-in enumerates the live module's accessible bus indices and confirms `kNT_lastBus = 64` empirically before any shim code is written.
 - **NT screen layout**: `api.h` line 591-592, `NT_screen[128*64]`, 256×64 logical pixels, 4-bit grayscale, two pixels per byte. Comment in `api.h` does not specify nibble order; verify empirically.
 - **Hemisphere CV unit**: `HSUtils.h` line 13, `ONE_OCTAVE = 12 << 7 = 1536`.
 - **`HEMISPHERE_MAX_INPUT_CV`**: `HSUtils.h` line 20, expands to `6 * ONE_OCTAVE + NorthernLightModular * (4 * ONE_OCTAVE)` = 9216 on T4.1 (`NorthernLightModular` is undefined for T4.1, expands to 0).
@@ -189,6 +197,10 @@ if (N < 1) N = 1;
 
 **Sub-block resolution of digital edges.** Bus reads at the start of `step()` give the shim the full block of `numFrames` samples per input bus, not just the block mean. The shim divides the block into `N` sub-windows and computes a per-sub-window gate state (high if any sample in that window crosses the 1 V threshold). This gives `Clock(ch)` rising-edge fidelity at the same `~60 µs` resolution Hemisphere expects on hardware. Cost: `O(numFrames)` per gate input per block, trivial.
 
+*Maximum resolvable clock rate.* At 48 kHz with a 32-frame block, `N≈11`, each sub-window spans ~2.9 frames. Maximum resolvable input clock rate (Nyquist of the sub-window grid) is ~8 kHz. Well above any musical clock — Phazerville's own ISR resolves clocks at the same ~16.6 kHz nominal grid. Slower hosts with larger `numFramesBy4` reduce this proportionally; document the trade-off.
+
+**Block-boundary tick jitter.** `N = lroundf(blockSeconds * 16666)` rounds to an integer; the true expected ticks per block has a fractional part. Across many blocks the cumulative tick count tracks wall-clock time to better than one part in N (≈ 10%), but consecutive blocks may differ by ±1 tick. Applets with internal counters (e.g., `GateDelay` measures gate-to-output delay in ticks) may exhibit ±1 ISR tick (~60 µs) of jitter at block boundaries. Inaudible for any musical use. DEVNOTES item, no mitigation needed for v1.
+
 CV inputs are a different question. Hemisphere applets read `In(ch)` per Controller tick and expect a fresh value. Resampling CV at 16.6 kHz from a 48 kHz block is straightforward (decimation, no anti-alias filter needed for control-rate CV). The shim does this for `cvmap[].In()`, giving each `Controller()` invocation a CV sample taken from the block at the corresponding sub-window's centre frame.
 
 This brings the cadence behaviour closer to hardware than a "block mean" approximation. Audit Tier 1/2 for any remaining divergence:
@@ -260,8 +272,23 @@ Display page:
   Screen Y         locked to 0 (single-row constraint; NT screen is 64 px tall, Hem applet is 64 px tall)
 
 Pitch calibration page (A3 mitigation):
-  Pitch scale      min  -200, max 200, def 0   (parts-per-million offset to 1/1536 scaler)
-  Pitch offset     min -1000, max 1000, def 0  (millivolt offset)
+  Pitch scale      min -2000, max 2000, def 0   (parts-per-million adjustment to 1/1536 scaler)
+  Pitch offset     min -1000, max 1000, def 0   (millivolts added after scaling)
+```
+
+**Pitch calibration range justification.** A `+200` ppm scale change applied to a 6 V output drifts the output by `6 V × 200e-6 = 1.2 mV`, which at 1 V/oct = 1.44 cents. The brief's A3 threshold is `>1 cent error`, so ±200 ppm covers the threshold with almost no margin. Widening to ±2000 ppm covers ±14.4 cents at 6 V — comfortable margin against worst-case DAC trim drift in either direction. Offset range ±1000 mV (≈ ±1200 cents at unity scaling) is wider than any realistic DC trim needs but the parameter is cheap.
+
+Math sanity check:
+
+```text
+hem_int  = 9216           # intended 6 V output
+scaler   = 1536 * (1 + ppm/1e6)
+nt_float = hem_int / scaler + offset_mV / 1000
+         = 6.0 / (1 + ppm/1e6) + offset_volts
+
+@ ppm =   +200, offset = 0:  nt_float = 5.99880 V  → -1.44 cents @ 6 V
+@ ppm =  +2000, offset = 0:  nt_float = 5.98802 V  → -14.4 cents @ 6 V
+@ ppm = -2000, offset = 0:  nt_float = 6.01200 V  → +14.4 cents @ 6 V
 ```
 
 **Bus index "0 allowed = unmapped"** semantics. Verifying: the NT firmware treats bus index 0 as "no bus" for any parameter whose `unit` is `kNT_unitCvInput`, `kNT_unitCvOutput`, etc. (these are bus selectors). When `min = 0` in the `NT_PARAMETER_*_INPUT` macro, the firmware renders the value as "None" or similar. Confirmed by inspection of how `gainCustomUI.cpp` uses `pThis->v[kParamInput] - 1`: it does the `-1` because bus 1 is the first real bus and bus 0 means unmapped; the convention is therefore stable. The shim treats `v[bus_param] == 0` as "input absent" and returns 0 from `In(ch)` / `Gate(ch)` for that channel, without ever reading `busFrames` at a negative offset.
@@ -325,17 +352,29 @@ The NT firmware's font is not in the public API. To populate the simulator with 
 
 ### Hardware screen capture
 
-For the harness-validation gate (and any future regression checks), `NT_screen` is captured from hardware via a co-loaded SysEx debug plug-in `screen_dump.cpp`. Behaviour:
+For the harness-validation gate (and any future regression checks), `NT_screen` is captured from hardware via a co-loaded SysEx debug plug-in `screen_dump.cpp`. The mechanism has known fragility around frame-cycle timing; the design below pins the assumptions explicitly and Stage A verifies each one before committing to the approach.
 
-- Listens for inbound SysEx with a specific manufacturer-ID prefix.
-- On receipt of the "dump" command, reads `NT_screen[0..8191]` and sends it back as one or more outbound SysEx messages over `NT_sendMidiSysEx(kNT_destinationUSB, ...)`.
-- 8192 bytes ÷ 7 bits/SysEx-byte ≈ 1170 outbound bytes → about 9000 bytes including framing. Single message or chunked depending on the NT's MIDI buffer; harness reassembles.
+**Plug-in layout:**
 
-`screen_dump.cpp` is itself a normal NT plug-in (not shim-based). It loads in the second algorithm slot of a preset; the reference plug-in or shimmed applet loads in the first slot. Because both write to the same shared `NT_screen`, the dumper observes the first slot's draw output. The dumper's own `draw()` is a no-op.
+- Target (reference plug-in or shimmed applet) loads in algorithm slot 1.
+- `screen_dump.cpp` loads in slot 2. Higher slot index, intent: NT host processes algorithms in slot order, so the dumper's callbacks fire after the target's in any given frame.
 
-The harness validates SysEx round-trip identity (`screen_dump` returns the bytes it received in the inbound SysEx test packet) before trusting screen captures. If the NT's USB MIDI buffer is too small to round-trip 9 KB in one shot, the dumper chunks at 256-byte boundaries with sequence numbers.
+**What `screen_dump` does each frame:**
 
-If this mechanism fails (the NT firmware drops SysEx, the buffer is too small even chunked, or `screen_dump` cannot be co-loaded with another algorithm), abort condition **A1 fires immediately**. Hardware screen capture is the single biggest project risk and is verified in the first hardware milestone, before any shim code is written.
+- `step()`: no-op.
+- `draw()`: copies `NT_screen[0..8191]` into a static internal buffer `g_capture[8192]`. Then re-blits `g_capture` back into `NT_screen` so a co-located human can visually confirm the capture (no-op write if nothing has changed).
+- `midiSysEx(const uint8_t* msg, uint32_t count)`: matches a "dump-now" command (manufacturer ID + opcode). On match, emits `g_capture` over `NT_sendMidiSysEx(kNT_destinationUSB, ...)` chunked at 256 payload bytes per outbound message with a sequence number. Harness reassembles. Inbound SysEx is the trigger; nothing else mutates `g_capture`.
+
+**Pinned assumptions, each verified in Stage A:**
+
+1. *Slot order draw ordering.* NT calls `slot1.draw()` then `slot2.draw()` within one frame. **Verify:** target draws a known checkerboard; dumper captures and emits; harness checks pattern equals the target's pattern, not zeroes. If captured buffer is empty, slot order is wrong or the host clears `NT_screen` between algorithms; abort A1.
+2. *Screen persistence between frames.* If the host clears `NT_screen` between slot draws but not between frames, the dumper's capture is at risk of races. **Verify:** target draws once, then idles (its `draw()` does nothing on subsequent frames); after N frames, does the dumper still capture the original pattern, or only zeroes? If only zeroes, the host clears between algorithms; fall back to Plan B (see below).
+3. *MIDI SysEx round-trip integrity.* Send a 256-byte test pattern in, get the same bytes back. If the NT drops SysEx or corrupts payload, abort A1.
+4. *Throughput.* Capture and emit must finish before the next dump request. 8192 bytes ÷ 256-byte chunks = 32 messages. At ~1 Mbps USB-MIDI ≈ 80 ms. **Verify:** harness can request, receive, and parse a full screen in under 200 ms.
+
+**Plan B (if assumption 1 or 2 fails):** drop the co-load approach. Instead, generate an instrumented build of each reference plug-in via a source-rewrite step: prepend the upstream `.cpp` with `#define NT_HEM_INSTRUMENT_DRAW 1`, and inject a tail call to `_nt_hem_dump_screen()` at the bottom of `draw()` via a Make-time `sed` pass that wraps the function. Document this is *only* used for the harness gate — shipped reference plug-ins remain byte-faithful to upstream. The "unmodified" requirement in the brief applies to *applet* sources, not to the reference plug-ins which are project test fixtures.
+
+If Plan B also fails (the NT cannot host a plug-in that emits 8 KB of SysEx within one frame), **A1 fires**. The shim work does not begin.
 
 ## Harness-validation gate
 

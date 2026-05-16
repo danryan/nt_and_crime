@@ -42,12 +42,13 @@ git submodule update --init --recursive
 # Guard on BOTH files: if either is absent (e.g. interrupted prior run) we
 # re-download both so the harness is never left in a partially-fetched state.
 #
-# SHA256 constants below are placeholders pending verification against the
-# official release assets on a known-good network.
-# TODO(bootstrap): replace with verified SHAs obtained via:
-#   shasum -a 256 catch_amalgamated.hpp catch_amalgamated.cpp
-CATCH_HPP_SHA="0000000000000000000000000000000000000000000000000000000000000000"
-CATCH_CPP_SHA="0000000000000000000000000000000000000000000000000000000000000000"
+# SHA256 of the official v3.5.4 release assets.
+# Reverify with: shasum -a 256 catch_amalgamated.hpp catch_amalgamated.cpp
+# after fetching from the URL below; expected output:
+#   0db5cc809485d3b91debd4679df8fc5ae4197a6ec3faf9292d726f0b078c0199  catch_amalgamated.hpp
+#   fa80010aa3fa5e051121f57d8c4174386e1e7b039d7431f3a166462f774be911  catch_amalgamated.cpp
+CATCH_HPP_SHA="0db5cc809485d3b91debd4679df8fc5ae4197a6ec3faf9292d726f0b078c0199"
+CATCH_CPP_SHA="fa80010aa3fa5e051121f57d8c4174386e1e7b039d7431f3a166462f774be911"
 CATCH_BASE_URL="https://github.com/catchorg/Catch2/releases/download/v3.5.4"
 
 verify_sha256() {

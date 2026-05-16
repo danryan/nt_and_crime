@@ -409,6 +409,9 @@ bool _NT_jsonParse::numberOfArrayElements(int& num) {
     int v = nt::peek_value(*P);
     if (v < 0 || P->nodes[v].kind != nt::NodeKind::Array) return false;
     num = (int)P->nodes[v].children.size();
+    // Sequence note: advance() pops parent frames whose cursor reached end BEFORE
+    // we push the new child frame. Order matters: pushing first would put the
+    // about-to-be-popped parent above our new frame and corrupt the cursor stack.
     nt::advance(*P);
     P->stack.push_back({v, 0});
     return true;

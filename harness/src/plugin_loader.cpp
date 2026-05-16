@@ -55,7 +55,7 @@ static _NT_algorithm* stub_construct(const _NT_algorithmMemoryPtrs& ptrs,
     // api.h declares v as const int16_t*; the host manages the backing store
     // and casts away const here — algorithms treat v[] as read-only, but the
     // host must be able to write it when NT_setParameterFromUi is called.
-    const_cast<int16_t*&>(const_cast<int16_t*&>(alg->v)) = s_param_storage;
+    const_cast<int16_t*&>(alg->v) = s_param_storage;
     return alg;
 }
 

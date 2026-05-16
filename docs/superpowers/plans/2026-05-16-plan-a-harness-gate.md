@@ -263,7 +263,7 @@ git commit -m "chore: pin vendor submodules (distingNT_API @ <SHA>, O_C-Phazervi
 - Modify: `Makefile` (add `host` target)
 - Create: `harness/include/catch.hpp` (vendor the Catch2 v3 amalgamated header)
 
-- [ ] **Step 1: Vendor Catch2 v3 amalgamated header**
+- [x] **Step 1: Vendor Catch2 v3 amalgamated header**
 
 ```bash
 curl -sL https://github.com/catchorg/Catch2/releases/download/v3.5.4/catch_amalgamated.hpp \
@@ -272,7 +272,7 @@ curl -sL https://github.com/catchorg/Catch2/releases/download/v3.5.4/catch_amalg
   -o harness/src/catch_main.cpp
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `harness/tests/test_nt_runtime.cpp`:
 
@@ -299,7 +299,7 @@ TEST_CASE("NT_globals is initialised with sane defaults", "[runtime]") {
 }
 ```
 
-- [ ] **Step 3: Run the test and confirm it fails to link**
+- [x] **Step 3: Run the test and confirm it fails to link**
 
 Add to `Makefile`:
 
@@ -315,7 +315,7 @@ test-runtime: build/host/test_nt_runtime
 Run: `make test-runtime`
 Expected: link error, `nt_runtime.h` not found.
 
-- [ ] **Step 4: Implement minimal runtime**
+- [x] **Step 4: Implement minimal runtime**
 
 `harness/include/nt_runtime.h`:
 
@@ -355,12 +355,12 @@ void reset_runtime() {
 }
 ```
 
-- [ ] **Step 5: Run the test and confirm it passes**
+- [x] **Step 5: Run the test and confirm it passes**
 
 Run: `make test-runtime`
 Expected: `All tests passed (2 assertions in 2 test cases)`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add harness/ Makefile

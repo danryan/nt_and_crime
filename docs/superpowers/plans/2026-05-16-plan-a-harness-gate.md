@@ -10,6 +10,11 @@
 
 **Plan decomposition note.** This is Plan A of three. Plan B (shim core + Tier 1 applets) and Plan C (Tier 2 applets) follow after Plan A executes. The spec's "Open questions for user" (NT deployment mechanism, MIDI control-surface mapping) are resolved during Stage A.5; the answers feed back into Plan B.
 
+**Revision-2 changelog (post-review):**
+
+- Task 9: `LoadedPlugin` struct ownership locked to Task 9 (no "re-order if simpler" hedge). Task 10 contributes only `nt::load_plugin()` as a sibling resolver.
+- Task 22: instrumentation regex now accepts unnamed parameters (`bool draw(_NT_algorithm*)`).
+
 **Revision-1 changelog (post-review):**
 
 - P2: PyYAML committed to in Task 13; hand-rolled subset removed.
@@ -864,7 +869,20 @@ TEST_CASE("NT_setParameterGrayedOut records state without invoking parameterChan
 
 - [ ] **Step 2: Implement, verify, commit**
 
-Implementation note: `nt::load_test_algorithm` is *the same code path* as `nt::load_plugin` from Task 10. To avoid forward-declaration order issues, put the loader scaffold (the `LoadedPlugin` struct and the basic resolver) into Task 9 and have Task 10 only add the public `load_plugin()` entry point. Re-order if simpler.
+Implementation decision (locked, not "re-order if simpler"): the `LoadedPlugin` struct and the loader scaffold are introduced **here in Task 9**, not in Task 10. Task 9 defines:
+
+```cpp
+// harness/include/plugin_loader.h
+namespace nt {
+struct LoadedPlugin {
+    const _NT_factory* factory;
+    _NT_algorithm*     algorithm;
+};
+LoadedPlugin* load_test_algorithm();  // for parameter-routing tests
+}
+```
+
+Task 10's only additional contribution is the public `nt::load_plugin()` entry point that resolves the single statically linked plug-in (rather than the in-test stub). Both functions return `LoadedPlugin*`; both go through the same internal resolver. The Task 9 test code uses `alg->algorithm` (the `_NT_algorithm*` inside `LoadedPlugin`) — see the test snippets above.
 
 ```bash
 git add harness/
@@ -1772,18 +1790,20 @@ The match must accommodate real-world signature variations. Use a permissive reg
 ```python
 import re
 DRAW_SIGNATURE = re.compile(
-    r"""^\s*                                  # leading whitespace
-        bool\s+draw\s*\(\s*                   # 'bool draw(' with flexible whitespace
-        (?:const\s+)?                         # optional const
-        _NT_algorithm\s*\*\s*                 # _NT_algorithm*
-        [A-Za-z_][A-Za-z0-9_]*                # parameter name (any identifier)
-        \s*\)\s*                              # close paren
-        (?:const\s*)?                         # optional trailing const
-        \{                                    # opening brace
+    r"""^\s*                                       # leading whitespace
+        bool\s+draw\s*\(\s*                        # 'bool draw(' with flexible whitespace
+        (?:const\s+)?                              # optional const
+        _NT_algorithm\s*\*\s*                      # _NT_algorithm*
+        (?:[A-Za-z_][A-Za-z0-9_]*)?                # OPTIONAL parameter name
+        \s*\)\s*                                   # close paren
+        (?:const\s*)?                              # optional trailing const
+        \{                                         # opening brace
     """,
     re.MULTILINE | re.VERBOSE,
 )
 ```
+
+The parameter-name group is now optional so `bool draw(_NT_algorithm*)` (unnamed parameter) matches. Both reference plug-ins name the parameter (`self`), but a future fixture might not.
 
 The script must:
 
@@ -2037,7 +2057,7 @@ When Plan A is done, signal readiness for Plan B (shim core + Tier 1 applets).
 
 ---
 
-## Self-review (revision 1)
+## Self-review (revision 2)
 
 - **Spec coverage:** Stage 0 covers bootstrap, repo scaffold and submodule pinning. Stage A.1 covers Host simulator (NT_screen, NT_globals, drawing, JSON, params, loader) per spec's Host simulator section. Stages A.4/A.5 cover hardware capture infrastructure including the four Stage A assumptions (slot order, persistence, SysEx round-trip, throughput) per spec's Hardware screen capture section. Plan B for instrumented reference plug-ins is a conditional task (22). Task 23b isolates font correctness. Task 24 covers CV scaling across three bus ranges (P6). Stages B and C cover the harness-validation gate per spec.
 - **Placeholder scan:** Two `...` ellipses remain inside Python helper scripts (Task 14 diff helpers). These are not specification gaps — the surrounding text describes the function's purpose and the engineer implements the body. Task 8 (`nt_jsonstream`) explicitly leaves the LoC budget flexible because the shape is mechanical and has multiple reasonable forms. No other placeholders.

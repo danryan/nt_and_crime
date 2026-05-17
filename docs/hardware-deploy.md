@@ -1,47 +1,60 @@
-# NT Deploy Mechanism (verified for firmware 1.7+)
+# NT Deploy Mechanism (verified for firmware 1.13+)
 
-## Preferred: nt_helper plugin upload (no reboot)
+Three paths from build to running plug-in, fast to slow.
 
-[nt_helper](https://github.com/thorinside/nt_helper) is a cross-platform Flutter app that uploads `.o` plug-ins to the NT over USB MIDI SysEx (512-byte chunks) and auto-triggers a plug-in rescan. No USB disk mode, no module reboot, no menu navigation. Use this for the inner development loop.
+## Preferred: `make deploy-sysex` (no reboot)
 
-Procedure:
+In-tree target. Sends `build/arm/Hemispheres.o` to the NT over USB MIDI SysEx and triggers a plug-in rescan. No USB disk mode, no module reboot, no menu navigation. Iteration cycle is roughly one second per build.
 
-1. Connect the NT via USB while running normally (no disk mode).
-2. Open nt_helper. It enumerates the NT over USB MIDI.
-3. Plugin Manager → upload local file → pick `build/arm/<name>.o`. Repeat for each plug-in or batch.
-4. Wait a second; the module rescans automatically. Verify via Misc → Plug-ins → View info.
-5. Add the plug-in in any preset slot.
+Requirements:
 
-Iteration cycle is ~1 second per build vs ~30 seconds for USB disk mode.
+- NT firmware v1.13 or later. The rescan SysEx command was added in v1.13.
+- Host Python with `mido` and `python-rtmidi` installed (`pip install mido python-rtmidi`).
+- NT connected via USB and running normally (not in disk mode).
 
-## Fallback: USB MSC via "USB disk mode"
+Usage:
 
-## Source
+```
+make deploy-sysex                                   # default: Hemispheres.o, SysEx ID 0
+make deploy-sysex SYSEX_PLUGIN=build/arm/gain.o     # override plug-in
+make deploy-sysex SYSEX_ID=3                        # override SysEx ID
+```
 
-disting NT user manual v1.9, section "Plug-ins" (page ~145) and "Enter USB disk mode" (page ~44). Manual download:
-<https://www.expert-sleepers.co.uk/downloads/manuals/disting_NT_user_manual_1.9.pdf>
+Under the hood: `harness/scripts/push_plugin_to_device.py` (vendored verbatim from `expertsleepersltd/distingNT@abe311cf`). The script writes the `.o` to the module's `programs/plug-ins/` and issues the rescan command. Optional third positional argument saves current state to a named preset, uploads, reloads.
 
-Note: the v1.1 manual does not cover plug-ins; the C++ API was added in firmware 1.7.0. Always cross-reference the manual matching the running firmware.
+Verify the upload via Misc menu, Plug-ins, View info. Each `.o` lists pass/fail and memory stats.
 
-## Procedure
+## Alternative: nt_helper
+
+[nt_helper](https://github.com/thorinside/nt_helper) is a cross-platform Flutter GUI that does the same SysEx upload plus richer module inspection. Use when you want a UI, multi-file batch upload, or live parameter editing alongside the deploy.
+
+There is also an `nt_helper` MCP server exposing the same operations as tools (`mcp__nt_helper__add`, `mcp__nt_helper__save`, `mcp__nt_helper__show_*`, etc). Use this from inside an agent session to inspect routing, parameters, or CPU while iterating.
+
+## Fallback: USB MSC disk mode
+
+Use when SysEx is unavailable (firmware older than v1.13, USB MIDI flaky, or first-time card setup).
 
 1. Build: `make arm` produces `build/arm/*.o`.
-2. On the NT: Misc menu → "Enter USB disk mode". The module reboots into a state where the MicroSD card appears as a removable drive on the host.
-3. On the host (macOS): the volume mounts at `/Volumes/<label>`. The default label appears to be the SD card's volume label; if no label, macOS uses "NO NAME". Check `ls /Volumes/` to discover.
-4. Deploy: `make deploy DEVICE=/Volumes/<label>`. The Makefile creates `programs/plug-ins/` if absent, then copies `build/arm/*.o` into it.
+2. On the NT, Misc menu, "Enter USB disk mode". The module reboots and the MicroSD card mounts as a removable drive on the host.
+3. On macOS the volume appears at `/Volumes/<label>` where `<label>` is the SD card's volume label, or "NO NAME" if unlabeled. Check `ls /Volumes/`.
+4. Deploy: `make deploy DEVICE=/Volumes/<label>`. The Makefile creates `programs/plug-ins/` if absent and copies `build/arm/*.o` into it.
 5. Eject the volume on the host (drag to trash, or `diskutil eject /Volumes/<label>`).
-6. On the NT: press both encoders together to reboot into normal mode.
-7. Verify: Misc menu → "Plug-ins" → "View info..." lists each `.o` with a pass/fail flag and memory stats.
+6. On the NT, press both encoders together to reboot into normal mode.
+7. Verify via Misc, Plug-ins, View info.
+
+`DEVICE` defaults to `/Volumes/NT` in the Makefile. Override per invocation when the SD label differs.
 
 ## Quirks
 
-- The NT is not USB-host capable; you cannot deploy via a USB stick plugged into the NT itself.
-- The module does not draw power from USB; it must be powered from Eurorack while connected.
-- "USB disk mode" suspends all audio/MIDI processing. Plug-ins cannot be reloaded while audio is running.
-- The card must be FAT32 (formatted via the SD Association tool is recommended).
+- The NT is not USB-host capable. You cannot deploy via a USB stick plugged into the NT itself.
+- The module does not draw power from USB. It must be powered from Eurorack while connected.
+- USB disk mode suspends all audio and MIDI processing. Plug-ins cannot reload while audio runs.
+- The SD card must be FAT32 (formatted via the SD Association tool is recommended).
+- The "View info..." screen reports the API version each plug-in was built against. The harness builds against `kNT_apiVersion13`. Lower firmware API versions may disable some features.
 
-## Notes for the harness
+## Source
 
-- `DEVICE` defaults to `/Volumes/NT` in the Makefile. The actual mount label is whatever the SD card was formatted with. Override per invocation: `make deploy DEVICE=/Volumes/<actual_label>`.
-- The plug-in scan happens at module startup (after USB disk mode exit) and when the card is remounted via Misc menu. No hot-reload while running.
-- The "View info..." screen reports the API version each plug-in was built against. The harness builds against `kNT_apiVersion13` (current). If the module's firmware reports a lower API version, some features may be unavailable.
+- disting NT user manual v1.9, sections "Plug-ins" (page ~145) and "Enter USB disk mode" (page ~44). <https://www.expert-sleepers.co.uk/downloads/manuals/disting_NT_user_manual_1.9.pdf>
+- Upstream SysEx tool: <https://github.com/expertsleepersltd/distingNT/blob/main/tools/push_plugin_to_device.py>
+
+The v1.1 manual does not cover plug-ins. The C++ plug-in API was added in firmware 1.7.0. The SysEx rescan command used by `make deploy-sysex` was added in 1.13. Always cross-reference the manual matching the running firmware.

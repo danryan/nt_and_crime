@@ -29,6 +29,18 @@ inline const char* const* applet_enum_strings() {
     return names;
 }
 
+inline int applet_index_for_name(const char* name) {
+    if (!name) return -1;
+    const char* const* names = applet_enum_strings();
+    for (int i = 0; i < kAppletCount; ++i) {
+        const char* a = names[i];
+        const char* b = name;
+        while (*a && *b && *a == *b) { ++a; ++b; }
+        if (*a == 0 && *b == 0) return i;
+    }
+    return -1;
+}
+
 template <typename T>
 constexpr T cmax(T a, T b) { return a > b ? a : b; }
 

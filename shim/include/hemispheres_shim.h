@@ -211,8 +211,8 @@ struct HemispheresShim {
         auto* alg = static_cast<HemispheresInstance*>(self);
         uint64_t l = alg->left->OnDataRequest();
         uint64_t r = alg->right->OnDataRequest();
-        stream.addMemberName("sel_l");        stream.addNumber((int)alg->cached_idx_left);
-        stream.addMemberName("sel_r");        stream.addNumber((int)alg->cached_idx_right);
+        stream.addMemberName("sel_l");        stream.addString(applet_enum_strings()[alg->cached_idx_left]);
+        stream.addMemberName("sel_r");        stream.addString(applet_enum_strings()[alg->cached_idx_right]);
         stream.addMemberName("hem_left_hi");  stream.addNumber((int)(uint32_t)(l >> 32));
         stream.addMemberName("hem_left_lo");  stream.addNumber((int)(uint32_t)(l & 0xFFFFFFFFu));
         stream.addMemberName("hem_right_hi"); stream.addNumber((int)(uint32_t)(r >> 32));
@@ -223,25 +223,28 @@ struct HemispheresShim {
         auto* alg = static_cast<HemispheresInstance*>(self);
         int num_members = 0;
         if (!parse.numberOfObjectMembers(num_members)) return false;
-        int sel_l = -1, sel_r = -1;
+        const char* sel_l_name = nullptr;
+        const char* sel_r_name = nullptr;
         int lhi = 0, llo = 0, rhi = 0, rlo = 0;
         bool got_lhi = false, got_llo = false, got_rhi = false, got_rlo = false;
         for (int i = 0; i < num_members; ++i) {
-            if      (parse.matchName("sel_l"))        { if (!parse.number(sel_l)) return false; }
-            else if (parse.matchName("sel_r"))        { if (!parse.number(sel_r)) return false; }
+            if      (parse.matchName("sel_l"))        { if (!parse.string(sel_l_name)) return false; }
+            else if (parse.matchName("sel_r"))        { if (!parse.string(sel_r_name)) return false; }
             else if (parse.matchName("hem_left_hi"))  { if (!parse.number(lhi)) return false; got_lhi = true; }
             else if (parse.matchName("hem_left_lo"))  { if (!parse.number(llo)) return false; got_llo = true; }
             else if (parse.matchName("hem_right_hi")) { if (!parse.number(rhi)) return false; got_rhi = true; }
             else if (parse.matchName("hem_right_lo")) { if (!parse.number(rlo)) return false; got_rlo = true; }
             else                                      { if (!parse.skipMember()) return false; }
         }
-        if (sel_l >= 0 && sel_l < kAppletCount && (uint8_t)sel_l != alg->cached_idx_left) {
-            hemispheres_swap(alg->left, alg->sram_left, (uint8_t)sel_l, HS::LEFT_HEMISPHERE);
-            alg->cached_idx_left = (uint8_t)sel_l;
+        int idx_l = applet_index_for_name(sel_l_name);
+        int idx_r = applet_index_for_name(sel_r_name);
+        if (idx_l >= 0 && (uint8_t)idx_l != alg->cached_idx_left) {
+            hemispheres_swap(alg->left, alg->sram_left, (uint8_t)idx_l, HS::LEFT_HEMISPHERE);
+            alg->cached_idx_left = (uint8_t)idx_l;
         }
-        if (sel_r >= 0 && sel_r < kAppletCount && (uint8_t)sel_r != alg->cached_idx_right) {
-            hemispheres_swap(alg->right, alg->sram_right, (uint8_t)sel_r, HS::RIGHT_HEMISPHERE);
-            alg->cached_idx_right = (uint8_t)sel_r;
+        if (idx_r >= 0 && (uint8_t)idx_r != alg->cached_idx_right) {
+            hemispheres_swap(alg->right, alg->sram_right, (uint8_t)idx_r, HS::RIGHT_HEMISPHERE);
+            alg->cached_idx_right = (uint8_t)idx_r;
         }
         if (got_lhi && got_llo) {
             uint64_t l = ((uint64_t)(uint32_t)lhi << 32) | (uint64_t)(uint32_t)llo;

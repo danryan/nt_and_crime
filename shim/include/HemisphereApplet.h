@@ -166,6 +166,18 @@ public:
         }
     }
 
+    // Vendor overload taking label string; shim ignores the label and forwards
+    // to the integer-height form. Some upstream applets call this signature.
+    void gfxCursor(int x, int y, int w, const char* /*str*/, const char* /*extra*/ = nullptr) {
+        gfxCursor(x, y, w, 9);
+    }
+
+    // Mirrors upstream HemisphereApplet::ClockCycleTicks. Returns the recorded
+    // cycle ticks for the given channel. Shim has no clock multiplier.
+    uint32_t ClockCycleTicks(int ch) {
+        return HS::frame.cycle_ticks[ch + channel_offset()];
+    }
+
     const char* OutputLabel(int ch) const { return OC::Strings::capital_letters[ch]; }
 
 protected:

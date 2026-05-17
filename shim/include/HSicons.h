@@ -13,3 +13,5 @@ extern const uint8_t ROTATE_R_ICON[8];
 extern const uint8_t ROTATE_L_ICON[8];
 extern const uint8_t CLOSED_ICON[8];
 extern const uint8_t OPEN_ICON[8];
+extern const uint8_t GATE_ICON[8];
+extern const uint8_t MOD_ICON[8];

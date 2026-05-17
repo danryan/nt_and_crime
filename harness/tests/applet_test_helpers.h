@@ -68,4 +68,7 @@ float int_to_volts(int hem_units);
 // Writes the shim's hem_rng_state global. Tests call this before any RNG-touching scenario.
 void seed_hem_rng(uint32_t seed);
 
+// Mirrors Calculate::OnDataRequest packing: bits [0,8] = op_left, [8,8] = op_right.
+uint64_t pack_calculate(int op_left, int op_right);
+
 }  // namespace hem_test

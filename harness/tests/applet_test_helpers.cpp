@@ -73,4 +73,9 @@ void seed_hem_rng(uint32_t seed) {
     hem_rng_state = seed;
 }
 
+uint64_t pack_calculate(int op_left, int op_right) {
+    return ((uint64_t)(op_left  & 0xFF))
+         | ((uint64_t)(op_right & 0xFF) << 8);
+}
+
 }  // namespace hem_test

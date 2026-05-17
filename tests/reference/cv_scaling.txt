@@ -31,9 +31,27 @@ Output 6    18         out 6     1.00            verified (linearity baseline)
 Output 7    19         rear J5/7 not measured    same DAC silicon as 1-6; inferred safe
 Output 8    20         rear J5/8 not measured    same DAC silicon as 1-6; inferred safe
 
+Input-bus test (one sample, Input 1 = bus index 1)
+--------------------------------------------------
+Setup: Bus probe slot 1 (Out=Input 1, Replace, Level=100); Gain (UI) slot 2
+       (Input=Input 1, Output=Output 1, Replace, Gain=100); physical input 1
+       disconnected so no external signal overrides.
+Result: Output 1 = 1.00 V on scope.
+Conclusion: shim CAN write to input-typed bus indices; firmware does not
+            overwrite when the physical input jack is unpatched. Internal-write
+            path on input buses is viable for use cases that need it.
+
+Aux-bus test (21-64): SKIPPED
+-----------------------------
+Lower priority for Tier 1/2 applets. Tier 1/2 shim plug-ins map applet CV to
+physical output buses only. If a future user maps an applet output to an aux
+bus and it fails to route, escalate then.
+
 Conclusions for the shim
 ------------------------
 - Hem → NT scaler: nt_float = hem_int / 1536.0f stands. 1V/oct convention compatible.
 - Pitch calibration parameter range (±2000 ppm = ±14.4 cents @ 6V) is wider than the
   observed 1.3% deviation on a single voltage point. Calibration mitigation A3 holds.
-- Input bus (1-12) and aux bus (21-64) ranges not yet tested; pending.
+- Output buses 1-6 verified directly; 7-8 inferred (same DAC).
+- Input bus 1 verified via consumer algo. Other input buses inferred.
+- Aux bus untested; lower priority, no Tier 1/2 dependency.

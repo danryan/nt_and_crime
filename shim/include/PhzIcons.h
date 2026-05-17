@@ -12,4 +12,5 @@ extern const uint8_t thresholdLogicNeuron[8];
 extern const uint8_t button2[8];
 extern const uint8_t compare[8];
 extern const uint8_t cumulus[8];
+extern const uint8_t gateVca[8];
 }

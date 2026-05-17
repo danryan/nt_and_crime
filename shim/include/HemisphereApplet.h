@@ -98,6 +98,11 @@ public:
     void gfxPrint(int n)                       { graphics.print(n); }
     void gfxPrint(int x, int y, const char* s) { gfxPos(x, y); gfxPrint(s); }
     void gfxPrint(int x, int y, int n)         { gfxPos(x, y); gfxPrint(n); }
+    // Vendor 2-arg form: pad left by (x_adv / 6) spaces, then print number.
+    void gfxPrint(int x_adv, int n) {
+        for (int c = 0; c < (x_adv / 6); c++) gfxPrint(" ");
+        gfxPrint(n);
+    }
 
     void gfxFrame(int x, int y, int w, int h)  { graphics.drawFrame(x + gfx_offset, y, w, h); }
     void gfxRect(int x, int y, int w, int h)   { graphics.drawRect(x + gfx_offset, y, w, h); }

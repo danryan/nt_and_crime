@@ -433,7 +433,7 @@ git commit -m "shim: globals storage + clock manager stub + icons + strings"
 - Create: `shim/include/HSIOFrame.h`
 - Create: `shim/include/CVInputMap.h`
 
-- [ ] **Step 1: HSIOFrame.h**
+- [x] **Step 1: HSIOFrame.h**
 
 The minimal `IOFrame` covers In/Out/Gate/Clock + cycle_ticks + changed_cv + adc_lag_countdown (all that HemisphereApplet reads). For Logic, we only need `inputs[]`, `outputs[]`, `clocked[]` indexed by `io_offset + ch`.
 
@@ -485,7 +485,7 @@ void HS::IOFrame::ClockOut(DAC_CHANNEL ch, int) {
 }
 ```
 
-- [ ] **Step 2: CVInputMap.h**
+- [x] **Step 2: CVInputMap.h**
 
 Logic calls `cvmap[ch].In()`. Minimal CVInputMap reads from the global `frame.inputs[ch]`.
 
@@ -529,7 +529,7 @@ Append to `globals.cpp`:
 DigitalInputMap trigmap[4] = {{0}, {1}, {2}, {3}};
 ```
 
-- [ ] **Step 3: Build + commit**
+- [x] **Step 3: Build + commit**
 
 Run: `make arm`
 Expected: still passes (Logic.cpp stub).

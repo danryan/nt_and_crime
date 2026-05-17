@@ -28,6 +28,12 @@ bool draw(_NT_algorithm*) {
 }
 
 void midiSysEx(const uint8_t* message, uint32_t count) {
+    // Diagnostic: always echo a sentinel on ANY inbound SysEx so we can
+    // distinguish midiSysEx-fires from NT_sendMidiSysEx-routes-out.
+    // Reply pattern: F0 7D 02 42 F7
+    uint8_t sentinel[3] = { 0x7D, 0x02, 0x42 };
+    NT_sendMidiSysEx(kNT_destinationUSB, sentinel, sizeof(sentinel), true);
+
     if (count >= 2 && message[0] == nt_hem::kManufacturerId
                    && message[1] == nt_hem::kCmdDumpRequest) {
         nt_hem::emit_capture_if_pending();

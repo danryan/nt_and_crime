@@ -136,7 +136,11 @@ build/arm/Burst.o: applets/Burst.cpp $(SHIM_DEPS)
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Logic.o build/arm/AttenuateOffset.o build/arm/Slew.o build/arm/Calculate.o build/arm/Burst.o
+build/arm/LogicCalculate.o: applets/LogicCalculate.cpp $(SHIM_DEPS)
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Logic.o build/arm/AttenuateOffset.o build/arm/Slew.o build/arm/Calculate.o build/arm/Burst.o build/arm/LogicCalculate.o
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

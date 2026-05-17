@@ -737,7 +737,7 @@ git commit -m "shim: graphics object writing into NT_screen (placeholder font)"
 
 This is the largest single file. Mirrors `vendor/O_C-Phazerville/software/src/HemisphereApplet.h` but trimmed to only the methods Logic uses, plus all method declarations of the upstream class (so the applet compiles even if some method is referenced indirectly via virtual dispatch).
 
-- [ ] **Step 1: Write HemisphereApplet.h**
+- [x] **Step 1: Write HemisphereApplet.h**
 
 ```cpp
 #pragma once
@@ -850,7 +850,7 @@ protected:
 #define help (HS::help_strings)
 ```
 
-- [ ] **Step 2: Build sanity + commit**
+- [x] **Step 2: Build sanity + commit**
 
 Run: `make arm`
 Expected: still passes (Logic.cpp stub doesn't include the base class yet).

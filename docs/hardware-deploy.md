@@ -1,8 +1,20 @@
 # NT Deploy Mechanism (verified for firmware 1.7+)
 
-## Mechanism
+## Preferred: nt_helper plugin upload (no reboot)
 
-USB MSC via the MicroSD card slot. The NT exposes its MicroSD as a removable drive while in "USB disk mode". Plug-ins live at `programs/plug-ins/` on the card. File extension: `.o`.
+[nt_helper](https://github.com/thorinside/nt_helper) is a cross-platform Flutter app that uploads `.o` plug-ins to the NT over USB MIDI SysEx (512-byte chunks) and auto-triggers a plug-in rescan. No USB disk mode, no module reboot, no menu navigation. Use this for the inner development loop.
+
+Procedure:
+
+1. Connect the NT via USB while running normally (no disk mode).
+2. Open nt_helper. It enumerates the NT over USB MIDI.
+3. Plugin Manager → upload local file → pick `build/arm/<name>.o`. Repeat for each plug-in or batch.
+4. Wait a second; the module rescans automatically. Verify via Misc → Plug-ins → View info.
+5. Add the plug-in in any preset slot.
+
+Iteration cycle is ~1 second per build vs ~30 seconds for USB disk mode.
+
+## Fallback: USB MSC via "USB disk mode"
 
 ## Source
 

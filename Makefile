@@ -1,5 +1,5 @@
 # nt_and_crime top-level Makefile
-.PHONY: help vendor host arm test test-runtime clean deploy deploy-sysex
+.PHONY: help vendor host arm test test-runtime clean deploy deploy-sysex test-applets
 
 ARM_CXX  := arm-none-eabi-c++
 HOST_CXX := $(shell command -v clang++ >/dev/null 2>&1 && echo clang++ || echo g++)
@@ -122,6 +122,17 @@ build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
 
+build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+
+build/host/test_hemispheres: harness/tests/test_hemispheres.cpp build/host/Hemispheres.host.o $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+test-applets: build/host/test_hemispheres
+	./build/host/test_hemispheres
+
 arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Hemispheres.o
 
 DEVICE ?= /Volumes/NT
@@ -141,7 +152,7 @@ SYSEX_PLUGIN ?= build/arm/Hemispheres.o
 deploy-sysex: $(SYSEX_PLUGIN)
 	python3 harness/scripts/push_plugin_to_device.py $(SYSEX_ID) $(SYSEX_PLUGIN)
 
-test: host
+test: host test-applets
 	python3 harness/scripts/run_scenario.py tests/scenarios/gainCustomUI/zero_signal.yaml
 
 vendor:

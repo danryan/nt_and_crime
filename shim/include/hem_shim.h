@@ -24,14 +24,14 @@ enum {
 
 inline const _NT_parameter* shim_parameters() {
     static const _NT_parameter params[] = {
-        NT_PARAMETER_CV_INPUT("Gate In 1", 0, 1)
-        NT_PARAMETER_CV_INPUT("Gate In 2", 0, 2)
-        NT_PARAMETER_CV_INPUT("CV In 1",   0, 3)
-        NT_PARAMETER_CV_INPUT("CV In 2",   0, 4)
-        NT_PARAMETER_IO("CV Out 1", 0, 13, kNT_unitCvOutput)
-        { .name = "CV Out 1 mode", .min = 0, .max = 1, .def = 1, .unit = kNT_unitOutputMode, .scaling = 0, .enumStrings = NULL },
-        NT_PARAMETER_IO("CV Out 2", 0, 14, kNT_unitCvOutput)
-        { .name = "CV Out 2 mode", .min = 0, .max = 1, .def = 1, .unit = kNT_unitOutputMode, .scaling = 0, .enumStrings = NULL },
+        NT_PARAMETER_CV_INPUT("Gate (ch A)", 0, 1)
+        NT_PARAMETER_CV_INPUT("Gate (ch B)", 0, 2)
+        NT_PARAMETER_CV_INPUT("CV (ch A)",   0, 3)
+        NT_PARAMETER_CV_INPUT("CV (ch B)",   0, 4)
+        NT_PARAMETER_IO("Out (ch A)", 0, 13, kNT_unitCvOutput)
+        { .name = "Out (ch A) mode", .min = 0, .max = 1, .def = 1, .unit = kNT_unitOutputMode, .scaling = 0, .enumStrings = NULL },
+        NT_PARAMETER_IO("Out (ch B)", 0, 14, kNT_unitCvOutput)
+        { .name = "Out (ch B) mode", .min = 0, .max = 1, .def = 1, .unit = kNT_unitOutputMode, .scaling = 0, .enumStrings = NULL },
     };
     return params;
 }

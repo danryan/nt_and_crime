@@ -109,7 +109,9 @@ Helpers every Tier 1 applet but Logic needed.
 | `GAUGE_ICON`, `RANDOM_ICON` | `HSicons.h` + `icons.cpp` | DrawSelector shows them for spacing+jitter rows |
 | `PhzIcons::burst` | placeholder | `applet_icon()` |
 
-## Round 3 (Plan C post-hardware AttenuateOffset)
+## Round 3 (Plan C post-hardware, all four applets)
+
+Global shim invariants discovered through Tier 1 hardware testing. Each fix benefits all current and future applets.
 
 | Change | Why |
 |--------|-----|
@@ -118,8 +120,13 @@ Helpers every Tier 1 applet but Logic needed.
 | Default bus assignments aligned with O_C jack layout: Inputs 1+2 → Gate ch A+B, Inputs 5+6 → CV ch A+B, Outputs 1+2 → Out ch A+B | O_C has 4 trigger inputs (1-4) and 4 CV inputs (5-8). NT mirroring the layout lets users transpose patches by jack number. |
 | `BaseStart()` moved from lazy first-step path into `construct()` | Start() previously ran on first step() — after deserialise restored saved state — wiping the restored fields with defaults. Order is now: construct → Start (defaults) → deserialise (restore overrides) → step. |
 | `deserialise` guards `OnDataReceive` behind `found_hi && found_lo` | NT calls deserialise even for fresh slots with empty JSON. With state=0 the AttenuateOffset unpack-with-bias formula (`Unpack() - 256`) computed offset=-256 (clamped to -72), making a "fresh" slot show offset=-6V. Now empty deserialise leaves the Start() defaults intact. |
+| Per-step Controller multiplier: `numFrames / 3` calls per `step()` | Hemisphere code assumes ~16.66kHz Controller calls (60us tick). NT runs `step()` once per audio buffer (~3kHz at 16-sample buffer). Without compensation, Slew's `HEM_SLEW_MAX_TICKS`-based time constants ran 5x too slow vs displayed ms. Calling Controller proportionally more often per buffer aligns wall time with applet expectations. |
+| `Graphics::drawLine` honors `pattern` byte | Previously pattern arg was ignored; all lines were solid. Slew's rise/fall cursor indicator uses dashed lines via this pattern; now dashes are visible. Default pattern bumped from `1` to `0xFF`. |
+| `HS::IOFrame::clock_countdown[4]` added; per-tick decrement zeroes output on expiry | Upstream `ClockOut` sets countdown + high; tick handler decrements and lowers output at zero. Shim's old `ClockOut` set high without auto-low, so Burst pulses 2..N latched and only the first was visible. |
 
-These are global shim invariants; they benefit every current and future applet.
+## Per-applet additions (Tier 1)
+
+Symbols each applet contributed beyond the global helpers above.
 
 ## Observations
 

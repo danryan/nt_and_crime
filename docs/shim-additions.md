@@ -169,6 +169,40 @@ One NT slot hosts two applets side-by-side, replicating Phazerville O_C left/rig
 
 Loading multiple shim plug-ins (single or pair) in the same NT preset means all instances default to the same input/output buses. The user must re-route each slot. Pair plug-ins reduce the problem (one slot = two applets) but do not eliminate it for presets that combine multiple shim slots.
 
+## Round 6 (Plan F runtime applet selector)
+
+Replaces all per-applet plug-ins and the LogicCalculate pair canary with a single `Hemispheres` plug-in (GUID `hemi`). Two applet selectors (Left, Right) exposed as enum parameters drive live swap at runtime.
+
+| Change | Why |
+|--------|-----|
+| Single plug-in `Hemispheres` replaces `Hl01`, `HAO1`, `HSlw`, `HCal`, `HBst`, `HpLC` | One binary serves all five applets in any pair combination plus single-side-Empty. Drops menu clutter and binary count. |
+| Applet selection via parameters, not NT specifications | Specs are add-time only. Parameters let user swap applets without removing + re-adding slot. Preserves UX of live exploration. |
+| Empty applet as default + sentinel | Default both sides = Empty. Zero CPU until user picks. Screen shows "Pick applet" hint per side, self-documenting onboarding. |
+| Polymorphic `HemisphereApplet*` storage with `kMaxAppletSize` worst-case sram per side | Live swap requires runtime polymorphism. C++11 constexpr `cmax` chain bounds sram per side. |
+| Live swap sequence in `step()` head | Detect cached-vs-live selector diff. On change: dtor old, zero side I/O (outputs, clock_countdown, cursor, edit), placement-new new applet, BaseStart, cache new idx. |
+| Setup + Routing parameter pages | Setup holds 2 selectors (rare-edit). Routing holds 16 I/O params (frequent-edit). |
+| Serialise persists selector indices alongside applet state | Deserialise reconstructs applets first (so state lands in correct class), then feeds 64-bit `OnDataReceive` per side. |
+| Retired `Shim<T>`, `NT_HEM_PLUGIN`, `PairShim`, `NT_HEM_PAIR`, pair param machinery | Replaced wholesale. Helpers (`copy_bus_to_frame`, `read_gate`, `write_frame_to_bus`) extracted to `hem_shim::` namespace free functions. |
+| `Hemispheres.cpp` is the sole TU pulling vendor headers | Adapter TUs (`applets/<Applet>.cpp`) include only `HemisphereApplet.h`. Avoids `ld -r` collisions on non-inline vendor helper symbols (e.g. `hem_XOR`, `hem_MIN`). Adapters remain as landing zones for future NT-side per-applet glue. |
+| Partial-link adapters into `Hemispheres.o` via `arm-none-eabi-ld -r` | Combines `Hemispheres_main.o` plus adapter `.o` files into single relocatable object for NT plug-in load. |
+| `HSUtils.h` externs moved into `namespace HS { }` | Matches `globals.cpp` definitions. Was a long-standing mismatch tolerated by per-plugin builds (each pulled `hem_shim_impl.h` which inlined `globals.cpp` into its TU). Adapter pattern can no longer rely on that workaround. |
+
+### Sram budget
+
+Each Hemispheres slot allocates `2 * round_up(kMaxAppletSize, kMaxAppletAlign)` bytes for applet storage. Hemisphere applets pack persistent state into a 64-bit blob via `OnDataRequest`; runtime structs add a handful of cursor and CV scratch fields. Total per slot stays sub-KB even at the full applet enum.
+
+### Flash cost
+
+Every applet linked into `Hemispheres.o` adds its compiled code (typically a few KB per applet). At full enum the plug-in binary is on the order of ~50-150 KB. NT plug-in storage handles this without issue.
+
+### Retired-plug-in artifacts
+
+Pre-Plan-F `.o` files (`Logic.o` etc.) on NT devices remain functional but are no longer rebuilt. `make clean` removes them locally. Going forward, only `Hemispheres.o` ships.
+
+### Routing collision pitfall (unchanged from Round 5)
+
+Loading multiple `Hemispheres` slots in the same preset still defaults all instances to the same I/O buses. User must re-route per slot.
+
 ## Observations
 
 - The C++11 `constrain` polymorphism issue is recurring. Three argument types make it brittle; consider a non-template Arduino-style macro if more applets hit this.

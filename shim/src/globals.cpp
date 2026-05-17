@@ -13,6 +13,7 @@ namespace HS {
 const char* help_strings[HS::HELP_LABEL_COUNT] = { nullptr };
 int cursor_countdown[HS::APPLET_CURSOR_COUNT] = { 0 };
 EncoderEditor enc_edit[HS::APPLET_CURSOR_COUNT] = {{ false }};
+int gfx_offset = 0;
 }
 
 namespace OC {

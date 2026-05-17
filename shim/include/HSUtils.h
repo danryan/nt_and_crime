@@ -22,7 +22,8 @@ using simfloat = int32_t;
 #endif
 
 #define ForEachChannel(ch) for (int_fast8_t ch = 0; (ch) < 2; ++(ch))
-#define gfx_offset 0                                            // shim renders single applet at left
+namespace HS { extern int gfx_offset; }
+using HS::gfx_offset;
 #define BottomAlign(h) (62 - (h))
 #define io_offset 0                                             // shim's frame indexes from 0
 

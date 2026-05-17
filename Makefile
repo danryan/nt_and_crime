@@ -110,15 +110,7 @@ build/arm/bus_probe.o: applets/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
 
-build/arm/screen_dump.o: applets/screen_dump.cpp shim/include/hem_dump_helper.h
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) -Ishim/include -c -o $@ $<
-
-build/arm/font_dump.o: applets/font_dump.cpp shim/include/hem_dump_helper.h
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) -Ishim/include -c -o $@ $<
-
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/screen_dump.o build/arm/font_dump.o
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

@@ -40,10 +40,14 @@ float read_cv_at(float* bus, HemSide side, int channel, int frame_offset, int nu
 // the applet swap inside the shim. No external parameterChanged() call needed.
 void select_applet(_NT_algorithm* alg, HemSide side, hem_shim::AppletIndex idx);
 
-// Typed accessor for the side's applet instance. Defined in the canonical
-// Hemispheres TU (applets/Hemispheres.cpp) because it needs the complete
-// HemispheresInstance type from hemispheres_shim.h.
-HemisphereApplet* get_applet(hem_shim::HemispheresInstance* hi, HemSide side);
+// Implemented in applets/Hemispheres.cpp where HemispheresInstance fields are
+// visible. Takes int (0=LEFT, 1=RIGHT) so the canonical TU need not reference
+// hem_test::HemSide.
+HemisphereApplet* get_applet_impl(hem_shim::HemispheresInstance* hi, int side);
+
+inline HemisphereApplet* get_applet(hem_shim::HemispheresInstance* hi, HemSide side) {
+    return get_applet_impl(hi, static_cast<int>(side));
+}
 
 // Typed cast wrapper. _NT_algorithm* must actually point at a HemispheresInstance.
 // HemispheresInstance derives from _NT_algorithm at offset 0, so the upcast is

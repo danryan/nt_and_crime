@@ -3,17 +3,11 @@
 NT_HEMISPHERES_PLUGIN("hemi", "Hemispheres",
                      "Phazerville Hemisphere pair: pick two applets")
 
-// Typed applet accessor used by the host test harness. Defined here (rather
-// than in the test helper TU) because it needs the complete
-// HemispheresInstance type, which only hemispheres_shim.h provides; that
-// header can only be included in this single canonical TU to avoid ODR
-// link errors from vendor file-scope globals (e.g. hem_MIN, PhzIcons::*,
-// _clock_m). The matching declaration lives in
-// harness/tests/applet_test_helpers.h. The enum is duplicated rather than
-// imported so this file does not depend on the test-only include path.
+// Test seam: define get_applet_impl here so it can dereference
+// HemispheresInstance fields. Declared in harness/tests/applet_test_helpers.h.
+// Takes int (0=LEFT, 1=RIGHT) to avoid duplicating hem_test::HemSide in this TU.
 namespace hem_test {
-enum HemSide { LEFT = 0, RIGHT = 1 };
-HemisphereApplet* get_applet(hem_shim::HemispheresInstance* hi, HemSide side) {
-    return (side == LEFT) ? hi->left : hi->right;
+HemisphereApplet* get_applet_impl(hem_shim::HemispheresInstance* hi, int side) {
+    return (side == 0) ? hi->left : hi->right;
 }
 }  // namespace hem_test

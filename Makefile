@@ -114,11 +114,17 @@ build/arm/bus_probe.o: applets/bus_probe.cpp
 SHIM_INCLUDE := -Ishim/include
 HEM_APPLET_INCLUDE := -Ivendor/O_C-Phazerville/software/src/applets
 
-build/arm/Logic.o: applets/Logic.cpp $(wildcard shim/include/*.h) $(wildcard shim/include/*/*.h) $(wildcard shim/src/*.cpp)
+SHIM_DEPS := $(wildcard shim/include/*.h) $(wildcard shim/include/*/*.h) $(wildcard shim/src/*.cpp)
+
+build/arm/Logic.o: applets/Logic.cpp $(SHIM_DEPS)
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Logic.o
+build/arm/AttenuateOffset.o: applets/AttenuateOffset.cpp $(SHIM_DEPS)
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Logic.o build/arm/AttenuateOffset.o
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

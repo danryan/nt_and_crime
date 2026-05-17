@@ -116,6 +116,20 @@ protected:
     HS::HEM_SIDE hemisphere = HS::LEFT_HEMISPHERE;
 };
 
+inline void gfxPrintVoltage(int cv) {
+    int v = (cv * (NorthernLightModular ? 120 : 100)) / (12 << 7);
+    bool neg = (v < 0);
+    if (neg) v = -v;
+    int wv = v / 100;
+    int dv = v - (wv * 100);
+    graphics.print(neg ? "-" : "+");
+    graphics.print(wv);
+    graphics.print(".");
+    if (dv < 10) graphics.print("0");
+    graphics.print(dv);
+    graphics.print("V");
+}
+
 // Convenience alias for applets that reference the global help[] array directly.
 #define help (HS::help_strings)
 

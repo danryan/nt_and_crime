@@ -29,6 +29,13 @@ void set_gate(float* bus, HemSide side, int channel, int frame_offset, int numFr
     slice[frame_offset] = 6.0f;  // above 0.5f gate threshold
 }
 
+void hold_gate(float* bus, HemSide side, int channel, int numFramesBy4) {
+    int bidx = bus_index(side, channel, GATE_IN);
+    int numFrames = numFramesBy4 * 4;
+    float* slice = bus + (bidx - 1) * numFrames;
+    for (int i = 0; i < numFrames; ++i) slice[i] = 6.0f;
+}
+
 void set_cv(float* bus, HemSide side, int channel, float volts, int numFramesBy4) {
     int bidx = bus_index(side, channel, CV_IN);
     int numFrames = numFramesBy4 * 4;

@@ -26,6 +26,13 @@ int bus_index(HemSide side, int channel, HemAxis axis);
 // for (side, channel). Other frames in that bus stay zero unless the caller wrote them.
 void set_gate(float* bus, HemSide side, int channel, int frame_offset, int numFramesBy4);
 
+// Writes a sustained gate-high level (6.0V) across all frames of the input gate
+// bus for (side, channel). Used when tests need both a rising edge (Clock(side)
+// fires once) AND a held high (Gate(side) reads true) within the same step.
+// Contrast with `set_gate`, which writes a single-sample pulse for "logical
+// clock" scenarios where the rising edge fires but Gate(side) reads false.
+void hold_gate(float* bus, HemSide side, int channel, int numFramesBy4);
+
 // Writes a constant CV value (volts) across all frames of the CV input bus for (side, channel).
 void set_cv(float* bus, HemSide side, int channel, float volts, int numFramesBy4);
 

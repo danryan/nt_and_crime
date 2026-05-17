@@ -22,6 +22,48 @@ enum {
     kParamCount
 };
 
+inline void copy_bus_to_frame(int bus_param, int* dst, float* busFrames, int numFrames,
+                              const int16_t* v) {
+    int bus = v[bus_param];
+    if (bus <= 0) { *dst = 0; return; }
+    const float* src = busFrames + (bus - 1) * numFrames;
+    float sum = 0.0f;
+    for (int i = 0; i < numFrames; ++i) sum += src[i];
+    float mean = sum / (float)numFrames;
+    *dst = (int)(mean * 1536.0f);
+}
+
+struct GateRead { bool rising; bool high; };
+inline GateRead read_gate(int bus_param, float* busFrames, int numFrames, const int16_t* v,
+                          bool& prev_high) {
+    int bus = v[bus_param];
+    if (bus <= 0) { prev_high = false; return { false, false }; }
+    const float* src = busFrames + (bus - 1) * numFrames;
+    bool rising = false;
+    bool last_high = prev_high;
+    for (int i = 0; i < numFrames; ++i) {
+        bool high = (src[i] > 0.5f);
+        if (high && !last_high) rising = true;
+        last_high = high;
+    }
+    prev_high = last_high;
+    return { rising, last_high };
+}
+
+inline void write_frame_to_bus(int bus_param, int mode_param, int value_hem,
+                               float* busFrames, int numFrames, const int16_t* v) {
+    int bus = v[bus_param];
+    if (bus <= 0) return;
+    float* dst = busFrames + (bus - 1) * numFrames;
+    float value_nt = (float)value_hem / 1536.0f;
+    bool replace = v[mode_param];
+    if (replace) {
+        for (int i = 0; i < numFrames; ++i) dst[i] = value_nt;
+    } else {
+        for (int i = 0; i < numFrames; ++i) dst[i] += value_nt;
+    }
+}
+
 inline const _NT_parameter* shim_parameters() {
     static const _NT_parameter params[] = {
         NT_PARAMETER_CV_INPUT("Gate (ch A)", 0, 1)
@@ -301,18 +343,18 @@ struct PairShim {
         int numFrames = numFramesBy4 * 4;
         const int16_t* v = alg->v;
 
-        Shim<L>::copy_bus_to_frame(kPairCvInA, &HS::frame.inputs[0], busFrames, numFrames, v);
-        Shim<L>::copy_bus_to_frame(kPairCvInB, &HS::frame.inputs[1], busFrames, numFrames, v);
-        Shim<L>::copy_bus_to_frame(kPairCvInC, &HS::frame.inputs[2], busFrames, numFrames, v);
-        Shim<L>::copy_bus_to_frame(kPairCvInD, &HS::frame.inputs[3], busFrames, numFrames, v);
+        copy_bus_to_frame(kPairCvInA, &HS::frame.inputs[0], busFrames, numFrames, v);
+        copy_bus_to_frame(kPairCvInB, &HS::frame.inputs[1], busFrames, numFrames, v);
+        copy_bus_to_frame(kPairCvInC, &HS::frame.inputs[2], busFrames, numFrames, v);
+        copy_bus_to_frame(kPairCvInD, &HS::frame.inputs[3], busFrames, numFrames, v);
 
-        { auto g = Shim<L>::read_gate(kPairGateInA, busFrames, numFrames, v, prev_gate(0));
+        { auto g = read_gate(kPairGateInA, busFrames, numFrames, v, prev_gate(0));
           HS::frame.clocked[0] = g.rising; HS::frame.gate_high[0] = g.high; }
-        { auto g = Shim<L>::read_gate(kPairGateInB, busFrames, numFrames, v, prev_gate(1));
+        { auto g = read_gate(kPairGateInB, busFrames, numFrames, v, prev_gate(1));
           HS::frame.clocked[1] = g.rising; HS::frame.gate_high[1] = g.high; }
-        { auto g = Shim<L>::read_gate(kPairGateInC, busFrames, numFrames, v, prev_gate(2));
+        { auto g = read_gate(kPairGateInC, busFrames, numFrames, v, prev_gate(2));
           HS::frame.clocked[2] = g.rising; HS::frame.gate_high[2] = g.high; }
-        { auto g = Shim<L>::read_gate(kPairGateInD, busFrames, numFrames, v, prev_gate(3));
+        { auto g = read_gate(kPairGateInD, busFrames, numFrames, v, prev_gate(3));
           HS::frame.clocked[3] = g.rising; HS::frame.gate_high[3] = g.high; }
 
         int ticks_this_step = numFrames / 3;
@@ -329,13 +371,13 @@ struct PairShim {
             alg->right.Controller();
         }
 
-        Shim<L>::write_frame_to_bus(kPairCvOutA, kPairCvOutAMode, HS::frame.outputs[0].value,
+        write_frame_to_bus(kPairCvOutA, kPairCvOutAMode, HS::frame.outputs[0].value,
                                     busFrames, numFrames, v);
-        Shim<L>::write_frame_to_bus(kPairCvOutB, kPairCvOutBMode, HS::frame.outputs[1].value,
+        write_frame_to_bus(kPairCvOutB, kPairCvOutBMode, HS::frame.outputs[1].value,
                                     busFrames, numFrames, v);
-        Shim<L>::write_frame_to_bus(kPairCvOutC, kPairCvOutCMode, HS::frame.outputs[2].value,
+        write_frame_to_bus(kPairCvOutC, kPairCvOutCMode, HS::frame.outputs[2].value,
                                     busFrames, numFrames, v);
-        Shim<L>::write_frame_to_bus(kPairCvOutD, kPairCvOutDMode, HS::frame.outputs[3].value,
+        write_frame_to_bus(kPairCvOutD, kPairCvOutDMode, HS::frame.outputs[3].value,
                                     busFrames, numFrames, v);
     }
 

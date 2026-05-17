@@ -20,7 +20,7 @@ help:
 	@echo "make arm      - build all NT plug-ins under build/arm/"
 	@echo "make host     - build host simulator at build/host/sim_gainCustomUI"
 	@echo "make test     - run all scripted scenarios"
-	@echo "make deploy   - copy build/arm/*.o to DEVICE (default: /Volumes/NT)"
+	@echo "make deploy   - copy build/arm/*.o to DEVICE/programs/plug-ins/ (default DEVICE: /Volumes/NT; NT must be in USB disk mode)"
 	@echo "make clean    - remove build/"
 
 # Sources shared by every host build (no Catch2 main).
@@ -121,10 +121,12 @@ build/arm/font_dump.o: applets/font_dump.cpp shim/include/hem_dump_helper.h
 arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/screen_dump.o build/arm/font_dump.o
 
 DEVICE ?= /Volumes/NT
+PLUGIN_DIR := programs/plug-ins
 deploy: arm
-	@test -d "$(DEVICE)" || { echo "DEVICE=$(DEVICE) not mounted"; exit 1; }
-	cp build/arm/*.o $(DEVICE)/plugins/
-	@echo "Deployed to $(DEVICE)/plugins/. Power-cycle the NT to pick up new plug-ins."
+	@test -d "$(DEVICE)" || { echo "DEVICE=$(DEVICE) not mounted. Put the NT in USB disk mode via Misc menu first."; exit 1; }
+	@mkdir -p "$(DEVICE)/$(PLUGIN_DIR)"
+	cp build/arm/*.o "$(DEVICE)/$(PLUGIN_DIR)/"
+	@echo "Deployed to $(DEVICE)/$(PLUGIN_DIR)/. Eject the volume, then press both encoders together on the NT to reboot into normal mode."
 
 test: host
 	python3 harness/scripts/run_scenario.py tests/scenarios/gainCustomUI/zero_signal.yaml

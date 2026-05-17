@@ -218,3 +218,40 @@ TEST_CASE("calculate C10: S&H captures input on clock edge", "[calculate]") {
 
     REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.1f));
 }
+
+TEST_CASE("calculate C11: Rnd+ outputs in [0, HEMISPHERE_MAX_CV)", "[calculate]") {
+    auto s = setup_calculate_left();
+    calculate_set_op(s.hi, 6, 6);  // Rnd+ both channels
+    seed_hem_rng(0xDEADBEEF);
+
+    bool saw_nonzero = false;
+    for (int i = 0; i < 100; ++i) {
+        clear_bus(s.bus);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        float v = read_cv_at(s.bus, LEFT, 0, 0, 8);
+        REQUIRE(v >= 0.0f);
+        REQUIRE(v <  6.001f);   // HEMISPHERE_MAX_CV = 6V plus tiny margin
+        if (v > 0.01f) saw_nonzero = true;
+    }
+    REQUIRE(saw_nonzero);  // at least one nonzero roll out of 100
+}
+
+TEST_CASE("calculate C12: Rnd+ latches to clocked after first Clock(0)", "[calculate]") {
+    auto s = setup_calculate_left();
+    calculate_set_op(s.hi, 6, 6);  // Rnd+ both channels
+    seed_hem_rng(0xCAFEBABE);
+
+    // Step 1: rising edge on Gate(0) latches Rnd+ to clocked mode.
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float v_after_clock = read_cv_at(s.bus, LEFT, 0, 0, 8);
+
+    // Subsequent unclocked steps: output should hold steady.
+    for (int i = 0; i < 5; ++i) {
+        clear_bus(s.bus);
+        // No gate edge written.
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(v_after_clock).margin(0.001f));
+    }
+}

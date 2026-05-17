@@ -106,6 +106,26 @@ public:
         gfxBitmap(x, y, 8, data);
     }
 
+    void gfxDottedLine(int x, int y, int x2, int y2) {
+        graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2, 0xAA);
+    }
+
+    // Phazerville-style header: applet name at top of hemisphere half with a
+    // dotted underline at y=10. Left side aligned to x=1; right side aligned
+    // to the right edge of the 64-px half. Applets reserve y=0..12 in their
+    // View() so the header does not clip content.
+    void gfxHeader(const char* str, int y = 2) {
+        int x = 1;
+        if (hemisphere & 1) {
+            int len = 0; while (str[len]) ++len;
+            x = 62 - len * 6;
+        }
+        gfxPrint(x, y, str);
+        gfxDottedLine(0, y + 8, 62, y + 8);
+    }
+
+    void DrawHeader() { gfxHeader(applet_name()); }
+
     void gfxSkyline() {
         ForEachChannel(ch) {
             int height = ProportionCV(In(ch), 32);

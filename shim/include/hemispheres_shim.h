@@ -182,8 +182,10 @@ struct HemispheresShim {
         if (!alg->started) return false;
         std::memset(NT_screen, 0, 128 * 64);
         HS::gfx_offset = 0;
+        alg->left->DrawHeader();
         alg->left->View();
         HS::gfx_offset = 128;
+        alg->right->DrawHeader();
         alg->right->View();
         HS::gfx_offset = 0;
         return true;

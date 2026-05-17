@@ -13,18 +13,18 @@
 namespace hem_shim {
 
 enum AppletIndex : uint8_t {
-    kAppletEmpty = 0,
-    kAppletLogic,
+    kAppletEmpty = 0,           // sentinel: always index 0 (default selector)
     kAppletAttenuateOffset,
-    kAppletSlew,
-    kAppletCalculate,
     kAppletBurst,
+    kAppletCalculate,
+    kAppletLogic,
+    kAppletSlew,
     kAppletCount
 };
 
 inline const char* const* applet_enum_strings() {
     static const char* const names[kAppletCount] = {
-        "Empty", "Logic", "AttenOff", "Slew", "Calculate", "Burst"
+        "Empty", "AttenOff", "Burst", "Calculate", "Logic", "Slew"
     };
     return names;
 }
@@ -58,11 +58,11 @@ using AppletFactory = HemisphereApplet* (*)(void*);
 inline AppletFactory applet_factory(AppletIndex idx) {
     static const AppletFactory table[kAppletCount] = {
         &make_applet<Empty>,
-        &make_applet<Logic>,
         &make_applet<AttenuateOffset>,
-        &make_applet<Slew>,
-        &make_applet<Calculate>,
         &make_applet<Burst>,
+        &make_applet<Calculate>,
+        &make_applet<Logic>,
+        &make_applet<Slew>,
     };
     return table[idx];
 }

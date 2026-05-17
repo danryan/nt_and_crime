@@ -39,6 +39,19 @@ enum HELP_SECTIONS {
 }
 using namespace HS;
 
+// Mirrors upstream HSUtils::pad. Returns horizontal pixel padding so that
+// right-justified integers line up under a given range (each digit = 6 px).
+inline uint8_t pad(int range, int number) {
+    uint8_t padding = 0;
+    while (range > 1) {
+        int abs_n = number < 0 ? -number : number;
+        if (abs_n < range) padding += 6;
+        range = range / 10;
+    }
+    if (number < 0 && padding > 0) padding -= 6;
+    return padding;
+}
+
 struct PackLocation { size_t location; size_t size; };
 inline void Pack(uint64_t& data, PackLocation p, uint64_t value) {
     data |= (value << p.location);

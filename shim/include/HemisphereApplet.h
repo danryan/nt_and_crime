@@ -74,6 +74,17 @@ public:
         return (int)((long)numerator * max_p / max_n);
     }
 
+    // Bipolar CV modulation of a parameter. Mirrors upstream signature; shim
+    // path uses Proportion only (no SemitoneIn quantizer for small ranges).
+    template <typename T>
+    void Modulate(T& param, const int ch, const int min = 0, const int max = 255) {
+        int increment = Proportion(DetentedIn(ch), HEMISPHERE_MAX_INPUT_CV, max);
+        int v = (int)param + increment;
+        if (v < min) v = min;
+        if (v > max) v = max;
+        param = (T)v;
+    }
+
     void StartADCLag(int ch = 0, int lag = HEMISPHERE_ADC_LAG) {
         HS::frame.adc_lag_countdown[ch + channel_offset()] = lag;
     }

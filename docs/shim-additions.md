@@ -109,6 +109,14 @@ Helpers every Tier 1 applet but Logic needed.
 | `GAUGE_ICON`, `RANDOM_ICON` | `HSicons.h` + `icons.cpp` | DrawSelector shows them for spacing+jitter rows |
 | `PhzIcons::burst` | placeholder | `applet_icon()` |
 
+## Round 3 (Plan C post-hardware AttenuateOffset)
+
+| Change | Why |
+|--------|-----|
+| `memset(ptrs.sram, 0, sizeof(AlgorithmInstance<T>))` before placement-new | Hemisphere applets rely on O_C's pre-zeroed RAM. NT SRAM is uninitialized. Trivial members declared without initializers (e.g., AttenuateOffset's `int offset[2]`) held garbage, producing wildly wrong outputs (stuck at -6V due to garbage clamped to `-HEMISPHERE_MAX_CV`). |
+
+This is a global shim invariant, not a per-applet fix; benefits all current and future applets.
+
 ## Observations
 
 - The C++11 `constrain` polymorphism issue is recurring. Three argument types make it brittle; consider a non-template Arduino-style macro if more applets hit this.

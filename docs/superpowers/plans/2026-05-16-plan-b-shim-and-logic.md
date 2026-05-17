@@ -114,7 +114,7 @@ git commit -m "build: Logic.o target with shim include path"
 - Create: `shim/include/OC_gpio.h`
 - Create: `shim/include/util/util_math.h`
 
-- [ ] **Step 1: Write Arduino.h**
+- [x] **Step 1: Write Arduino.h**
 
 ```cpp
 #pragma once
@@ -135,7 +135,7 @@ inline T constrain(T x, T lo, T hi) {
 #endif
 ```
 
-- [ ] **Step 2: Write OC_gpio.h**
+- [x] **Step 2: Write OC_gpio.h**
 
 ```cpp
 #pragma once
@@ -144,7 +144,7 @@ inline T constrain(T x, T lo, T hi) {
 #define NorthernLightModular 0
 ```
 
-- [ ] **Step 3: Write util/util_math.h**
+- [x] **Step 3: Write util/util_math.h**
 
 ```cpp
 #pragma once
@@ -156,12 +156,12 @@ inline T constrain(T x, T lo, T hi) {
 #endif
 ```
 
-- [ ] **Step 4: Build sanity**
+- [x] **Step 4: Build sanity**
 
 Run: `make arm`
 Expected: still succeeds (Logic.cpp is still a stub).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add shim/include/Arduino.h shim/include/OC_gpio.h shim/include/util/util_math.h

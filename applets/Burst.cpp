@@ -1,4 +1,5 @@
-#include "hem_shim.h"
-#include "Burst.h"
-NT_HEM_PLUGIN(Burst, "HBst", "Hem: Burst",
-              "Phazerville Hemisphere Burst applet")
+#include "HemisphereApplet.h"
+
+// Burst adapter translation unit. Vendor header is included once via
+// HemispheresFactory.h in Hemispheres_main.o. This TU exists as a landing
+// zone for future NT-side glue.

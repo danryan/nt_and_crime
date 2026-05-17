@@ -1,4 +1,5 @@
-#include "hem_shim.h"
-#include "AttenuateOffset.h"
-NT_HEM_PLUGIN(AttenuateOffset, "HAO1", "Hem: Attenuate/Offset",
-              "Phazerville Hemisphere AttenuateOffset applet")
+#include "HemisphereApplet.h"
+
+// AttenuateOffset adapter translation unit. Vendor header is included once
+// via HemispheresFactory.h in Hemispheres_main.o. This TU exists as a
+// landing zone for future NT-side glue.

@@ -29,23 +29,24 @@ inline const char* const* applet_enum_strings() {
     return names;
 }
 
-constexpr size_t kMaxAppletSize = std::max({
-    sizeof(Empty),
-    sizeof(Logic),
-    sizeof(AttenuateOffset),
-    sizeof(Slew),
-    sizeof(Calculate),
-    sizeof(Burst)
-});
+template <typename T>
+constexpr T cmax(T a, T b) { return a > b ? a : b; }
 
-constexpr size_t kMaxAppletAlign = std::max({
-    alignof(Empty),
-    alignof(Logic),
-    alignof(AttenuateOffset),
-    alignof(Slew),
-    alignof(Calculate),
-    alignof(Burst)
-});
+constexpr size_t kMaxAppletSize =
+    cmax(sizeof(Empty),
+    cmax(sizeof(Logic),
+    cmax(sizeof(AttenuateOffset),
+    cmax(sizeof(Slew),
+    cmax(sizeof(Calculate),
+         sizeof(Burst))))));
+
+constexpr size_t kMaxAppletAlign =
+    cmax(alignof(Empty),
+    cmax(alignof(Logic),
+    cmax(alignof(AttenuateOffset),
+    cmax(alignof(Slew),
+    cmax(alignof(Calculate),
+         alignof(Burst))))));
 
 template <class T>
 inline HemisphereApplet* make_applet(void* sram) {

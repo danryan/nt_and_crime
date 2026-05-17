@@ -116,31 +116,25 @@ HEM_APPLET_INCLUDE := -Ivendor/O_C-Phazerville/software/src/applets
 
 SHIM_DEPS := $(wildcard shim/include/*.h) $(wildcard shim/include/*/*.h) $(wildcard shim/src/*.cpp)
 
-build/arm/Logic.o: applets/Logic.cpp $(SHIM_DEPS)
+HEMISPHERES_ADAPTERS := \
+    build/arm/adapters/Logic.o \
+    build/arm/adapters/AttenuateOffset.o \
+    build/arm/adapters/Slew.o \
+    build/arm/adapters/Calculate.o \
+    build/arm/adapters/Burst.o
+
+build/arm/adapters/%.o: applets/%.cpp $(SHIM_DEPS)
+	mkdir -p build/arm/adapters
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+
+build/arm/Hemispheres_main.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
 
-build/arm/AttenuateOffset.o: applets/AttenuateOffset.cpp $(SHIM_DEPS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+build/arm/Hemispheres.o: build/arm/Hemispheres_main.o $(HEMISPHERES_ADAPTERS)
+	arm-none-eabi-ld -r -o $@ $^
 
-build/arm/Slew.o: applets/Slew.cpp $(SHIM_DEPS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
-
-build/arm/Calculate.o: applets/Calculate.cpp $(SHIM_DEPS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
-
-build/arm/Burst.o: applets/Burst.cpp $(SHIM_DEPS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
-
-build/arm/LogicCalculate.o: applets/LogicCalculate.cpp $(SHIM_DEPS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
-
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Logic.o build/arm/AttenuateOffset.o build/arm/Slew.o build/arm/Calculate.o build/arm/Burst.o build/arm/LogicCalculate.o
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Hemispheres.o
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

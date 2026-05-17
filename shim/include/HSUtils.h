@@ -49,6 +49,8 @@ inline int Unpack(const uint64_t& data, PackLocation p) {
     return static_cast<int>((data >> p.location) & mask);
 }
 
+namespace HS {
+
 // Help array — populated by applet's SetHelp, read by debug/help screens.
 extern const char* help_strings[HS::HELP_LABEL_COUNT];
 
@@ -58,3 +60,5 @@ extern int cursor_countdown[HS::APPLET_CURSOR_COUNT];
 // EditMode toggle state per side. Logic uses just LEFT_HEMISPHERE.
 struct EncoderEditor { bool isEditing; };
 extern EncoderEditor enc_edit[HS::APPLET_CURSOR_COUNT];
+
+}  // namespace HS

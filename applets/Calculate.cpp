@@ -1,4 +1,5 @@
-#include "hem_shim.h"
-#include "Calculate.h"
-NT_HEM_PLUGIN(Calculate, "HCal", "Hem: Calculate",
-              "Phazerville Hemisphere Calculate applet")
+#include "HemisphereApplet.h"
+
+// Calculate adapter translation unit. Vendor header is included once via
+// HemispheresFactory.h in Hemispheres_main.o. This TU exists as a landing
+// zone for future NT-side glue.

@@ -121,6 +121,18 @@ public:
         graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2, 0xAA);
     }
 
+    // Mirrors upstream `gfxDottedLine(x, y, x2, y2, p)` (HSUtils.cpp). Vendor
+    // passes p straight to graphics.drawLine as a dash period; the shim
+    // drawLine takes a literal 8-bit pattern, so we translate density to a
+    // sensible bitmask: p=1 solid, p=2 half-on (default), p=3 sparse.
+    void gfxDottedLine(int x, int y, int x2, int y2, uint8_t p) {
+        uint8_t pattern = 0xAA;
+        if (p <= 1) pattern = 0xFF;
+        else if (p == 2) pattern = 0xAA;
+        else pattern = 0x88;
+        graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2, pattern);
+    }
+
     // Phazerville-style header: applet name at top of hemisphere half with a
     // dotted underline at y=10. Left side aligned to x=1; right side aligned
     // to the right edge of the 64-px half. Applets reserve y=0..12 in their

@@ -133,8 +133,15 @@ struct Shim {
         { auto g = read_gate(kParamGateIn2, busFrames, numFrames, v, prev_gate(1));
           HS::frame.clocked[1] = g.rising; HS::frame.gate_high[1] = g.high; }
 
-        OC::CORE::ticks += 1;
-        alg->applet.Controller();
+        // Hemisphere assumes ~16.66kHz Controller calls (60us tick).
+        // NT step ~ numFrames/48kHz; one Controller call per ~3 audio samples
+        // keeps Hemisphere's tick semantics roughly correct.
+        int ticks_this_step = numFrames / 3;
+        if (ticks_this_step < 1) ticks_this_step = 1;
+        for (int i = 0; i < ticks_this_step; ++i) {
+            OC::CORE::ticks += 1;
+            alg->applet.Controller();
+        }
 
         write_frame_to_bus(kParamCvOut1, kParamCvOut1Mode, HS::frame.outputs[0].value,
                           busFrames, numFrames, v);

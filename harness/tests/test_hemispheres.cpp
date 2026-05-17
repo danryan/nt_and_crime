@@ -1,17 +1,13 @@
 #include "catch.hpp"
 #include "nt_runtime.h"
 #include "plugin_loader.h"
+#include "../../shim/include/applet_indices.h"
 #include <distingnt/api.h>
 #include <cstring>
 #include <cmath>
 
-// Applet selector indices (mirrors hem_shim::AppletIndex in
-// shim/include/HemispheresFactory.h). Hard-coded here because that header
-// transitively includes the upstream Hemispheres applet zoo, whose .h files
-// define non-inline free functions and would clash at link time with the
-// strong copies in build/host/Hemispheres.host.o.
-static constexpr int kAppletBrancher  = 2;
-static constexpr int kAppletCalculate = 5;
+using hem_shim::kAppletBrancher;
+using hem_shim::kAppletCalculate;
 
 TEST_CASE("hemispheres factory loads, steps, draws without crash", "[smoke]") {
     nt::reset_runtime();

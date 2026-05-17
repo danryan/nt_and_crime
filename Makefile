@@ -1,5 +1,5 @@
 # nt_and_crime top-level Makefile
-.PHONY: help vendor host arm test test-runtime clean deploy deploy-sysex test-applets
+.PHONY: help vendor host arm test test-runtime clean deploy deploy-sysex
 
 ARM_CXX  := arm-none-eabi-c++
 HOST_CXX := $(shell command -v clang++ >/dev/null 2>&1 && echo clang++ || echo g++)
@@ -21,6 +21,7 @@ help:
 	@echo "make arm      - build all NT plug-ins under build/arm/"
 	@echo "make host     - build host simulator at build/host/sim_gainCustomUI"
 	@echo "make test     - run all scripted scenarios"
+	@echo "make test-applets - run host Catch2 binary for Hemispheres applet logic"
 	@echo "make deploy        - copy build/arm/*.o to DEVICE/programs/plug-ins/ (default DEVICE: /Volumes/NT; NT must be in USB disk mode)"
 	@echo "make deploy-sysex  - push build/arm/Hemispheres.o via USB-MIDI sysex (NT firmware v1.13+, no reboot)"
 	@echo "make clean    - remove build/"
@@ -130,6 +131,7 @@ build/host/test_hemispheres: harness/tests/test_hemispheres.cpp build/host/Hemis
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
 
+.PHONY: test-applets
 test-applets: build/host/test_hemispheres
 	./build/host/test_hemispheres
 

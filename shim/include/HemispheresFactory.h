@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <new>
+#include "applet_indices.h"
 #include "HemisphereApplet.h"
 #include "Empty.h"
 #include "Logic.h"
@@ -19,24 +20,6 @@
 #include "GatedVCA.h"
 
 namespace hem_shim {
-
-enum AppletIndex : uint8_t {
-    kAppletEmpty = 0,           // sentinel: always index 0 (default selector)
-    kAppletAttenuateOffset,
-    kAppletBrancher,
-    kAppletBurst,
-    kAppletButton,
-    kAppletCalculate,
-    kAppletClkToGate,
-    kAppletCompare,
-    kAppletCumulus,
-    kAppletGateDelay,
-    kAppletGatedVCA,
-    kAppletLogic,
-    kAppletSlew,
-    kAppletTLNeuron,
-    kAppletCount
-};
 
 inline const char* const* applet_enum_strings() {
     static const char* const names[kAppletCount] = {

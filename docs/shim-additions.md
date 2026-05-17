@@ -113,9 +113,13 @@ Helpers every Tier 1 applet but Logic needed.
 
 | Change | Why |
 |--------|-----|
-| `memset(ptrs.sram, 0, sizeof(AlgorithmInstance<T>))` before placement-new | Hemisphere applets rely on O_C's pre-zeroed RAM. NT SRAM is uninitialized. Trivial members declared without initializers (e.g., AttenuateOffset's `int offset[2]`) held garbage, producing wildly wrong outputs (stuck at -6V due to garbage clamped to `-HEMISPHERE_MAX_CV`). |
+| `memset(ptrs.sram, 0, sizeof(AlgorithmInstance<T>))` before placement-new | Hemisphere applets rely on O_C's pre-zeroed RAM. NT SRAM is uninitialized. Trivial members declared without initializers (e.g., AttenuateOffset's `int offset[2]`) held garbage, producing wildly wrong outputs. |
+| Routing params renamed: `Gate (ch A/B)`, `CV (ch A/B)`, `Out (ch A/B)` | Old `Gate In 1` / `CV In 1` numbering misled users into thinking the trailing number was a physical NT input number. Channel-letter form makes the channel/input distinction explicit. |
+| Default bus assignments aligned with O_C jack layout: Inputs 1+2 → Gate ch A+B, Inputs 5+6 → CV ch A+B, Outputs 1+2 → Out ch A+B | O_C has 4 trigger inputs (1-4) and 4 CV inputs (5-8). NT mirroring the layout lets users transpose patches by jack number. |
+| `BaseStart()` moved from lazy first-step path into `construct()` | Start() previously ran on first step() — after deserialise restored saved state — wiping the restored fields with defaults. Order is now: construct → Start (defaults) → deserialise (restore overrides) → step. |
+| `deserialise` guards `OnDataReceive` behind `found_hi && found_lo` | NT calls deserialise even for fresh slots with empty JSON. With state=0 the AttenuateOffset unpack-with-bias formula (`Unpack() - 256`) computed offset=-256 (clamped to -72), making a "fresh" slot show offset=-6V. Now empty deserialise leaves the Start() defaults intact. |
 
-This is a global shim invariant, not a per-applet fix; benefits all current and future applets.
+These are global shim invariants; they benefit every current and future applet.
 
 ## Observations
 

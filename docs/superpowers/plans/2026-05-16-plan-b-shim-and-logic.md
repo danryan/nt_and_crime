@@ -1162,7 +1162,7 @@ git commit -m "shim: hem_shim_impl.h aggregates shim cpp sources for single-TU b
 **Files:**
 - Modify: `applets/Logic.cpp`
 
-- [ ] **Step 1: Write the wrapper**
+- [x] **Step 1: Write the wrapper**
 
 ```cpp
 #include "hem_shim.h"
@@ -1171,7 +1171,7 @@ git commit -m "shim: hem_shim_impl.h aggregates shim cpp sources for single-TU b
 NT_HEM_PLUGIN(Logic, "Hl01", "Hem: Logic", "Phazerville Hemisphere Logic applet")
 ```
 
-- [ ] **Step 2: Build Logic.o**
+- [x] **Step 2: Build Logic.o**
 
 Run: `make arm`
 Expected: clean build with no warnings under `-Wall`. Logic.o size in the same ballpark as gainCustomUI.o (5-10 KB).
@@ -1183,7 +1183,7 @@ If errors occur: most likely missing constant, method, or class member. Add the 
 - "frame not declared" → confirm `using namespace HS` is in scope
 - "constrain not declared" → confirm `Arduino.h` was included
 
-- [ ] **Step 3: Confirm Logic.o has the expected NT plug-in symbols**
+- [x] **Step 3: Confirm Logic.o has the expected NT plug-in symbols**
 
 ```bash
 arm-none-eabi-nm build/arm/Logic.o | grep -E "pluginEntry|_hem_factory" | head
@@ -1191,7 +1191,7 @@ arm-none-eabi-nm build/arm/Logic.o | grep -E "pluginEntry|_hem_factory" | head
 
 Expected: pluginEntry as a global symbol, _hem_factory as a local.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add applets/Logic.cpp

@@ -74,6 +74,17 @@ public:
         return (int)((long)numerator * max_p / max_n);
     }
 
+    // Bipolar CV modulation of a parameter. Mirrors upstream signature; shim
+    // path uses Proportion only (no SemitoneIn quantizer for small ranges).
+    template <typename T>
+    void Modulate(T& param, const int ch, const int min = 0, const int max = 255) {
+        int increment = Proportion(DetentedIn(ch), HEMISPHERE_MAX_INPUT_CV, max);
+        int v = (int)param + increment;
+        if (v < min) v = min;
+        if (v > max) v = max;
+        param = (T)v;
+    }
+
     void StartADCLag(int ch = 0, int lag = HEMISPHERE_ADC_LAG) {
         HS::frame.adc_lag_countdown[ch + channel_offset()] = lag;
     }
@@ -87,6 +98,11 @@ public:
     void gfxPrint(int n)                       { graphics.print(n); }
     void gfxPrint(int x, int y, const char* s) { gfxPos(x, y); gfxPrint(s); }
     void gfxPrint(int x, int y, int n)         { gfxPos(x, y); gfxPrint(n); }
+    // Vendor 2-arg form: pad left by (x_adv / 6) spaces, then print number.
+    void gfxPrint(int x_adv, int n) {
+        for (int c = 0; c < (x_adv / 6); c++) gfxPrint(" ");
+        gfxPrint(n);
+    }
 
     void gfxFrame(int x, int y, int w, int h)  { graphics.drawFrame(x + gfx_offset, y, w, h); }
     void gfxRect(int x, int y, int w, int h)   { graphics.drawRect(x + gfx_offset, y, w, h); }
@@ -108,6 +124,18 @@ public:
 
     void gfxDottedLine(int x, int y, int x2, int y2) {
         graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2, 0xAA);
+    }
+
+    // Mirrors upstream `gfxDottedLine(x, y, x2, y2, p)` (HSUtils.cpp). Vendor
+    // passes p straight to graphics.drawLine as a dash period; the shim
+    // drawLine takes a literal 8-bit pattern, so we translate density to a
+    // sensible bitmask: p=1 solid, p=2 half-on (default), p=3 sparse.
+    void gfxDottedLine(int x, int y, int x2, int y2, uint8_t p) {
+        uint8_t pattern = 0xAA;
+        if (p <= 1) pattern = 0xFF;
+        else if (p == 2) pattern = 0xAA;
+        else pattern = 0x88;
+        graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2, pattern);
     }
 
     // Phazerville-style header: applet name at top of hemisphere half with a
@@ -141,6 +169,18 @@ public:
         } else if (CursorBlink()) {
             gfxLine(x, y, x + w - 1, y);
         }
+    }
+
+    // Vendor overload taking label string; shim ignores the label and forwards
+    // to the integer-height form. Some upstream applets call this signature.
+    void gfxCursor(int x, int y, int w, const char* /*str*/, const char* /*extra*/ = nullptr) {
+        gfxCursor(x, y, w, 9);
+    }
+
+    // Mirrors upstream HemisphereApplet::ClockCycleTicks. Returns the recorded
+    // cycle ticks for the given channel. Shim has no clock multiplier.
+    uint32_t ClockCycleTicks(int ch) {
+        return HS::frame.cycle_ticks[ch + channel_offset()];
     }
 
     const char* OutputLabel(int ch) const { return OC::Strings::capital_letters[ch]; }

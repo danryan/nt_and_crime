@@ -319,3 +319,25 @@ TEST_CASE("brancher B3: p=0 always routes gate to output 1", "[brancher]") {
     REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
     REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
 }
+
+TEST_CASE("brancher B5: logical clock (no physical gate) emits ClockOut pulse", "[brancher]") {
+    // Vendor: if (Clock(0)) { clocked = !Gate(0); if (clocked) ClockOut(choice); }
+    // Pulse the gate input for one frame only so a rising edge fires but the
+    // gate is not held high across the buffer. Gate(0) returns false because
+    // last_high is reset before the next read_gate scan. ClockOut emits a brief
+    // pulse (HEMISPHERE_CLOCK_TICKS = 175 ticks).
+    auto s = setup_brancher_left();
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(100));
+    seed_hem_rng(0xDEADBEEF);
+
+    // Single-sample pulse: rising edge fires Clock(0), but last_high resets
+    // before next scan, so Gate(0) reads false. clocked = !Gate(0) = true,
+    // and ClockOut(choice) fires.
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);  // single-sample pulse at frame 0
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    // With p=100, choice rolls to 0. Output 0 receives the ClockOut pulse.
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);
+}

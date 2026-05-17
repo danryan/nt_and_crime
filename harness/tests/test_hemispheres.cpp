@@ -139,3 +139,47 @@ TEST_CASE("calculate C5: SUM clamps at HEMISPHERE_MIN_CV", "[calculate]") {
 
     REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(-6.0f).margin(0.01f));
 }
+
+TEST_CASE("calculate C6: DIFF returns absolute difference", "[calculate]") {
+    auto s = setup_calculate_left();
+    calculate_set_op(s.hi, 3, 3);  // DIFF both channels
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    set_cv(s.bus, LEFT, 1, 3.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.01f));
+
+    // Swap inputs: DIFF is absolute, output stays 2V.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);
+    set_cv(s.bus, LEFT, 1, 1.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.01f));
+}
+
+TEST_CASE("calculate C7: MEAN returns (a+b)/2", "[calculate]") {
+    auto s = setup_calculate_left();
+    calculate_set_op(s.hi, 4, 4);  // MEAN both channels
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    set_cv(s.bus, LEFT, 1, 3.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.01f));
+}
+
+TEST_CASE("calculate C8: both channels read both inputs (asymmetric quirk)", "[calculate]") {
+    // Vendor Calculate.h:82-84 — result = calc_fn[op[ch]](In(0), In(1)).
+    // In(0) and In(1) are shared across channels, NOT per-channel. So
+    // op[0]=MIN + op[1]=MAX with In(0)=1V, In(1)=3V yields Out(0)=1V, Out(1)=3V.
+    auto s = setup_calculate_left();
+    calculate_set_op(s.hi, 0, 1);  // op[0]=MIN, op[1]=MAX
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    set_cv(s.bus, LEFT, 1, 3.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(1.0f).margin(0.01f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(3.0f).margin(0.01f));
+}

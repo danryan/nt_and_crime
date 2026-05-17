@@ -16,6 +16,7 @@ struct IOFrame {
     OutputCell outputs[4];               // 4 outputs (T4.1)
     bool clocked[4]           = { false };
     bool gate_high[4]         = { false };
+    int  clock_countdown[4]   = { 0 };
     bool changed_cv[4]        = { false };
     uint32_t cycle_ticks[4]   = { 0 };
     int  adc_lag_countdown[4] = { -1 };

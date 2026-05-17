@@ -28,10 +28,10 @@ uint32_t hem_rng_state = 0x12345678u;
 #include "HSIOFrame.h"
 HS::IOFrame HS::frame;
 
-void HS::IOFrame::ClockOut(DAC_CHANNEL ch, int) {
-    // Simplest: drive the output high for one Controller tick by setting value high.
-    // The host's bus write picks up the value next time.
+void HS::IOFrame::ClockOut(DAC_CHANNEL ch, int pulselength) {
+    if (pulselength <= 0) pulselength = HEMISPHERE_CLOCK_TICKS;
     outputs[ch].set(PULSE_VOLTAGE * ONE_OCTAVE);
+    clock_countdown[ch] = pulselength;
 }
 
 #include "CVInputMap.h"

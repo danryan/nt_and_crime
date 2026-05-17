@@ -140,6 +140,12 @@ struct Shim {
         if (ticks_this_step < 1) ticks_this_step = 1;
         for (int i = 0; i < ticks_this_step; ++i) {
             OC::CORE::ticks += 1;
+            for (int ch = 0; ch < 4; ++ch) {
+                if (HS::frame.clock_countdown[ch] > 0) {
+                    if (--HS::frame.clock_countdown[ch] == 0)
+                        HS::frame.outputs[ch].set(0);
+                }
+            }
             alg->applet.Controller();
         }
 

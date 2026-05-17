@@ -292,7 +292,7 @@ git commit -m "shim: OC_core.h, OC_DAC.h, OC_ADC.h, HSUtils.h with HEM constants
 - Create: `shim/include/HSicons.h`
 - Create: `shim/include/PhzIcons.h`
 
-- [ ] **Step 1: globals.cpp — single TU defining the externs**
+- [x] **Step 1: globals.cpp — single TU defining the externs**
 
 ```cpp
 #include "HSUtils.h"
@@ -311,7 +311,7 @@ EncoderEditor enc_edit[HS::APPLET_CURSOR_COUNT] = {{ false }};
 }
 ```
 
-- [ ] **Step 2: OC_strings.h**
+- [x] **Step 2: OC_strings.h**
 
 ```cpp
 #pragma once
@@ -334,7 +334,7 @@ const char* const capital_letters[] = { "A", "B", "C", "D", "E", "F", "G", "H" }
 }
 ```
 
-- [ ] **Step 3: HSClockManager.h**
+- [x] **Step 3: HSClockManager.h**
 
 ```cpp
 #pragma once
@@ -357,7 +357,7 @@ Add to `globals.cpp`:
 HSClockManager clock_m;
 ```
 
-- [ ] **Step 4: HSicons.h + PhzIcons.h**
+- [x] **Step 4: HSicons.h + PhzIcons.h**
 
 `shim/include/HSicons.h`:
 
@@ -399,7 +399,7 @@ const uint8_t logic[8] = { 0x3c, 0x42, 0x99, 0xa5, 0xa5, 0x99, 0x42, 0x3c };  //
 
 Engineer note: the upstream `PhzIcons::logic` exact bytes live in `vendor/O_C-Phazerville/software/src/PhzIcons.h`. Copy verbatim, replacing the placeholder. Same for any HS icon Logic uses if the bytes here turn out wrong on hardware.
 
-- [ ] **Step 5: Add globals.cpp + icons.cpp to Makefile**
+- [x] **Step 5: Add globals.cpp + icons.cpp to Makefile**
 
 Update the `Logic.o` rule to include shim cpp:
 
@@ -415,7 +415,7 @@ Note: `Logic.cpp` will `#include` the shim .cpp files indirectly via headers. To
 
 For now, leave the shim .cpp files on disk but don't add them to the compile line. Each applet .cpp will pull them in via the shim header.
 
-- [ ] **Step 6: Build + commit**
+- [x] **Step 6: Build + commit**
 
 Run: `make arm`
 Expected: still passes.

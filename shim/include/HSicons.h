@@ -9,3 +9,7 @@ extern const uint8_t UP_DOWN_ICON[8];
 extern const uint8_t CLOCK_ICON[8];
 extern const uint8_t GAUGE_ICON[8];
 extern const uint8_t RANDOM_ICON[8];
+extern const uint8_t ROTATE_R_ICON[8];
+extern const uint8_t ROTATE_L_ICON[8];
+extern const uint8_t CLOSED_ICON[8];
+extern const uint8_t OPEN_ICON[8];

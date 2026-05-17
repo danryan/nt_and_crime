@@ -1,5 +1,5 @@
 #include "HemisphereApplet.h"
+#include "Slew.h"
 
-// Slew adapter translation unit. Vendor header is included once via
-// HemispheresFactory.h in Hemispheres_main.o. This TU exists as a landing
-// zone for future NT-side glue.
+// Slew adapter translation unit. Per-applet compile isolation via
+// --allow-multiple-definition partial linking.

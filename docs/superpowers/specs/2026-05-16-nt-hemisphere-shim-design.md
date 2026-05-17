@@ -1,12 +1,20 @@
 # Phazerville Hemisphere → disting NT Compatibility Shim — Design
 
 Date: 2026-05-16
-Status: Revision 4 — addresses revision-3 nits, surfaces deployment question
+Status: Revision 5 — post-hardware scope cut on screen parity
 
 ## Open questions for user (resolve before Stage A starts)
 
 1. **NT deployment mechanism.** USB MSC, SD card, or dedicated tool? Spec assumed USB MSC; the first hardware-touching step in Stage A is to confirm this and rewire `make deploy` accordingly. No other infrastructure is built on top of the assumption.
 2. **MIDI control surface for harness UI replay.** The custom-UI parity test wants encoder and button events delivered via MIDI to the NT. Which control-surface mapping does the NT actually expose? If none, the harness needs a different transport (e.g., direct USB-MIDI SysEx commands that simulate UI events). Verify in Stage A.
+
+## Revision-5 changelog (post-hardware discovery)
+
+- **Screen parity dropped from harness gate.** Discovered via hardware testing that NT firmware renders UI chrome (algorithm name, parameter list, routing) around plug-in `draw()` output when the plug-in returns `false`. Reproducing that chrome in the simulator is huge scope creep for marginal value. The shim's real correctness contract is audio/params/UI events; screen output is for visual debugging of Hem applet draws during shim dev and is validated by eyeball on hardware, not byte-faithful diff.
+- **Screen capture moved to firmware SysEx.** NT firmware exposes `takeScreenshot` SysEx command (`F0 00 21 27 6D <id> 0x01 F7`) that returns a 16384-byte (1 pixel per byte, 4-bit grayscale) screenshot. Wrapper: `harness/scripts/nt_screenshot.py`. Replaces all of: co-loaded `screen_dump.cpp`, source-rewrite Plan B, custom font_dump capture, font verification.
+- **`screen_dump.cpp`, `font_dump.cpp`, `shim/include/hem_dump_helper.h` removed from the repo.** ARM build target now produces only `gainCustomUI.o`, `gain.o`, `bus_probe.o`.
+- **Hardware findings recorded**: 1.0f on output bus = 1.0V (linearity within 1.3% scope precision); input bus 1 writable from plug-in observable via consumer algo; NT firmware reserves USB MIDI for its own command protocol — plug-in `NT_sendMidiSysEx` to USB shows up as malformed MIDI on host. Plug-in-driven outbound SysEx is not a viable path; firmware-provided commands are.
+- **Stage A simplified**: bus_probe verifies routing + CV scaling; firmware screenshot verifies inbound+outbound SysEx round-trip; no co-loading or screen_dump infrastructure needed.
 
 ## Revision-4 changelog
 
@@ -372,7 +380,18 @@ The large-font case is the only one that approaches SysEx-buffer limits. Stage A
 
 Done once per NT firmware revision and cached in `tests/reference/nt_fonts/`.
 
-### Hardware screen capture
+### Hardware screen capture (revised in rev-5)
+
+**Use the NT firmware's built-in `takeScreenshot` SysEx command.** No co-loaded plug-in, no source rewrite.
+
+- Request: `F0 00 21 27 6D <sysex_id_7bit> 0x01 F7`
+- Response: `F0 00 21 27 6D <sysex_id> 0x33 <16385 bytes> F7` (first 16384 are pixel data, 1 byte per pixel, 4-bit grayscale 0..15, row-major 256×64; trailing byte ignored per nt_helper convention)
+
+Python wrapper: `harness/scripts/nt_screenshot.py [--pgm PATH] [--out PATH]` produces raw bytes and/or a P5 PGM for human eyeballing.
+
+This is used during shim development to visually compare a Hem applet's draws on hardware against the simulator's prediction. It is NOT used as a byte-faithful gate — see "Risks and abort points" for the scope cut rationale.
+
+### Hardware screen capture (legacy plan, rev-4 and earlier)
 
 For the harness-validation gate (and any future regression checks), `NT_screen` is captured from hardware via a co-loaded SysEx debug plug-in `screen_dump.cpp`. The mechanism has known fragility around frame-cycle timing; the design below pins the assumptions explicitly and Stage A verifies each one before committing to the approach.
 
@@ -454,7 +473,11 @@ Top-level Makefile.
 
 Compiler flags are the brief's flags verbatim for `arm`. Host build uses `-std=c++11 -fno-rtti -fno-exceptions -Wall -O2`, no Cortex-specific flags. Both targets pre-define `NT_HEM_HOST_SIM=1` or `NT_HEM_HARDWARE=1` so the shim can branch on calibration constants where the converter's true behaviour differs from the simulator (e.g. LSB quantisation).
 
-## Risks and abort points
+## Risks and abort points (revised in rev-5)
+
+**Screen parity risk DELETED in rev-5.** The gate no longer requires byte-faithful screen output. Shim screen output is debugged by eyeball using firmware screenshots; simulator's NT_drawText / NT_drawShapeF use a placeholder font and rasteriser that need only "look right enough," not match bit-for-bit. If hardware behavior diverges from sim in ways that confuse shim development, that's a normal debugging signal; not an A1 abort condition.
+
+## Risks and abort points (legacy)
 
 **A1 (harness parity unreachable).** Two failure modes:
 

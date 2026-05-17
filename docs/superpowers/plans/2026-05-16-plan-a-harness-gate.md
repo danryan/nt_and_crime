@@ -2,13 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the host simulator, the hardware capture infrastructure, and validate bit-faithful parity between simulator and disting NT hardware for `examples/gainCustomUI.cpp` and `examples/gain.cpp`. This is the blocking gate from the spec; no shim work begins until it passes.
+**Goal:** Build the host simulator, the hardware capture infrastructure, and validate parity between simulator and disting NT hardware for `examples/gainCustomUI.cpp` and `examples/gain.cpp` on the paths with real correctness implications (audio, parameters, UI events). This is the blocking gate from the spec; no shim work begins until it passes.
 
-**Architecture:** Two compilation targets sharing one source tree. Host simulator (`harness/`) is a native binary that implements the NT API surface enough to run reference plug-ins from source. Hardware plug-ins are built with `arm-none-eabi-c++` and deployed to the NT. Three Stage-A helper plug-ins (`bus_probe`, `screen_dump`, `font_dump`) capture ground truth from the live module. The simulator is then iterated until it matches hardware bit-for-bit on audio, screen, and parameter-change paths.
+**Architecture:** Two compilation targets sharing one source tree. Host simulator (`harness/`) is a native binary that implements the NT API surface enough to run reference plug-ins from source. Hardware plug-ins are built with `arm-none-eabi-c++` and deployed to the NT. One Stage-A helper plug-in (`bus_probe`) verifies bus routing and CV scaling; screen capture uses the NT firmware's built-in SysEx `takeScreenshot` command (`F0 00 21 27 6D <id> 0x01 F7`), not a custom plug-in. The simulator is iterated until it matches hardware on the audio, params, and UI-event paths.
 
-**Tech Stack:** C++11, `arm-none-eabi-c++` (hardware), host clang/g++, GNU Make, Catch2 v3 single-header (host tests), Python 3 (scenario driver + diff util), git submodules (vendor pinning).
+**Tech Stack:** C++11/C++14, `arm-none-eabi-c++` (hardware), host clang/g++, GNU Make, Catch2 v3 single-header (host tests), Python 3 + mido + python-rtmidi (scenario driver, diff util, SysEx round-trip), git submodules (vendor pinning).
 
 **Plan decomposition note.** This is Plan A of three. Plan B (shim core + Tier 1 applets) and Plan C (Tier 2 applets) follow after Plan A executes. The spec's "Open questions for user" (NT deployment mechanism, MIDI control-surface mapping) are resolved during Stage A.5; the answers feed back into Plan B.
+
+**Revision-3 changelog (post-hardware-discovery):**
+
+- **Major scope cut: screen parity dropped from the harness gate.** Rationale: NT firmware renders chrome (algorithm name, parameter list, routing) around plug-in draws when draw() returns false. Reproducing NT firmware's UI chrome in the simulator is huge scope creep for marginal benefit. The shim's real correctness contract is audio/params/UI events; screen output is for debugging Hem applet draws during shim dev and is validated by eyeball on hardware, not byte-faithful diff.
+- **Tasks dropped**: 21 (slot-order draw), 22 (Plan B instrumenter), 23 (font capture), 23b (font verification), 26 (screen parity).
+- **Tasks kept and reframed**: 25 (audio parity), 27 (UI events parity), 28 (gain.cpp audio).
+- **screen_dump.cpp + font_dump.cpp + shim/include/hem_dump_helper.h removed from the repo**: replaced by `harness/scripts/nt_screenshot.py`, a wrapper around the firmware's `takeScreenshot` SysEx command. PGM output for human eyeballing during shim dev.
+- Findings recorded in `tests/reference/cv_scaling.txt` (Task 19 + Task 24 done): 1.0f on output bus = 1.0V, linearity within 1.3% (scope precision), input bus 1 verified via consumer algo. Aux buses skipped (not on Tier 1/2 critical path).
 
 **Revision-2 changelog (post-review):**
 
@@ -1369,7 +1377,13 @@ git commit -m "feat(applets): bus_probe.cpp for Stage A bus enumeration"
 
 ---
 
-### Task 16: hem_dump_helper.h and screen_dump.cpp
+### Task 16: ~~hem_dump_helper.h and screen_dump.cpp~~ (DROPPED, see rev-3 changelog)
+
+Originally a co-loaded plug-in to capture NT_screen via SysEx. Replaced by `harness/scripts/nt_screenshot.py` which invokes the NT firmware's built-in `takeScreenshot` SysEx command (`F0 00 21 27 6D 00 01 F7` → 16384-byte pixel response). Implementation removed; this task entry kept for traceability only.
+
+**Files removed in rev-3:** `applets/screen_dump.cpp`, `shim/include/hem_dump_helper.h`.
+
+Original task body retained below for historical reference; no action required.
 
 **Files:**
 
@@ -1502,7 +1516,15 @@ git commit -m "feat(applets): screen_dump.cpp + hem_dump_helper.h"
 
 ---
 
-### Task 17: font_dump.cpp
+### Task 17: ~~font_dump.cpp~~ (DROPPED, see rev-3 changelog)
+
+Originally captured 95 ASCII glyphs × 3 font sizes via screen_dump SysEx for the simulator's NT_drawText. Dropped because (a) simulator NT_drawText doesn't need to be byte-faithful for shim correctness — Hem applet draws are eyeball-validated on hardware; (b) the simulator can use the OC weegfx 6×8 font (vendored in `vendor/O_C-Phazerville/software/src/src/drivers/weegfx.cpp`) as a known-good placeholder for the normal font size. Tiny and large fonts are not used by Tier 1/2 applets.
+
+**Files removed in rev-3:** `applets/font_dump.cpp`.
+
+Original task body retained below for historical reference; no action required.
+
+### Task 17: font_dump.cpp (original spec)
 
 **Files:**
 
@@ -1735,7 +1757,13 @@ If `kNT_lastBus == 64` does not match observed accessible buses, raise this as a
 
 ---
 
-### Task 20: Stage A.2 — Verify screen_dump round-trip integrity
+### Task 20: ~~Verify screen_dump round-trip integrity~~ (DROPPED, see rev-3 changelog)
+
+Verified-in-spirit by hardware test of NT firmware's built-in `takeScreenshot` SysEx via `harness/scripts/nt_screenshot.py`: round-trip works, returns 16385-byte payload (first 16384 = pixel data, last byte ignored per nt_helper convention). No co-loaded plug-in needed.
+
+Original task body retained below for historical reference; no action required.
+
+### Task 20: Stage A.2 — Verify screen_dump round-trip integrity (original spec)
 
 **Depends on:** Task 16 (`screen_dump.o` built), Task 18a (deploy mechanism confirmed), Task 19 (deploy + load mechanics validated via `bus_probe`).
 
@@ -1753,7 +1781,13 @@ git commit -m "test(reference): SysEx roundtrip integrity verified"
 
 ---
 
-### Task 21: Stage A.3 — Verify slot-order draw
+### Task 21: ~~Verify slot-order draw~~ (DROPPED, see rev-3 changelog)
+
+Was relevant only when screen capture relied on a co-loaded screen_dump plug-in observing another slot's NT_screen writes. Firmware `takeScreenshot` SysEx captures the final composited screen directly, including chrome, so slot ordering is irrelevant. No action required.
+
+Original task body retained below for historical reference; no action required.
+
+### Task 21: Stage A.3 — Verify slot-order draw (original spec)
 
 **Depends on:** Tasks 19 and 20 both passed.
 
@@ -1772,7 +1806,13 @@ git commit -m "test(reference): slot-order draw verified"
 
 ---
 
-### Task 22 (conditional): Stage A.3-Plan-B — Instrumented reference plug-in
+### Task 22: ~~Plan-B instrumented reference plug-in~~ (DROPPED, see rev-3 changelog)
+
+Was conditional on Task 21 failing. Both moot now. No action required.
+
+Original task body retained below for historical reference; no action required.
+
+### Task 22 (conditional): Stage A.3-Plan-B — Instrumented reference plug-in (original spec)
 
 Only execute if Task 21 fails.
 
@@ -1823,7 +1863,13 @@ If Plan B also fails, **abort A1**.
 
 ---
 
-### Task 23: Stage A.4 — Capture firmware font tables
+### Task 23: ~~Capture firmware font tables~~ (DROPPED, see rev-3 changelog)
+
+Simulator NT_drawText does not need byte-faithful glyphs for shim correctness. The vendored OC weegfx 6×8 font is the placeholder; visual mismatches with NT firmware's font are tolerated and eyeball-confirmed during shim development. No action required.
+
+Original task body retained below for historical reference; no action required.
+
+### Task 23: Stage A.4 — Capture firmware font tables (original spec)
 
 **Depends on:** Task 17 (`font_dump.o` built), Task 20 (SysEx roundtrip), Task 21 or Task 22 (capture path).
 
@@ -1842,7 +1888,13 @@ git commit -m "feat(harness): replace placeholder font with hardware-captured gl
 
 ---
 
-### Task 23b: Font verification (isolation test before Stage B)
+### Task 23b: ~~Font verification~~ (DROPPED, see rev-3 changelog)
+
+Was the byte-faithful isolation test for captured font glyphs. Moot with screen parity dropped. No action required.
+
+Original task body retained below for historical reference; no action required.
+
+### Task 23b: Font verification (original spec)
 
 **Depends on:** Task 23 complete.
 
@@ -1969,7 +2021,13 @@ git commit -m "test(gainCustomUI): sine_50pct audio parity within 1 LSB"
 
 ---
 
-### Task 26: Screen path parity
+### Task 26: ~~Screen path parity~~ (DROPPED, see rev-3 changelog)
+
+Byte-faithful screen parity between simulator and hardware is no longer a harness gate requirement. `nt_screenshot.py` remains as a development tool for eyeballing simulator vs hardware visuals during shim work, but no scripted diff. No action required.
+
+Original task body retained below for historical reference; no action required.
+
+### Task 26: Screen path parity (original spec)
 
 **Depends on:** Task 23b (font verified in isolation), Task 25 (audio parity working).
 
@@ -2036,22 +2094,24 @@ git commit -m "test(gain): audio parity across three signal levels"
 
 ---
 
-## Done criteria for Plan A
+## Done criteria for Plan A (revised in rev-3)
 
 All of the following hold:
 
-- `./bootstrap.sh && make arm && make host && make test` exits zero from a clean clone.
-- Task 18a confirmed the deploy mechanism; `make deploy` works.
-- All Stage A.5 hardware verifications complete with recorded results in `tests/reference/`:
-  - `tests/reference/bus_map.txt` (Task 19)
-  - `tests/reference/sysex_roundtrip.log` (Task 20)
-  - `tests/reference/slot_order_check.txt` (Task 21)
-  - `tests/reference/nt_fonts/{tiny,normal,large}.bin` (Task 23)
-  - `tests/reference/cv_scaling.txt` (Task 24, with three bus ranges probed)
-- Task 23b font verification passes byte-faithfully across all 285 glyphs (95 × 3 sizes).
-- Stage B and Stage C scenarios pass with zero divergence (screen, params) and ±1 LSB tolerance (audio).
-- Open Question 1 (deployment mechanism) and Open Question 2 (UI event transport) have concrete answers documented in `docs/hardware-notes.md`.
-- No `*placeholder*.cpp` files remain in `harness/src/`.
+- `./bootstrap.sh && make arm && make host && make test` exits zero from a clean clone. ✓
+- Task 18a confirmed the deploy mechanism (USB MSC via Misc → Enter USB disk mode, plus the much faster nt_helper SysEx upload path). ✓
+- `tests/reference/cv_scaling.txt` records 1.0f on output bus = 1.0V, linearity, and input-bus consumer test. ✓
+- Stage B and Stage C scenarios pass with ±1 LSB tolerance on audio and bit-faithfulness on parameter-change logs.
+- Open Question 1 (deployment) answered in `docs/hardware-deploy.md`. ✓
+- Open Question 2 (UI event transport) — verify on first Stage C UI run or document a SysEx-based stand-in if NT lacks a control-surface mapping.
+- `harness/scripts/nt_screenshot.py` works as a development tool for visual sanity checks of the simulator vs hardware. ✓
+
+Dropped per rev-3 scope cut (no longer required):
+
+- Byte-faithful screen parity between simulator and hardware.
+- Captured firmware font tables.
+- Slot-order draw verification.
+- Plan-B instrumented reference plug-in.
 
 When Plan A is done, signal readiness for Plan B (shim core + Tier 1 applets).
 

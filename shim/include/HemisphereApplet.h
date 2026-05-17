@@ -46,11 +46,12 @@ public:
     }
 
     // I/O
-    int  In(int ch)        { return cvmap[ch].In(); }
-    int  ViewIn(int ch) const { return HS::frame.inputs[ch]; }
-    int  ViewOut(int ch) const { return HS::frame.ViewOut(ch); }
-    bool Clock(int ch, bool = false) { return HS::frame.clocked[ch]; }
-    bool Gate(int ch)      { return trigmap[ch].Gate(); }
+    int  channel_offset() const { return hemisphere * 2; }
+    int  In(int ch)        { return cvmap[ch + channel_offset()].In(); }
+    int  ViewIn(int ch) const { return HS::frame.inputs[ch + channel_offset()]; }
+    int  ViewOut(int ch) const { return HS::frame.ViewOut(ch + channel_offset()); }
+    bool Clock(int ch, bool = false) { return HS::frame.clocked[ch + channel_offset()]; }
+    bool Gate(int ch)      { return trigmap[ch + channel_offset()].Gate(); }
     int  DetentedIn(int ch) {
         int v = In(ch);
         if (v > HEMISPHERE_CENTER_DETENT) return v;
@@ -58,8 +59,8 @@ public:
         return 0;
     }
 
-    void Out(int ch, int value)         { HS::frame.Out((DAC_CHANNEL)(ch), value); }
-    void ClockOut(int ch, int ticks = HEMISPHERE_CLOCK_TICKS) { HS::frame.ClockOut((DAC_CHANNEL)(ch), ticks); }
+    void Out(int ch, int value)         { HS::frame.Out((DAC_CHANNEL)(ch + channel_offset()), value); }
+    void ClockOut(int ch, int ticks = HEMISPHERE_CLOCK_TICKS) { HS::frame.ClockOut((DAC_CHANNEL)(ch + channel_offset()), ticks); }
     void GateOut(int ch, bool high)     { Out(ch, high ? (PULSE_VOLTAGE * ONE_OCTAVE) : 0); }
 
     int  ProportionCV(int cv, int max_pixels, int max_cv = HEMISPHERE_MAX_CV) const {
@@ -73,10 +74,10 @@ public:
     }
 
     void StartADCLag(int ch = 0, int lag = HEMISPHERE_ADC_LAG) {
-        HS::frame.adc_lag_countdown[ch] = lag;
+        HS::frame.adc_lag_countdown[ch + channel_offset()] = lag;
     }
     bool EndOfADCLag(int ch = 0) {
-        return (--HS::frame.adc_lag_countdown[ch] == 0);
+        return (--HS::frame.adc_lag_countdown[ch + channel_offset()] == 0);
     }
 
     // gfx wrappers — all draw to the shim's graphics global, with offsets honored.

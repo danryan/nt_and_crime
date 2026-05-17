@@ -27,7 +27,7 @@ using simfloat = int32_t;
 #define io_offset 0                                             // shim's frame indexes from 0
 
 namespace HS {
-enum HEM_SIDE : uint8_t { LEFT_HEMISPHERE = 0, APPLET_CURSOR_COUNT };
+enum HEM_SIDE : uint8_t { LEFT_HEMISPHERE = 0, RIGHT_HEMISPHERE, APPLET_CURSOR_COUNT };
 enum HELP_SECTIONS {
     HELP_DIGITAL1 = 0, HELP_DIGITAL2,
     HELP_CV1, HELP_CV2,

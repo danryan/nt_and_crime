@@ -112,7 +112,7 @@ Stepping.
 
 Unit conversion.
 
-- `int volts_to_int(float v)`: float volts to vendor int (linear, anchored on `HEMISPHERE_MAX_CV` = 7680 = 5V per vendor convention).
+- `int volts_to_int(float v)`: float volts to vendor int. Scaling is `ONE_OCTAVE = 1536` hem units per volt. `HEMISPHERE_MAX_CV` = 6 octaves * 1536 = 9216 = 6V. Returns `(int)(v * 1536.0f)`.
 - `float int_to_volts(int v)`: inverse.
 
 RNG.

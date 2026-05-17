@@ -14,6 +14,7 @@
 #include "Button.h"
 #include "ClkToGate.h"
 #include "Compare.h"
+#include "Cumulus.h"
 #include "GateDelay.h"
 
 namespace hem_shim {
@@ -27,6 +28,7 @@ enum AppletIndex : uint8_t {
     kAppletCalculate,
     kAppletClkToGate,
     kAppletCompare,
+    kAppletCumulus,
     kAppletGateDelay,
     kAppletLogic,
     kAppletSlew,
@@ -36,7 +38,7 @@ enum AppletIndex : uint8_t {
 
 inline const char* const* applet_enum_strings() {
     static const char* const names[kAppletCount] = {
-        "Empty", "AttenOff", "Brancher", "Burst", "Button2", "Calculate", "Clk2Gate", "Compare", "GateDelay", "Logic", "Slew", "TLNeuron"
+        "Empty", "AttenOff", "Brancher", "Burst", "Button2", "Calculate", "Clk2Gate", "Compare", "Cumulus", "GateDelay", "Logic", "Slew", "TLNeuron"
     };
     return names;
 }
@@ -68,7 +70,8 @@ constexpr size_t kMaxAppletSize =
     cmax(sizeof(Button),
     cmax(sizeof(ClkToGate),
     cmax(sizeof(Compare),
-         sizeof(Burst))))))))))));
+    cmax(sizeof(Cumulus),
+         sizeof(Burst)))))))))))));
 
 constexpr size_t kMaxAppletAlign =
     cmax(alignof(Empty),
@@ -82,7 +85,8 @@ constexpr size_t kMaxAppletAlign =
     cmax(alignof(Button),
     cmax(alignof(ClkToGate),
     cmax(alignof(Compare),
-         alignof(Burst))))))))))));
+    cmax(alignof(Cumulus),
+         alignof(Burst)))))))))))));
 
 template <class T>
 inline HemisphereApplet* make_applet(void* sram) {
@@ -101,6 +105,7 @@ inline AppletFactory applet_factory(AppletIndex idx) {
         &make_applet<Calculate>,
         &make_applet<ClkToGate>,
         &make_applet<Compare>,
+        &make_applet<Cumulus>,
         &make_applet<GateDelay>,
         &make_applet<Logic>,
         &make_applet<Slew>,

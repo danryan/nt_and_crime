@@ -15,13 +15,8 @@ inline void set_pixel(int x, int y, int colour) {
     NT_screen[byte_index] = (uint8_t)((NT_screen[byte_index] & ~mask) | shifted);
 }
 
-// Minimal 6x8 placeholder font: every printable glyph is a solid 6x8 block.
-// Replace with the OC weegfx font when visual accuracy is needed (Plan C).
-const uint8_t* glyph_for(char c) {
-    static const uint8_t solid[6] = { 0x7e, 0x7e, 0x7e, 0x7e, 0x7e, 0x7e };
-    static const uint8_t blank[6] = { 0, 0, 0, 0, 0, 0 };
-    return (c < 32 || c > 126) ? blank : solid;
-}
+constexpr int kCharAdvance = 6;
+constexpr int kCharBaselineOffset = 7;
 
 }  // anonymous namespace
 
@@ -29,18 +24,10 @@ namespace shim {
 
 void Graphics::print(const char* s) {
     if (!s) return;
-    int cx = print_x;
-    for (; *s; ++s) {
-        const uint8_t* g = glyph_for(*s);
-        for (int col = 0; col < 6; ++col) {
-            uint8_t bits = g[col];
-            for (int row = 0; row < 8; ++row) {
-                if (bits & (1u << row)) set_pixel(cx + col, print_y + row, 15);
-            }
-        }
-        cx += 6;
-    }
-    print_x = cx;
+    NT_drawText(print_x, print_y + kCharBaselineOffset, s, 15, kNT_textLeft, kNT_textNormal);
+    int len = 0;
+    while (s[len]) ++len;
+    print_x += len * kCharAdvance;
 }
 
 void Graphics::print(int n) {

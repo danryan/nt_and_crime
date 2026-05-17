@@ -14,7 +14,7 @@ class DigitalInputMap {
 public:
     int channel;
     explicit DigitalInputMap(int ch = 0) : channel(ch) {}
-    bool Gate() const { return HS::frame.clocked[channel]; }
+    bool Gate() const { return HS::frame.gate_high[channel]; }
 };
 
 extern DigitalInputMap trigmap[4];

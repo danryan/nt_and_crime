@@ -24,12 +24,14 @@ enum {
 
 inline const _NT_parameter* shim_parameters() {
     static const _NT_parameter params[] = {
-        NT_PARAMETER_CV_INPUT("Gate In 1", 0, 3)
-        NT_PARAMETER_CV_INPUT("Gate In 2", 0, 4)
-        NT_PARAMETER_CV_INPUT("CV In 1",   0, 1)
-        NT_PARAMETER_CV_INPUT("CV In 2",   0, 2)
-        NT_PARAMETER_CV_OUTPUT_WITH_MODE("CV Out 1", 0, 15)
-        NT_PARAMETER_CV_OUTPUT_WITH_MODE("CV Out 2", 0, 16)
+        NT_PARAMETER_CV_INPUT("Gate In 1", 0, 1)
+        NT_PARAMETER_CV_INPUT("Gate In 2", 0, 2)
+        NT_PARAMETER_CV_INPUT("CV In 1",   0, 3)
+        NT_PARAMETER_CV_INPUT("CV In 2",   0, 4)
+        NT_PARAMETER_IO("CV Out 1", 0, 13, kNT_unitCvOutput)
+        { .name = "CV Out 1 mode", .min = 0, .max = 1, .def = 1, .unit = kNT_unitOutputMode, .scaling = 0, .enumStrings = NULL },
+        NT_PARAMETER_IO("CV Out 2", 0, 14, kNT_unitCvOutput)
+        { .name = "CV Out 2 mode", .min = 0, .max = 1, .def = 1, .unit = kNT_unitOutputMode, .scaling = 0, .enumStrings = NULL },
     };
     return params;
 }
@@ -80,20 +82,21 @@ struct Shim {
         *dst = (int)(mean * 1536.0f);
     }
 
-    static bool read_gate(int bus_param, float* busFrames, int numFrames, const int16_t* v,
-                          bool& prev_high) {
+    struct GateRead { bool rising; bool high; };
+    static GateRead read_gate(int bus_param, float* busFrames, int numFrames, const int16_t* v,
+                              bool& prev_high) {
         int bus = v[bus_param];
-        if (bus <= 0) { prev_high = false; return false; }
+        if (bus <= 0) { prev_high = false; return { false, false }; }
         const float* src = busFrames + (bus - 1) * numFrames;
-        bool any_high = false;
         bool rising = false;
+        bool last_high = prev_high;
         for (int i = 0; i < numFrames; ++i) {
-            bool high = (src[i] > 1.0f);
-            if (high && !prev_high) rising = true;
-            prev_high = high;
-            any_high = any_high || high;
+            bool high = (src[i] > 0.5f);
+            if (high && !last_high) rising = true;
+            last_high = high;
         }
-        return rising;
+        prev_high = last_high;
+        return { rising, last_high };
     }
 
     static void write_frame_to_bus(int bus_param, int mode_param, int value_hem,
@@ -122,8 +125,10 @@ struct Shim {
 
         copy_bus_to_frame(kParamCvIn1, &HS::frame.inputs[0], busFrames, numFrames, v);
         copy_bus_to_frame(kParamCvIn2, &HS::frame.inputs[1], busFrames, numFrames, v);
-        HS::frame.clocked[0] = read_gate(kParamGateIn1, busFrames, numFrames, v, prev_gate(0));
-        HS::frame.clocked[1] = read_gate(kParamGateIn2, busFrames, numFrames, v, prev_gate(1));
+        { auto g = read_gate(kParamGateIn1, busFrames, numFrames, v, prev_gate(0));
+          HS::frame.clocked[0] = g.rising; HS::frame.gate_high[0] = g.high; }
+        { auto g = read_gate(kParamGateIn2, busFrames, numFrames, v, prev_gate(1));
+          HS::frame.clocked[1] = g.rising; HS::frame.gate_high[1] = g.high; }
 
         if (!alg->started) {
             alg->applet.BaseStart(HS::LEFT_HEMISPHERE);

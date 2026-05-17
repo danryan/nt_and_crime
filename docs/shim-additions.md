@@ -209,6 +209,20 @@ Loading multiple `Hemispheres` slots in the same preset still defaults all insta
 - `PhzIcons::*` is a stable extension point. Each applet just needs one new placeholder. Could autogenerate from a list, or accept that adding a new placeholder is the marginal cost of a new applet.
 - No applet so far has required `gfxHeader`, `gfxBitmap` with non-8 heights, or any Phazerville `HSApplication`-derived behavior. If a Tier 2 applet needs these, the shim grows again.
 
+### TODO: NT-wide quadrants mode (4 applets per slot)
+
+NT screen is 256x64, twice the width of the O_C 128x64 that Phazerville targets. Hemispheres uses two halves (left 0..127, right 128..255). The remaining width opens up a "quadrants" variant: 4 applets per slot at 64 px each (matching O_C native applet width).
+
+Sketch:
+
+- `QuadrantsShim` mirroring `HemispheresShim` with four selectors (Slot A/B/C/D) and 32 routing params (gate + CV + out + mode per side x 4).
+- `gfx_offset` advances 0 -> 64 -> 128 -> 192 between `View()` calls. `channel_offset()` becomes `hemisphere * 2` for sides 0..3 (channels A/B/C/D/E/F/G/H mapped via NT inputs 1..8 if scaled, or constrained to first 4 channels).
+- I/O budget: NT has 12 buses (inputs + outputs). 4 applets x 2 channels each = 8 in + 8 out = within budget.
+- UX: encoder mapping unclear with 4 applets and only 2 encoders. Possible: L encoder = "active slot" cursor, R encoder = value; or hold-modifier; or per-slot button mapping using `kNT_button1..4`.
+- `gfxHeader` already side-aware via `hemisphere & 1`. Generalise to `hemisphere & 3` and pick left/right alignment per slot. Or simplify: left-align all.
+
+Out of scope for Plan F. Not blocking. Document here so the option is not forgotten.
+
 ## Files touched cumulatively
 
 ```

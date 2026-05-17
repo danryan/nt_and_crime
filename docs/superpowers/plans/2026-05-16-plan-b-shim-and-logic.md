@@ -549,7 +549,7 @@ git commit -m "shim: HSIOFrame.h + CVInputMap.h + DigitalInputMap"
 
 OC's `graphics` object is an instance of `weegfx::Graphics`. Hemisphere calls these methods: `setPrintPos`, `print(int)`, `print(const char*)`, `printf(...)`, `drawFrame`, `drawRect`, `invertRect`, `clearRect`, `drawLine`, `drawCircle`, `drawBitmap8`, `setPixel`, `getPrintPosX/Y`. Logic uses only a subset: `drawFrame`, `drawBitmap8`, `setPrintPos`, `print(const char*)`. But for Tier 1 we'll need the full set, so build them all now.
 
-- [ ] **Step 1: hem_graphics.h**
+- [x] **Step 1: hem_graphics.h**
 
 ```cpp
 #pragma once
@@ -585,7 +585,7 @@ private:
 extern shim::Graphics graphics;
 ```
 
-- [ ] **Step 2: graphics.cpp**
+- [x] **Step 2: graphics.cpp**
 
 Pixel writes go into `NT_screen` (256×64, 4-bit packed). Use the same set_pixel pattern as harness/src/nt_runtime.cpp:
 
@@ -718,7 +718,7 @@ void Graphics::drawBitmap8(int x, int y, int w, const uint8_t* data) {
 }  // namespace shim
 ```
 
-- [ ] **Step 3: Build + commit**
+- [x] **Step 3: Build + commit**
 
 Run: `make arm`
 Expected: still passes (graphics.cpp not yet linked into Logic.o; we'll wire that in Task 9).

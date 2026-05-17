@@ -65,6 +65,7 @@ struct Shim {
 
     static _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs,
                                     const _NT_algorithmRequirements&, const int32_t*) {
+        std::memset(ptrs.sram, 0, sizeof(AlgorithmInstance<T>));
         auto* alg = new (ptrs.sram) AlgorithmInstance<T>();
         alg->parameters     = shim_parameters();
         alg->parameterPages = shim_parameter_pages();

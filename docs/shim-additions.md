@@ -169,12 +169,59 @@ One NT slot hosts two applets side-by-side, replicating Phazerville O_C left/rig
 
 Loading multiple shim plug-ins (single or pair) in the same NT preset means all instances default to the same input/output buses. The user must re-route each slot. Pair plug-ins reduce the problem (one slot = two applets) but do not eliminate it for presets that combine multiple shim slots.
 
+## Round 6 (Plan F runtime applet selector)
+
+Replaces all per-applet plug-ins and the LogicCalculate pair canary with a single `Hemispheres` plug-in (GUID `hemi`). Two applet selectors (Left, Right) exposed as enum parameters drive live swap at runtime.
+
+| Change | Why |
+|--------|-----|
+| Single plug-in `Hemispheres` replaces `Hl01`, `HAO1`, `HSlw`, `HCal`, `HBst`, `HpLC` | One binary serves all five applets in any pair combination plus single-side-Empty. Drops menu clutter and binary count. |
+| Applet selection via parameters, not NT specifications | Specs are add-time only. Parameters let user swap applets without removing + re-adding slot. Preserves UX of live exploration. |
+| Empty applet as default + sentinel | Default both sides = Empty. Zero CPU until user picks. Screen shows "Pick applet" hint per side, self-documenting onboarding. |
+| Polymorphic `HemisphereApplet*` storage with `kMaxAppletSize` worst-case sram per side | Live swap requires runtime polymorphism. C++11 constexpr `cmax` chain bounds sram per side. |
+| Live swap sequence in `step()` head | Detect cached-vs-live selector diff. On change: dtor old, zero side I/O (outputs, clock_countdown, cursor, edit), placement-new new applet, BaseStart, cache new idx. |
+| Setup + Routing parameter pages | Setup holds 2 selectors (rare-edit). Routing holds 16 I/O params (frequent-edit). |
+| Serialise persists selector indices alongside applet state | Deserialise reconstructs applets first (so state lands in correct class), then feeds 64-bit `OnDataReceive` per side. |
+| Retired `Shim<T>`, `NT_HEM_PLUGIN`, `PairShim`, `NT_HEM_PAIR`, pair param machinery | Replaced wholesale. Helpers (`copy_bus_to_frame`, `read_gate`, `write_frame_to_bus`) extracted to `hem_shim::` namespace free functions. |
+| `applets/Hemispheres.cpp` is the sole TU | Single .cpp file pulls vendor headers via `HemispheresFactory.h`. No partial linking, no adapter files. Simpler build. Per-applet glue files can be re-introduced if a real need shows up. |
+| `HSUtils.h` externs moved into `namespace HS { }` | Matches `globals.cpp` definitions. Was a long-standing mismatch tolerated by per-plugin builds (each pulled `hem_shim_impl.h` which inlined `globals.cpp` into its TU). Adapter pattern can no longer rely on that workaround. |
+
+### Sram budget
+
+Each Hemispheres slot allocates `2 * round_up(kMaxAppletSize, kMaxAppletAlign)` bytes for applet storage. Hemisphere applets pack persistent state into a 64-bit blob via `OnDataRequest`; runtime structs add a handful of cursor and CV scratch fields. Total per slot stays sub-KB even at the full applet enum.
+
+### Flash cost
+
+Every applet linked into `Hemispheres.o` adds its compiled code (typically a few KB per applet). At full enum the plug-in binary is on the order of ~50-150 KB. NT plug-in storage handles this without issue.
+
+### Retired-plug-in artifacts
+
+Pre-Plan-F `.o` files (`Logic.o` etc.) on NT devices remain functional but are no longer rebuilt. `make clean` removes them locally. Going forward, only `Hemispheres.o` ships.
+
+### Routing collision pitfall (unchanged from Round 5)
+
+Loading multiple `Hemispheres` slots in the same preset still defaults all instances to the same I/O buses. User must re-route per slot.
+
 ## Observations
 
 - The C++11 `constrain` polymorphism issue is recurring. Three argument types make it brittle; consider a non-template Arduino-style macro if more applets hit this.
 - Icons accumulate steadily (3 → 9 → 10 over four applets). Audit feasible: a `HS_ICON_TABLE` generated from a list of names would replace the manual declaration + definition pairs.
 - `PhzIcons::*` is a stable extension point. Each applet just needs one new placeholder. Could autogenerate from a list, or accept that adding a new placeholder is the marginal cost of a new applet.
 - No applet so far has required `gfxHeader`, `gfxBitmap` with non-8 heights, or any Phazerville `HSApplication`-derived behavior. If a Tier 2 applet needs these, the shim grows again.
+
+### TODO: NT-wide quadrants mode (4 applets per slot)
+
+NT screen is 256x64, twice the width of the O_C 128x64 that Phazerville targets. Hemispheres uses two halves (left 0..127, right 128..255). The remaining width opens up a "quadrants" variant: 4 applets per slot at 64 px each (matching O_C native applet width).
+
+Sketch:
+
+- `QuadrantsShim` mirroring `HemispheresShim` with four selectors (Slot A/B/C/D) and 32 routing params (gate + CV + out + mode per side x 4).
+- `gfx_offset` advances 0 -> 64 -> 128 -> 192 between `View()` calls. `channel_offset()` becomes `hemisphere * 2` for sides 0..3 (channels A/B/C/D/E/F/G/H mapped via NT inputs 1..8 if scaled, or constrained to first 4 channels).
+- I/O budget: 4 applets x 2 channels each = 8 in + 8 out. Bare NT has 12 buses total (overlap of in/out via routing); tight but doable. With an NTX (8 CV) and/or CVM expander attached, the bus count expands and quadrants comfortably has dedicated input + output buses per slot. Detect or document the expander requirement in the plug-in description.
+- UX: encoder mapping unclear with 4 applets and only 2 encoders. Possible: L encoder = "active slot" cursor, R encoder = value; or hold-modifier; or per-slot button mapping using `kNT_button1..4`.
+- `gfxHeader` already side-aware via `hemisphere & 1`. Generalise to `hemisphere & 3` and pick left/right alignment per slot. Or simplify: left-align all.
+
+Out of scope for Plan F. Not blocking. Document here so the option is not forgotten.
 
 ## Files touched cumulatively
 

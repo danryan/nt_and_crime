@@ -1,5 +1,5 @@
 # nt_and_crime top-level Makefile
-.PHONY: help vendor host arm test test-runtime clean deploy
+.PHONY: help vendor host arm test test-runtime clean deploy deploy-sysex
 
 ARM_CXX  := arm-none-eabi-c++
 HOST_CXX := $(shell command -v clang++ >/dev/null 2>&1 && echo clang++ || echo g++)
@@ -8,7 +8,8 @@ NT_API_INCLUDE := vendor/distingNT_API/include
 HEM_SRC_DIR    := vendor/O_C-Phazerville/software/src
 
 ARM_FLAGS := -std=c++11 -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard \
-             -mthumb -fno-rtti -fno-exceptions -Os -fPIC -Wall \
+             -mthumb -fno-rtti -fno-exceptions -fno-threadsafe-statics \
+             -Os -fPIC -Wall \
              -I$(NT_API_INCLUDE)
 
 HOST_FLAGS := -std=c++14 -fno-rtti -fno-exceptions -Wall -O2 \
@@ -20,7 +21,8 @@ help:
 	@echo "make arm      - build all NT plug-ins under build/arm/"
 	@echo "make host     - build host simulator at build/host/sim_gainCustomUI"
 	@echo "make test     - run all scripted scenarios"
-	@echo "make deploy   - copy build/arm/*.o to DEVICE/programs/plug-ins/ (default DEVICE: /Volumes/NT; NT must be in USB disk mode)"
+	@echo "make deploy        - copy build/arm/*.o to DEVICE/programs/plug-ins/ (default DEVICE: /Volumes/NT; NT must be in USB disk mode)"
+	@echo "make deploy-sysex  - push build/arm/Hemispheres.o via USB-MIDI sysex (NT firmware v1.13+, no reboot)"
 	@echo "make clean    - remove build/"
 
 # Sources shared by every host build (no Catch2 main).
@@ -116,31 +118,11 @@ HEM_APPLET_INCLUDE := -Ivendor/O_C-Phazerville/software/src/applets
 
 SHIM_DEPS := $(wildcard shim/include/*.h) $(wildcard shim/include/*/*.h) $(wildcard shim/src/*.cpp)
 
-build/arm/Logic.o: applets/Logic.cpp $(SHIM_DEPS)
+build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
 
-build/arm/AttenuateOffset.o: applets/AttenuateOffset.cpp $(SHIM_DEPS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
-
-build/arm/Slew.o: applets/Slew.cpp $(SHIM_DEPS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
-
-build/arm/Calculate.o: applets/Calculate.cpp $(SHIM_DEPS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
-
-build/arm/Burst.o: applets/Burst.cpp $(SHIM_DEPS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
-
-build/arm/LogicCalculate.o: applets/LogicCalculate.cpp $(SHIM_DEPS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
-
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Logic.o build/arm/AttenuateOffset.o build/arm/Slew.o build/arm/Calculate.o build/arm/Burst.o build/arm/LogicCalculate.o
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Hemispheres.o
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins
@@ -149,6 +131,15 @@ deploy: arm
 	@mkdir -p "$(DEVICE)/$(PLUGIN_DIR)"
 	cp build/arm/*.o "$(DEVICE)/$(PLUGIN_DIR)/"
 	@echo "Deployed to $(DEVICE)/$(PLUGIN_DIR)/. Eject the volume, then press both encoders together on the NT to reboot into normal mode."
+
+# Sysex deploy via MIDI. Requires NT firmware v1.13+ for the plug-in rescan
+# sysex (no reboot needed). Tools: mido + python-rtmidi (installed via
+# requirements.txt). NT must be connected over USB-MIDI and not held open
+# by another app.
+SYSEX_ID ?= 0
+SYSEX_PLUGIN ?= build/arm/Hemispheres.o
+deploy-sysex: $(SYSEX_PLUGIN)
+	python3 harness/scripts/push_plugin_to_device.py $(SYSEX_ID) $(SYSEX_PLUGIN)
 
 test: host
 	python3 harness/scripts/run_scenario.py tests/scenarios/gainCustomUI/zero_signal.yaml

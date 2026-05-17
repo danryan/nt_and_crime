@@ -357,18 +357,10 @@ struct PairShim {
 
     static void customUi(_NT_algorithm* self, const _NT_uiData& data) {
         auto* alg = static_cast<AlgorithmPairInstance<L, R>*>(self);
-        if (data.encoders[0] != 0) {
-            bool was = HS::enc_edit[HS::LEFT_HEMISPHERE].isEditing;
-            HS::enc_edit[HS::LEFT_HEMISPHERE].isEditing = true;
-            alg->left.OnEncoderMove(data.encoders[0]);
-            HS::enc_edit[HS::LEFT_HEMISPHERE].isEditing = was;
-        }
-        if (data.encoders[1] != 0) {
-            bool was = HS::enc_edit[HS::RIGHT_HEMISPHERE].isEditing;
-            HS::enc_edit[HS::RIGHT_HEMISPHERE].isEditing = true;
-            alg->right.OnEncoderMove(data.encoders[1]);
-            HS::enc_edit[HS::RIGHT_HEMISPHERE].isEditing = was;
-        }
+        // L encoder = LEFT applet, R encoder = RIGHT applet. Each side's
+        // edit state is owned by enc_edit[side]; the side's button toggles it.
+        if (data.encoders[0] != 0) alg->left.OnEncoderMove(data.encoders[0]);
+        if (data.encoders[1] != 0) alg->right.OnEncoderMove(data.encoders[1]);
         if ((data.controls & kNT_encoderButtonL) && !(data.lastButtons & kNT_encoderButtonL)) {
             alg->left.OnButtonPress();
         }

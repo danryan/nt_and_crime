@@ -1121,7 +1121,7 @@ git commit -m "shim: hem_shim.h with NT_HEM_PLUGIN macro and HemisphereShim<T>"
 
 To avoid multiple-definition errors with multiple applets in a future build, shim source is `#include`d into each applet's TU rather than separately compiled.
 
-- [ ] **Step 1: hem_shim_impl.h**
+- [x] **Step 1: hem_shim_impl.h**
 
 ```cpp
 #pragma once
@@ -1132,7 +1132,7 @@ To avoid multiple-definition errors with multiple applets in a future build, shi
 #include "../src/graphics.cpp"
 ```
 
-- [ ] **Step 2: Update hem_shim.h to include hem_shim_impl.h once per TU**
+- [x] **Step 2: Update hem_shim.h to include hem_shim_impl.h once per TU**
 
 Add at the top of `hem_shim.h`:
 
@@ -1143,12 +1143,12 @@ Add at the top of `hem_shim.h`:
 #endif
 ```
 
-- [ ] **Step 3: Verify build still succeeds**
+- [x] **Step 3: Verify build still succeeds**
 
 Run: `make arm`
 Expected: passes (Logic.cpp still stub, doesn't include hem_shim.h yet).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add shim/

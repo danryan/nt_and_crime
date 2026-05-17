@@ -1,0 +1,9 @@
+#pragma once
+
+enum DAC_CHANNEL {
+    DAC_CHANNEL_A,
+    DAC_CHANNEL_B,
+    DAC_CHANNEL_C,
+    DAC_CHANNEL_D,
+    DAC_CHANNEL_LAST
+};

@@ -9,6 +9,7 @@ The Hemisphere source code is vendored unmodified. Every entry here is shim code
 Created from scratch to make a single applet compile and run on NT.
 
 ### Types and constants
+
 - `HS::IOFrame` with `inputs[4]`, `outputs[4]`, `clocked[4]`, `changed_cv[4]`, `cycle_ticks[4]`, `adc_lag_countdown[4]`, `tick`
 - `HS::OutputCell { value, target }` with `set()` and `get_target()`
 - `HS::HEM_SIDE` enum (LEFT_HEMISPHERE), `HS::APPLET_CURSOR_COUNT`, `HS::HELP_SECTIONS`
@@ -17,6 +18,7 @@ Created from scratch to make a single applet compile and run on NT.
 - `ForEachChannel(ch)` macro, `gfx_offset` macro, `io_offset` macro
 
 ### Globals
+
 - `HS::frame` IOFrame instance
 - `HS::help_strings[]`, `HS::cursor_countdown[]`, `HS::enc_edit[]`
 - `OC::CORE::ticks`
@@ -25,6 +27,7 @@ Created from scratch to make a single applet compile and run on NT.
 - `clock_m` (HSClockManager stub)
 
 ### Classes
+
 - `HemisphereApplet` base with `Start()`, `Controller()`, `View()`, `OnEncoderMove()`, `OnDataRequest()`, `OnDataReceive()`, `OnButtonPress()`, `AuxButton()`, `BaseStart()`, `CursorBlink()`, `ResetCursor()`, `CursorToggle()`, `EditMode()`, `MoveCursor()`
 - I/O API: `In()`, `ViewIn()`, `ViewOut()`, `Clock()`, `Gate()`, `DetentedIn()`, `Out()`, `ClockOut()`, `GateOut()`, `ProportionCV()`
 - gfx API: `gfxPos`, `gfxPrint` (string/int), `gfxFrame`, `gfxRect`, `gfxInvert`, `gfxClear`, `gfxLine`, `gfxPixel`, `gfxCircle`, `gfxBitmap`, `gfxIcon`, `gfxCursor`
@@ -32,16 +35,19 @@ Created from scratch to make a single applet compile and run on NT.
 - `shim::Graphics` rendering class with `setPrintPos`, `print`, `setPixel`, `drawLine`, `drawFrame`, `drawRect`, `invertRect`, `clearRect`, `drawCircle`, `drawBitmap8`
 
 ### Plug-in machinery (`hem_shim.h`)
+
 - `hem_shim::Shim<T>` template wrapping NT `_NT_algorithm` lifecycle
 - `NT_HEM_PLUGIN(klass, guid, name, desc)` macro generating `_NT_factory` and `pluginEntry`
 - 8 routing parameters: Gate In 1/2, CV In 1/2, CV Out 1/2 with mode
 - `serialise`/`deserialise` packing 64-bit applet state into JSON members
 
 ### Icons (placeholders, 8 bytes column-major)
+
 - `ZAP_ICON`, `CV_ICON`, `DOWN_BTN_ICON`
 - `PhzIcons::logic`
 
 ### Misc
+
 - `Arduino.h`: templated `constrain`, `min`/`max` macros
 - `OC_gpio.h`: `NorthernLightModular = 0`
 - `util_math.h`: `CONSTRAIN` macro
@@ -127,6 +133,22 @@ Global shim invariants discovered through Tier 1 hardware testing. Each fix bene
 ## Per-applet additions (Tier 1)
 
 Symbols each applet contributed beyond the global helpers above.
+
+## Round 4 (Plan D investigation, all Tier 1 applets)
+
+User reports: icons misshapen, bottom of screen cut off, count squares non-uniform. One root cause hit by three symptoms.
+
+| Change | Why |
+|--------|-----|
+| `set_pixel` and `invertRect` nibble convention inverted: even x = HIGH nibble, odd x = LOW nibble | NT framebuffer convention is opposite the initial guess. Old code paired writes to wrong nibble, swapping pixel columns within each byte. Bitmaps rendered with cols (0..7) showing at positions (1,0,3,2,5,4,7,6). Logic-gate icons and clock/gauge/random glyphs looked scrambled; 4x4 frame outlines drew with stray inner pixels because corner pixels landed in adjacent bytes. Single fix solves icon legibility + count-square uniformity. |
+| `draw()` returns `true` to claim full screen | Returning `false` lets NT firmware overlay parameter line over applet output. Doc says "top" but observation showed bottom rows of Burst (count squares, /div text) covered. Returning true suppresses overlay; applet owns all 256x64. |
+| `memset(NT_screen, 0, 128*64)` before each `View()` | With `draw()` returning true, NT no longer clears screen between frames. Stale pixels from prior cycles accumulate. Burst's varying `bursts_to_go` caused outline accumulation; explicit clear keeps frames clean. |
+
+### Plan D Path B (vectorize drawBitmap8 via `NT_drawShapeI`) — abandoned
+
+Initially hypothesised that emitting `kNT_rectangle` calls would improve legibility via NT's drawing primitives. After the nibble-convention root cause was identified, `setPixel`-based `drawBitmap8` renders correctly. Rect-coalesce emits identical pixels at this scale. Reverted to keep the path simple.
+
+Plan D's three candidate paths (A: leave as-is, B: vectorize, C: hand-craft) all became unnecessary; the original assessment that icons were "misshapen" was a rendering bug, not a design issue.
 
 ## Observations
 

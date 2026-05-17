@@ -1,5 +1,5 @@
 # nt_and_crime top-level Makefile
-.PHONY: help vendor host arm test test-runtime clean deploy
+.PHONY: help vendor host arm test test-runtime clean deploy deploy-sysex
 
 ARM_CXX  := arm-none-eabi-c++
 HOST_CXX := $(shell command -v clang++ >/dev/null 2>&1 && echo clang++ || echo g++)
@@ -20,7 +20,8 @@ help:
 	@echo "make arm      - build all NT plug-ins under build/arm/"
 	@echo "make host     - build host simulator at build/host/sim_gainCustomUI"
 	@echo "make test     - run all scripted scenarios"
-	@echo "make deploy   - copy build/arm/*.o to DEVICE/programs/plug-ins/ (default DEVICE: /Volumes/NT; NT must be in USB disk mode)"
+	@echo "make deploy        - copy build/arm/*.o to DEVICE/programs/plug-ins/ (default DEVICE: /Volumes/NT; NT must be in USB disk mode)"
+	@echo "make deploy-sysex  - push build/arm/Hemispheres.o via USB-MIDI sysex (NT firmware v1.13+, no reboot)"
 	@echo "make clean    - remove build/"
 
 # Sources shared by every host build (no Catch2 main).
@@ -129,6 +130,15 @@ deploy: arm
 	@mkdir -p "$(DEVICE)/$(PLUGIN_DIR)"
 	cp build/arm/*.o "$(DEVICE)/$(PLUGIN_DIR)/"
 	@echo "Deployed to $(DEVICE)/$(PLUGIN_DIR)/. Eject the volume, then press both encoders together on the NT to reboot into normal mode."
+
+# Sysex deploy via MIDI. Requires NT firmware v1.13+ for the plug-in rescan
+# sysex (no reboot needed). Tools: mido + python-rtmidi (installed via
+# requirements.txt). NT must be connected over USB-MIDI and not held open
+# by another app.
+SYSEX_ID ?= 0
+SYSEX_PLUGIN ?= build/arm/Hemispheres.o
+deploy-sysex: $(SYSEX_PLUGIN)
+	python3 harness/scripts/push_plugin_to_device.py $(SYSEX_ID) $(SYSEX_PLUGIN)
 
 test: host
 	python3 harness/scripts/run_scenario.py tests/scenarios/gainCustomUI/zero_signal.yaml

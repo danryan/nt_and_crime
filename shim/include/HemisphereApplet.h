@@ -67,6 +67,18 @@ public:
         return constrain((int)prop, 0, max_pixels);
     }
 
+    int Proportion(int numerator, int max_n, int max_p) const {
+        if (max_n == 0) return 0;
+        return (int)((long)numerator * max_p / max_n);
+    }
+
+    void StartADCLag(int ch = 0, int lag = HEMISPHERE_ADC_LAG) {
+        HS::frame.adc_lag_countdown[ch] = lag;
+    }
+    bool EndOfADCLag(int ch = 0) {
+        return (--HS::frame.adc_lag_countdown[ch] == 0);
+    }
+
     // gfx wrappers — all draw to the shim's graphics global, with offsets honored.
     void gfxPos(int x, int y)                  { graphics.setPrintPos(x + gfx_offset, y); }
     void gfxPrint(const char* s)               { graphics.print(s); }
@@ -106,3 +118,15 @@ protected:
 
 // Convenience alias for applets that reference the global help[] array directly.
 #define help (HS::help_strings)
+
+extern uint32_t hem_rng_state;
+inline int hem_shim_random(int min_inclusive, int max_exclusive) {
+    hem_rng_state ^= hem_rng_state << 13;
+    hem_rng_state ^= hem_rng_state >> 17;
+    hem_rng_state ^= hem_rng_state << 5;
+    int range = max_exclusive - min_inclusive;
+    if (range <= 0) return min_inclusive;
+    return min_inclusive + (int)(hem_rng_state % (uint32_t)range);
+}
+inline int hem_shim_random(int max_exclusive) { return hem_shim_random(0, max_exclusive); }
+#define random(...) hem_shim_random(__VA_ARGS__)

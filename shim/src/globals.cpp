@@ -23,6 +23,8 @@ const char* const capital_letters[] = { "A", "B", "C", "D", "E", "F", "G", "H" }
 
 HSClockManager clock_m;
 
+uint32_t hem_rng_state = 0x12345678u;
+
 #include "HSIOFrame.h"
 HS::IOFrame HS::frame;
 

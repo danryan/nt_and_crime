@@ -12,6 +12,14 @@
 #define HEMISPHERE_CURSOR_TICKS 5000
 
 #define PULSE_VOLTAGE 6                                         // octave_max on T4.1
+#define HEMISPHERE_MIN_CV (-(PULSE_VOLTAGE * ONE_OCTAVE))
+#define HEMISPHERE_ADC_LAG 96
+
+#ifndef int2simfloat
+#define int2simfloat(x) ((int32_t)(x) << 14)
+#define simfloat2int(x) ((int32_t)(x) >> 14)
+using simfloat = int32_t;
+#endif
 
 #define ForEachChannel(ch) for (int_fast8_t ch = 0; (ch) < 2; ++(ch))
 #define gfx_offset 0                                            // shim renders single applet at left

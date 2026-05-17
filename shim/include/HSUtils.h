@@ -8,7 +8,7 @@
 #define HEMISPHERE_MAX_CV (6 * ONE_OCTAVE)                      // PULSE_VOLTAGE * ONE_OCTAVE
 #define HEMISPHERE_CENTER_INPUT_CV 0                            // (NorthernLightModular = 0)
 #define HEMISPHERE_CENTER_DETENT 80
-#define HEMISPHERE_CLOCK_TICKS 17
+#define HEMISPHERE_CLOCK_TICKS 175
 #define HEMISPHERE_CURSOR_TICKS 5000
 
 #define PULSE_VOLTAGE 6                                         // octave_max on T4.1

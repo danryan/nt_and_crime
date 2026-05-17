@@ -203,6 +203,14 @@ Pre-Plan-F `.o` files (`Logic.o` etc.) on NT devices remain functional but are n
 
 Loading multiple `Hemispheres` slots in the same preset still defaults all instances to the same I/O buses. User must re-route per slot.
 
+### Adapter symbol convention
+
+`ld -r --allow-multiple-definition` accepts identical dup definitions across adapter TUs (intended for vendor helpers) but will silently pick the first body if two adapters export same-named symbols with different content. Rules for adapter `.cpp` files:
+
+- All adapter-local helpers must be `static` or in `namespace { ... }`. Adapters export nothing of their own.
+- Class methods (e.g. `Logic::foo()`) are safe by C++ name mangling.
+- If an adapter needs to export a free function (rare), prefix with applet name (`logic_helper(...)`, never bare `helper(...)`).
+
 ## Observations
 
 - The C++11 `constrain` polymorphism issue is recurring. Three argument types make it brittle; consider a non-template Arduino-style macro if more applets hit this.

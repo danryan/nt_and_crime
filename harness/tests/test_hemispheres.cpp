@@ -170,7 +170,7 @@ TEST_CASE("calculate C7: MEAN returns (a+b)/2", "[calculate]") {
 }
 
 TEST_CASE("calculate C8: both channels read both inputs (asymmetric quirk)", "[calculate]") {
-    // Vendor Calculate.h:82-84 — result = calc_fn[op[ch]](In(0), In(1)).
+    // Vendor Calculate.h:82-84. result = calc_fn[op[ch]](In(0), In(1)).
     // In(0) and In(1) are shared across channels, NOT per-channel. So
     // op[0]=MIN + op[1]=MAX with In(0)=1V, In(1)=3V yields Out(0)=1V, Out(1)=3V.
     auto s = setup_calculate_left();

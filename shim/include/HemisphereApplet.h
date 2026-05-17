@@ -91,6 +91,9 @@ public:
     void gfxInvert(int x, int y, int w, int h) { graphics.invertRect(x + gfx_offset, y, w, h); }
     void gfxClear(int x, int y, int w, int h)  { graphics.clearRect(x + gfx_offset, y, w, h); }
     void gfxLine(int x, int y, int x2, int y2) { graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2); }
+    void gfxLine(int x, int y, int x2, int y2, bool dashed) {
+        graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2, dashed ? 0xAA : 0xFF);
+    }
     void gfxPixel(int x, int y)                { graphics.setPixel(x + gfx_offset, y); }
     void gfxCircle(int x, int y, int r)        { graphics.drawCircle(x + gfx_offset, y, r); }
 
@@ -99,6 +102,15 @@ public:
     }
     void gfxIcon(int x, int y, const uint8_t* data, bool /*clearfirst*/ = false) {
         gfxBitmap(x, y, 8, data);
+    }
+
+    void gfxSkyline() {
+        ForEachChannel(ch) {
+            int height = ProportionCV(In(ch), 32);
+            gfxFrame(23 + (10 * ch), BottomAlign(height), 6, 63);
+            height = ProportionCV(ViewOut(ch), 32);
+            gfxInvert(3 + (46 * ch), BottomAlign(height), 12, 63);
+        }
     }
 
     void gfxCursor(int x, int y, int w, int h = 9) {

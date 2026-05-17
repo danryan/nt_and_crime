@@ -124,7 +124,19 @@ build/arm/AttenuateOffset.o: applets/AttenuateOffset.cpp $(SHIM_DEPS)
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Logic.o build/arm/AttenuateOffset.o
+build/arm/Slew.o: applets/Slew.cpp $(SHIM_DEPS)
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+
+build/arm/Calculate.o: applets/Calculate.cpp $(SHIM_DEPS)
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+
+build/arm/Burst.o: applets/Burst.cpp $(SHIM_DEPS)
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Logic.o build/arm/AttenuateOffset.o build/arm/Slew.o build/arm/Calculate.o build/arm/Burst.o
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

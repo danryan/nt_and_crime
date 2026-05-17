@@ -202,6 +202,79 @@ Pre-Plan-F `.o` files (`Logic.o` etc.) on NT devices remain functional but are n
 
 Loading multiple `Hemispheres` slots in the same preset still defaults all instances to the same I/O buses. User must re-route per slot.
 
+## Round 7 (Plan G Tier 2 applet expansion)
+
+Grows the runtime `Hemispheres` enum from 6 entries to 14 by porting 8 Tier 2 applets in a single sweep. Selector serialisation switches from raw enum index to applet-name strings so presets stop being coupled to enum order. No new shim files; all additions land in existing headers and translation units.
+
+| Change | Why |
+|--------|-----|
+| `probe_applet.sh` harness drives per-applet compile audit | Each candidate applet gets a one-shot script that adds it to the factory, compiles `Hemispheres.o`, lists missing symbols via `nm`, and reverts. Drives a tight pick-applet -> see-required-stubs loop without polluting `main`. |
+| 8 Tier 2 applets added in one round | Brancher, TLNeuron, GateDelay, Button, ClkToGate, Compare, Cumulus, GatedVCA. Each ports cleanly with sub-10-LOC shim deltas. |
+| Selector serialise switched to applet-name strings | Decouples preset format from `kApplet*` enum ordinals. Adding an applet no longer renumbers existing presets. |
+| One Tier 2 applet deferred (Binary) | Vendor implementation depends on a non-trivial `SegmentDisplay` 7-segment renderer that exceeds the inline-stub budget. Tier 3 task: port `SegmentDisplay` as a dedicated shim module. |
+
+### Applets added (8)
+
+| Applet | Category | Stubs added |
+|--------|----------|-------------|
+| Brancher | Clocking | `Modulate<T>` template member on `HemisphereApplet`, `pad(range, number)` helper in `HS` namespace, `PhzIcons::brancher` placeholder |
+| TLNeuron | Logic | `PhzIcons::thresholdLogicNeuron` placeholder, 5-arg `gfxDottedLine(x, y, x2, y2, density)` overload, `byte` typedef in `Arduino.h` |
+| GateDelay | Utility | `PhzIcons::gateDelay` placeholder (`CLOCK_ICON` already present) |
+| Button | Utility | `ROTATE_R_ICON`, `ROTATE_L_ICON`, `CLOSED_ICON`, `OPEN_ICON` glyphs, `PhzIcons::button2` placeholder |
+| ClkToGate | Utility | `GATE_ICON`, `MOD_ICON` glyphs, `gfxCursor(int, int, int, const char*, const char*)` label overload, `ClockCycleTicks(int)` accessor |
+| Compare | Utility | `PhzIcons::compare` placeholder |
+| Cumulus | Modulator | `PhzIcons::cumulus` placeholder |
+| GatedVCA | Utility | `PhzIcons::gateVca` placeholder, 2-arg `gfxPrint(int x_adv, int num)` padding overload |
+
+Each applet went through the same loop: pick from vendor `software/src/applets/`, run `probe_applet.sh` to enumerate missing symbols, add stubs to the appropriate shim header or source file, re-run the harness until the compile is clean, then verify via `nm` symbol checks and host `gainCustomUI`/`zero_signal.yaml` regression. Hardware verification is deferred to a single post-Plan-G batch run.
+
+### Selector serialisation switched to applet-name strings
+
+Plan F serialised the two side selectors as raw `int` enum indices in JSON members `sel_l` and `sel_r`. Adding or reordering applets renumbered the enum, which silently broke saved presets. Round 7 switches to writing the applet name string via `_NT_jsonStream::addString`. Deserialise reads the name with `parse.string(...)`, resolves it to an index via a new `applet_index_for_name(const char*)` helper in `HemispheresFactory.h`, and dispatches `hemispheres_swap`. The helper uses a hand-rolled `strcmp` over the existing applet-name table; no new libc surface area.
+
+No back-compat shim for old int-form presets. A Plan F preset hitting the new code fails `parse.string(...)` and the selector stays at its default (Empty). The number of in-flight Plan F presets is small and the fail-soft behavior is obvious to the user. Documented and accepted.
+
+### Applets deferred to Tier 3
+
+| Applet | Vendor name | Blocker |
+|--------|-------------|---------|
+| Binary | BinaryCtr | Depends on `software/src/SegmentDisplay.h`, a stateful 7-segment-digit renderer with position state, size variants, and pixmap emission. Inline stub would exceed the 10-LOC per-applet shim budget. Port `SegmentDisplay` as a dedicated shim module first, then revisit. `HEMISPHERE_3V_CV` constant and `PhzIcons::binaryCounter` placeholder are both trivial; `SegmentDisplay` is the single real blocker. |
+
+### Plug-in size impact
+
+| Metric | Plan F final | After GateDelay (Task 3) | Plan G final (after stretch) |
+|--------|--------------|--------------------------|------------------------------|
+| `Hemispheres.o` text | 12009 B | 12937 B | 17426 B |
+| `Hemispheres.o` data | 1248 B | 1320 B | 1700 B |
+| `Hemispheres.o` bss | 104 B | 104 B | 104 B |
+| `Hemispheres.o` total | 13361 B | 14361 B | 19230 B |
+| `Hemispheres.o` on disk | ~53 KB | ~75 KB | ~100 KB |
+
+`kMaxAppletSize` is now dominated by GateDelay's 2x64 `uint32_t` ring buffer (~540 bytes per side, ~1.1 KB across both sides). Per-slot SRAM still sits well under 2 KB. NT plug-in flash easily absorbs the ~100 KB binary; no concern at the next several Tier 3 ports either.
+
+### Notes and limitations
+
+- `Modulate<T>` stub drops the vendor's `SemitoneIn` quantizer branch. The shim has no `SemitoneIn` plumbing. Benign for Brancher, which only exercises the `max=100` integer-CV path. A future quantizer-using applet will need the branch restored.
+- 5-arg `gfxDottedLine(x, y, x2, y2, density)` approximates vendor dash semantics: `density <= 1` maps to `0xFF` (near-solid), `density == 2` to `0xAA` (sparse), else `0x88` (sparser). Close enough that TLNeuron's bias and threshold indicators read correctly; exact spacing differs from O_C hardware.
+- `ClockCycleTicks(ch)` returns the raw per-channel cycle ticks from `HS::frame`. The shim has no clock-multiplier subsystem, so ClkToGate's multiplied modes effectively run at base clock rate. Acceptable for the divide modes that exercise the bulk of the applet.
+- 2-arg `gfxPrint(int x_adv, int num)` pads spaces by `x_adv / 6` then prints `num`. Matches vendor right-pad semantics. Does not conflict with the existing 3-arg position-and-print overload because the argument types differ.
+
+### Files touched in Round 7
+
+```
+applets/Hemispheres.cpp
+shim/include/Arduino.h
+shim/include/HSicons.h
+shim/include/HSUtils.h
+shim/include/HemisphereApplet.h
+shim/include/HemispheresFactory.h
+shim/include/PhzIcons.h
+shim/src/icons.cpp
+harness/scripts/probe_applet.sh
+```
+
+No new shim files; the harness script is the only addition outside the shim tree.
+
 ## Observations
 
 - The C++11 `constrain` polymorphism issue is recurring. Three argument types make it brittle; consider a non-template Arduino-style macro if more applets hit this.
@@ -231,6 +304,7 @@ shim/include/HSIOFrame.h
 shim/include/HSUtils.h
 shim/include/HSicons.h
 shim/include/HemisphereApplet.h
+shim/include/HemispheresFactory.h
 shim/include/CVInputMap.h
 shim/include/PhzIcons.h
 shim/include/hem_graphics.h
@@ -241,4 +315,4 @@ shim/src/graphics.cpp
 shim/src/icons.cpp
 ```
 
-13 files. The shim is the entire NT-side adaptation; vendor source unchanged.
+14 files. The shim is the entire NT-side adaptation; vendor source unchanged.

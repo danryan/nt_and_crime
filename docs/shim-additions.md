@@ -217,7 +217,7 @@ Sketch:
 
 - `QuadrantsShim` mirroring `HemispheresShim` with four selectors (Slot A/B/C/D) and 32 routing params (gate + CV + out + mode per side x 4).
 - `gfx_offset` advances 0 -> 64 -> 128 -> 192 between `View()` calls. `channel_offset()` becomes `hemisphere * 2` for sides 0..3 (channels A/B/C/D/E/F/G/H mapped via NT inputs 1..8 if scaled, or constrained to first 4 channels).
-- I/O budget: NT has 12 buses (inputs + outputs). 4 applets x 2 channels each = 8 in + 8 out = within budget.
+- I/O budget: 4 applets x 2 channels each = 8 in + 8 out. Bare NT has 12 buses total (overlap of in/out via routing); tight but doable. With an NTX (8 CV) and/or CVM expander attached, the bus count expands and quadrants comfortably has dedicated input + output buses per slot. Detect or document the expander requirement in the plug-in description.
 - UX: encoder mapping unclear with 4 applets and only 2 encoders. Possible: L encoder = "active slot" cursor, R encoder = value; or hold-modifier; or per-slot button mapping using `kNT_button1..4`.
 - `gfxHeader` already side-aware via `hemisphere & 1`. Generalise to `hemisphere & 3` and pick left/right alignment per slot. Or simplify: left-align all.
 

@@ -19,6 +19,7 @@ public:
 
     virtual const char* applet_name() = 0;
     virtual const uint8_t* applet_icon() { return ZAP_ICON; }
+    virtual ~HemisphereApplet() = default;
 
     virtual void Start() = 0;
     virtual void Reset() {}

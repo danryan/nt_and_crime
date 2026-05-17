@@ -178,7 +178,7 @@ git commit -m "shim: Arduino.h, OC_gpio.h, util/util_math.h compat headers"
 - Create: `shim/include/OC_ADC.h`
 - Create: `shim/include/HSUtils.h`
 
-- [ ] **Step 1: OC_core.h**
+- [x] **Step 1: OC_core.h**
 
 ```cpp
 #pragma once
@@ -191,7 +191,7 @@ extern volatile uint32_t ticks;  // populated by HemisphereShim each Controller 
 }
 ```
 
-- [ ] **Step 2: OC_DAC.h**
+- [x] **Step 2: OC_DAC.h**
 
 ```cpp
 #pragma once
@@ -205,7 +205,7 @@ enum DAC_CHANNEL {
 };
 ```
 
-- [ ] **Step 3: OC_ADC.h**
+- [x] **Step 3: OC_ADC.h**
 
 ```cpp
 #pragma once
@@ -213,7 +213,7 @@ enum DAC_CHANNEL {
 enum { ADC_CHANNEL_LAST = 4 };
 ```
 
-- [ ] **Step 4: HSUtils.h**
+- [x] **Step 4: HSUtils.h**
 
 This mirrors `vendor/O_C-Phazerville/software/src/HSUtils.h` but trimmed to what Logic actually needs. Verbatim constant definitions so applet's macros expand identically.
 
@@ -271,7 +271,7 @@ struct EncoderEditor { bool isEditing; };
 extern EncoderEditor enc_edit[HS::APPLET_CURSOR_COUNT];
 ```
 
-- [ ] **Step 5: Build sanity + commit**
+- [x] **Step 5: Build sanity + commit**
 
 Run: `make arm`
 Expected: still passes (Logic.cpp stub).

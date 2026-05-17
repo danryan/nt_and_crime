@@ -110,7 +110,15 @@ build/arm/bus_probe.o: applets/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o
+# Hem shim sources (header-only for now; compiled as part of each applet's TU)
+SHIM_INCLUDE := -Ishim/include
+HEM_APPLET_INCLUDE := -Ivendor/O_C-Phazerville/software/src/applets
+
+build/arm/Logic.o: applets/Logic.cpp $(wildcard shim/include/*.h) $(wildcard shim/include/*/*.h) $(wildcard shim/src/*.cpp)
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Logic.o
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

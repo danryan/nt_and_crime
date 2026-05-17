@@ -10,8 +10,8 @@ namespace {
 inline void set_pixel(int x, int y, int colour) {
     if (x < 0 || x >= 256 || y < 0 || y >= 64) return;
     int byte_index  = y * 128 + (x >> 1);
-    uint8_t mask    = (x & 1) ? 0xf0 : 0x0f;
-    uint8_t shifted = (uint8_t)((colour & 0x0f) << ((x & 1) ? 4 : 0));
+    uint8_t mask    = (x & 1) ? 0x0f : 0xf0;
+    uint8_t shifted = (uint8_t)((colour & 0x0f) << ((x & 1) ? 0 : 4));
     NT_screen[byte_index] = (uint8_t)((NT_screen[byte_index] & ~mask) | shifted);
 }
 
@@ -72,7 +72,7 @@ void Graphics::invertRect(int x, int y, int w, int h) {
         for (int xx = x; xx < x + w; ++xx) {
             int byte_index = yy * 128 + (xx >> 1);
             if (xx < 0 || xx >= 256 || yy < 0 || yy >= 64) continue;
-            uint8_t mask = (xx & 1) ? 0xf0 : 0x0f;
+            uint8_t mask = (xx & 1) ? 0x0f : 0xf0;
             uint8_t old  = NT_screen[byte_index] & mask;
             uint8_t flip = (uint8_t)((~old) & mask);
             NT_screen[byte_index] = (uint8_t)((NT_screen[byte_index] & ~mask) | flip);

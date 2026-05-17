@@ -158,8 +158,9 @@ struct Shim {
     static bool draw(_NT_algorithm* self) {
         auto* alg = static_cast<AlgorithmInstance<T>*>(self);
         if (!alg->started) return false;
+        std::memset(NT_screen, 0, 128 * 64);
         alg->applet.View();
-        return false;
+        return true;
     }
 
     static uint32_t hasCustomUi(_NT_algorithm*) {

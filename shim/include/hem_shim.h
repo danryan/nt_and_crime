@@ -69,6 +69,8 @@ struct Shim {
         auto* alg = new (ptrs.sram) AlgorithmInstance<T>();
         alg->parameters     = shim_parameters();
         alg->parameterPages = shim_parameter_pages();
+        alg->applet.BaseStart(HS::LEFT_HEMISPHERE);
+        alg->started = true;
         return alg;
     }
 
@@ -131,11 +133,6 @@ struct Shim {
         { auto g = read_gate(kParamGateIn2, busFrames, numFrames, v, prev_gate(1));
           HS::frame.clocked[1] = g.rising; HS::frame.gate_high[1] = g.high; }
 
-        if (!alg->started) {
-            alg->applet.BaseStart(HS::LEFT_HEMISPHERE);
-            alg->started = true;
-        }
-
         OC::CORE::ticks += 1;
         alg->applet.Controller();
 
@@ -187,11 +184,13 @@ struct Shim {
         int num_members = 0;
         if (!parse.numberOfObjectMembers(num_members)) return false;
         int hi = 0, lo = 0;
+        bool found_hi = false, found_lo = false;
         for (int i = 0; i < num_members; ++i) {
-            if      (parse.matchName("hem_hi")) { if (!parse.number(hi)) return false; }
-            else if (parse.matchName("hem_lo")) { if (!parse.number(lo)) return false; }
+            if      (parse.matchName("hem_hi")) { if (!parse.number(hi)) return false; found_hi = true; }
+            else if (parse.matchName("hem_lo")) { if (!parse.number(lo)) return false; found_lo = true; }
             else                                { if (!parse.skipMember()) return false; }
         }
+        if (!(found_hi && found_lo)) return true;
         uint64_t state = ((uint64_t)(uint32_t)hi << 32) | (uint64_t)(uint32_t)lo;
         alg->applet.OnDataReceive(state);
         return true;

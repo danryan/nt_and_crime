@@ -183,8 +183,7 @@ Replaces all per-applet plug-ins and the LogicCalculate pair canary with a singl
 | Setup + Routing parameter pages | Setup holds 2 selectors (rare-edit). Routing holds 16 I/O params (frequent-edit). |
 | Serialise persists selector indices alongside applet state | Deserialise reconstructs applets first (so state lands in correct class), then feeds 64-bit `OnDataReceive` per side. |
 | Retired `Shim<T>`, `NT_HEM_PLUGIN`, `PairShim`, `NT_HEM_PAIR`, pair param machinery | Replaced wholesale. Helpers (`copy_bus_to_frame`, `read_gate`, `write_frame_to_bus`) extracted to `hem_shim::` namespace free functions. |
-| Each adapter TU includes its vendor header; helpers dedup via `ld -r --allow-multiple-definition` | Per-applet compile isolation restored. Vendor-side errors localize to the offending adapter. Linker accepts identical duplicate definitions (`hem_XOR`, `hem_MIN`, `LOGIC_ICON` etc.), keeping the first. |
-| Partial-link adapters into `Hemispheres.o` via `arm-none-eabi-ld -r --allow-multiple-definition` | Combines `Hemispheres_main.o` plus adapter `.o` files into single relocatable object for NT plug-in load; dedups vendor helper symbols. |
+| `applets/Hemispheres.cpp` is the sole TU | Single .cpp file pulls vendor headers via `HemispheresFactory.h`. No partial linking, no adapter files. Simpler build. Per-applet glue files can be re-introduced if a real need shows up. |
 | `HSUtils.h` externs moved into `namespace HS { }` | Matches `globals.cpp` definitions. Was a long-standing mismatch tolerated by per-plugin builds (each pulled `hem_shim_impl.h` which inlined `globals.cpp` into its TU). Adapter pattern can no longer rely on that workaround. |
 
 ### Sram budget
@@ -202,14 +201,6 @@ Pre-Plan-F `.o` files (`Logic.o` etc.) on NT devices remain functional but are n
 ### Routing collision pitfall (unchanged from Round 5)
 
 Loading multiple `Hemispheres` slots in the same preset still defaults all instances to the same I/O buses. User must re-route per slot.
-
-### Adapter symbol convention
-
-`ld -r --allow-multiple-definition` accepts identical dup definitions across adapter TUs (intended for vendor helpers) but will silently pick the first body if two adapters export same-named symbols with different content. Rules for adapter `.cpp` files:
-
-- All adapter-local helpers must be `static` or in `namespace { ... }`. Adapters export nothing of their own.
-- Class methods (e.g. `Logic::foo()`) are safe by C++ name mangling.
-- If an adapter needs to export a free function (rare), prefix with applet name (`logic_helper(...)`, never bare `helper(...)`).
 
 ## Observations
 

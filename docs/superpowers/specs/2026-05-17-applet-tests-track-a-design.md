@@ -83,18 +83,89 @@ Inside the applet, `Gate(0)` / `In(0)` / `Out(0)` refers to that side's first ch
 
 ### Test helper module
 
-`harness/tests/applet_test_helpers.{h,cpp}`:
+`harness/tests/applet_test_helpers.{h,cpp}` provides a side, channel, and axis-addressed API. Tests never touch raw bus indices.
 
-- `int step_n_frames(loader, alg, bus, n_samples)` — issues ceil(n_samples/32) `step` calls, returns actual frames advanced.
-- `int volts_to_int(float v)` — float volts to vendor int (linear, anchored on `HEMISPHERE_MAX_CV` = 7680 = 5V per vendor convention).
-- `float int_to_volts(int v)` — inverse.
-- `void set_bus_constant(float* bus, int bus_idx, int numFramesBy4, float volts)` — flat CV input across the buffer.
-- `void pulse_gate(float* bus, int bus_idx, int numFramesBy4, int frame_offset)` — single-sample gate at given frame index.
-- `uint64_t pack_brancher(int p, int choice)` — mirrors vendor `OnDataRequest` bit layout (`PackLocation{0,7}` for p; choice not serialised in vendor, but we set it directly via member access through a helper if needed for tests).
-- `uint64_t pack_calculate(int op_left, int op_right)` — mirrors vendor `OnDataRequest` (`PackLocation{0,8}` and `{8,8}`).
-- `HemispheresInstance* as_instance(_NT_algorithm*)` — typed cast.
+Core types:
 
-Note: Brancher's `OnDataRequest` packs only `p`. For tests that need to inject a specific `choice` mid-run (B7 OnButtonPress test), the helper calls `hi->left->OnButtonPress()` to flip `choice` rather than setting it directly.
+```cpp
+enum HemSide  { LEFT = 0, RIGHT = 1 };
+enum HemAxis  { GATE_IN, CV_IN, OUT };
+```
+
+Bus access. Tests never need to know the `kHemGateInA..D` / `kHemCvInA..D` / `kHemCvOutA..D` layout.
+
+- `int bus_index(HemSide side, int channel, HemAxis axis)`: returns 1..16. Example: `(LEFT, 0, GATE_IN)` returns 1.
+- `void set_gate(float* bus, HemSide side, int channel, int frame_offset, int numFramesBy4)`: single-sample pulse on that side and channel's gate input bus.
+- `void set_cv(float* bus, HemSide side, int channel, float volts, int numFramesBy4)`: flat CV across all frames on that side and channel's CV input bus.
+- `bool read_gate_at(float* bus, HemSide side, int channel, int frame_offset, int numFramesBy4)`: sample the output bus at a specific frame, return true if above gate threshold.
+- `float read_cv_at(float* bus, HemSide side, int channel, int frame_offset, int numFramesBy4)`: sample the output bus at a specific frame.
+
+Applet lifecycle.
+
+- `void select_applet(loaded, alg, HemSide side, AppletIndex idx)`: one-liner replacement for the `v[]=...; parameterChanged(...)` pair.
+- `HemisphereApplet* get_applet(HemispheresInstance*, HemSide side)`: typed accessor; returns `hi->left` or `hi->right`.
+- `HemispheresInstance* as_instance(_NT_algorithm*)`: typed cast.
+
+Stepping.
+
+- `int step_n_frames(loaded, alg, float* bus, int n_samples)`: issues ceil(n_samples/32) `step` calls, returns actual frames advanced.
+
+Unit conversion.
+
+- `int volts_to_int(float v)`: float volts to vendor int (linear, anchored on `HEMISPHERE_MAX_CV` = 7680 = 5V per vendor convention).
+- `float int_to_volts(int v)`: inverse.
+
+RNG.
+
+- `void seed_hem_rng(uint32_t seed)`: writes the shim's `hem_rng_state` global. Tests call this once at the top of any case that touches RNG. Naming the helper makes the discipline visible at the call site.
+
+Per-applet state injection.
+
+- `uint64_t pack_brancher(int p)`: mirrors vendor `OnDataRequest`: `PackLocation{0,7}` for p in 0..100.
+- `uint64_t pack_calculate(int op_left, int op_right)`: mirrors vendor: `PackLocation{0,8}` and `{8,8}`.
+
+Phase 2 adds one `pack_<applet>(...)` per applet that has a non-trivial `OnDataRequest`. See "Per-applet OnDataRequest bit layouts" below.
+
+Two Phase 2 applets serialise no state (Button, GatedVCA). Their internal state is UI-driven only. For those, tests inject state by calling the applet's UI-event methods directly through the test seam, e.g. `get_applet(hi, LEFT)->OnEncoderMove(+5)` or `OnButtonPress()`. No `pack_<applet>(...)` exists for those two.
+
+Brancher's `OnDataRequest` packs only `p`, not `choice`. For tests that need to inject a specific `choice` mid-run (B7 OnButtonPress), the helper calls `get_applet(hi, LEFT)->OnButtonPress()` to flip `choice`.
+
+### Adding a new applet (Phase 2 onboarding)
+
+Three steps.
+
+1. Read the vendor header at `vendor/O_C-Phazerville/software/src/applets/<Applet>.h`. Extract the `OnDataRequest` bit layout from the `Pack(data, PackLocation{offset, width}, value)` calls. Note any bias values added before packing (e.g. AttenuateOffset adds 256 to make signed offsets positive in the unsigned packed field). Cross-reference the "Per-applet OnDataRequest bit layouts" table below.
+2. Add `uint64_t pack_<applet>(args...)` to `applet_test_helpers.{h,cpp}` mirroring the vendor `Pack` calls. If the applet serialises no state (Button, GatedVCA), skip this step.
+3. Add `TEST_CASE("<applet> <behavior>", "[<applet>]")` blocks to `test_hemispheres.cpp`. Use only the side, channel, axis helpers; do not hardcode bus indices. Seed RNG with `seed_hem_rng(...)` at the top of any case that touches RNG. Assert in vendor int units via `volts_to_int(...)` where comparing CVs.
+
+For the applet's invariants, read vendor `Controller()` line by line. Each branch yields a TEST_CASE. Pin every constant the vendor exposes (clamps, defaults, bias values) as an explicit assertion so re-vendoring drift is caught.
+
+### Per-applet OnDataRequest bit layouts
+
+Extracted verbatim from each vendor header. Use as the source of truth when writing `pack_<applet>(...)`.
+
+| Applet | Bits used | Layout |
+|---|---|---|
+| AttenuateOffset | 36 | offset[0] (0..8, value + 256), offset[1] (10..18, value + 256), level[0] (19..26, value + ATTENOFF_MAX_LEVEL*2), level[1] (27..34, same bias), mix (35) |
+| Brancher | 7 | p (0..6, range 0..100) |
+| Burst | 40 | number (0..7), spacing (8..15), div (16..23, value + 8), jitter (24..31), accel (32..39) |
+| Button | 0 | no state serialised; transient UI state only |
+| Calculate | 16 | operation[0] (0..7), operation[1] (8..15) |
+| ClkToGate | 64 | per side i in 0..1: width[i] (i*32+0..i*32+6), abs(range[i]) (i*32+8..i*32+14), range[i] sign bit (i*32+15), skip[i] (i*32+16..i*32+22) |
+| Compare | 8 | level (0..7) |
+| Cumulus | 17 | accoperator (0..2), b_constant (3..6), outmode[0] (7..10), gap bits 11..12 unused, outmode[1] (13..16) |
+| GateDelay | 22 | time[0] (0..10), time[1] (11..21) |
+| GatedVCA | 0 | no state serialised; transient UI state only |
+| Logic | 16 | operation[0] (0..7), operation[1] (8..15) |
+| Slew | 16 | rise (0..7), fall (8..15) |
+| TLNeuron | 21 | dendrite_weight[0] (0..4, value + 9), dw[1] (5..9, +9), dw[2] (10..14, +9), threshold (15..20, value + 27) |
+
+Notes.
+
+- Bias values exist because vendor packs into unsigned fields but underlying members are signed. The `pack_<applet>(...)` helper applies the bias internally so test callers pass natural signed values.
+- ClkToGate fills 64 bits exactly. Two sides times 32 bits each, no room for additional state.
+- Cumulus has a 2-bit gap at positions 11..12. The vendor `OnDataReceive` skips those bits. Future re-vendoring may fill them; `pack_cumulus(...)` should explicitly zero those bits to avoid stale state leaking.
+- Button and GatedVCA serialise nothing. Preset save/load resets their state. Tests must inject state via UI-event methods (`OnEncoderMove`, `OnButtonPress`) within the same TEST_CASE.
 
 ### Determinism
 
@@ -107,13 +178,13 @@ Note: Brancher's `OnDataRequest` packs only `p`. For tests that need to inject a
 
 ### Files created
 
-- `harness/tests/test_hemispheres.cpp` — Catch2 TEST_CASE entries for Brancher + Calculate.
-- `harness/tests/applet_test_helpers.h` — declarations.
-- `harness/tests/applet_test_helpers.cpp` — implementations.
+- `harness/tests/test_hemispheres.cpp`: Catch2 TEST_CASE entries for Brancher + Calculate.
+- `harness/tests/applet_test_helpers.h`: declarations.
+- `harness/tests/applet_test_helpers.cpp`: implementations.
 
 ### Files modified
 
-- `Makefile` — adds `build/host/Hemispheres.host.o`, `build/host/test_hemispheres`, `.PHONY: test-applets`, chains `test-applets` into `test`.
+- `Makefile`: adds `build/host/Hemispheres.host.o`, `build/host/test_hemispheres`, `.PHONY: test-applets`, chains `test-applets` into `test`.
 
 ### No changes to
 

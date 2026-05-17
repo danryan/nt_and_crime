@@ -874,7 +874,7 @@ This is the heart of the shim. It defines:
 
 For Logic (gate-only, no CV out), the param layout is: Gate In 1 (bus), Gate In 2 (bus), CV In 1 (bus, optional), CV In 2 (bus, optional), Gate Out 1 (bus + mode), Gate Out 2 (bus + mode). Six bus params total.
 
-- [ ] **Step 1: Write hem_shim.h**
+- [x] **Step 1: Write hem_shim.h**
 
 ```cpp
 #pragma once
@@ -1102,7 +1102,7 @@ struct Shim {
     }
 ```
 
-- [ ] **Step 2: Build sanity + commit**
+- [x] **Step 2: Build sanity + commit**
 
 Run: `make arm`
 Expected: still passes.

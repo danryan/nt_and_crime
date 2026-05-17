@@ -8,7 +8,8 @@ NT_API_INCLUDE := vendor/distingNT_API/include
 HEM_SRC_DIR    := vendor/O_C-Phazerville/software/src
 
 ARM_FLAGS := -std=c++11 -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard \
-             -mthumb -fno-rtti -fno-exceptions -Os -fPIC -Wall \
+             -mthumb -fno-rtti -fno-exceptions -fno-threadsafe-statics \
+             -Os -fPIC -Wall \
              -I$(NT_API_INCLUDE)
 
 HOST_FLAGS := -std=c++14 -fno-rtti -fno-exceptions -Wall -O2 \

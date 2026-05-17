@@ -446,6 +446,7 @@ struct PairShim {
     }
 };
 
+
 }  // namespace hem_shim
 
 #define NT_HEM_PLUGIN(klass, guid_str_4chars, name_str, desc_str) \
@@ -499,3 +500,4 @@ struct PairShim {
         } \
         return 0; \
     }
+

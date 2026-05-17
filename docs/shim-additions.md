@@ -183,8 +183,8 @@ Replaces all per-applet plug-ins and the LogicCalculate pair canary with a singl
 | Setup + Routing parameter pages | Setup holds 2 selectors (rare-edit). Routing holds 16 I/O params (frequent-edit). |
 | Serialise persists selector indices alongside applet state | Deserialise reconstructs applets first (so state lands in correct class), then feeds 64-bit `OnDataReceive` per side. |
 | Retired `Shim<T>`, `NT_HEM_PLUGIN`, `PairShim`, `NT_HEM_PAIR`, pair param machinery | Replaced wholesale. Helpers (`copy_bus_to_frame`, `read_gate`, `write_frame_to_bus`) extracted to `hem_shim::` namespace free functions. |
-| `Hemispheres.cpp` is the sole TU pulling vendor headers | Adapter TUs (`applets/<Applet>.cpp`) include only `HemisphereApplet.h`. Avoids `ld -r` collisions on non-inline vendor helper symbols (e.g. `hem_XOR`, `hem_MIN`). Adapters remain as landing zones for future NT-side per-applet glue. |
-| Partial-link adapters into `Hemispheres.o` via `arm-none-eabi-ld -r` | Combines `Hemispheres_main.o` plus adapter `.o` files into single relocatable object for NT plug-in load. |
+| Each adapter TU includes its vendor header; helpers dedup via `ld -r --allow-multiple-definition` | Per-applet compile isolation restored. Vendor-side errors localize to the offending adapter. Linker accepts identical duplicate definitions (`hem_XOR`, `hem_MIN`, `LOGIC_ICON` etc.), keeping the first. |
+| Partial-link adapters into `Hemispheres.o` via `arm-none-eabi-ld -r --allow-multiple-definition` | Combines `Hemispheres_main.o` plus adapter `.o` files into single relocatable object for NT plug-in load; dedups vendor helper symbols. |
 | `HSUtils.h` externs moved into `namespace HS { }` | Matches `globals.cpp` definitions. Was a long-standing mismatch tolerated by per-plugin builds (each pulled `hem_shim_impl.h` which inlined `globals.cpp` into its TU). Adapter pattern can no longer rely on that workaround. |
 
 ### Sram budget

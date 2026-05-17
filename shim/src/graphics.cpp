@@ -39,16 +39,18 @@ void Graphics::print(int n) {
 
 void Graphics::setPixel(int x, int y) { set_pixel(x, y, 15); }
 
-void Graphics::drawLine(int x0, int y0, int x1, int y1, uint8_t /*pattern*/) {
+void Graphics::drawLine(int x0, int y0, int x1, int y1, uint8_t pattern) {
     int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
+    int step = 0;
     for (;;) {
-        set_pixel(x0, y0, 15);
+        if (pattern & (1u << (step & 7))) set_pixel(x0, y0, 15);
         if (x0 == x1 && y0 == y1) break;
         int e2 = 2 * err;
         if (e2 >= dy) { err += dy; x0 += sx; }
         if (e2 <= dx) { err += dx; y0 += sy; }
+        ++step;
     }
 }
 

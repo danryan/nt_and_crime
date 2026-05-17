@@ -13,7 +13,7 @@ public:
     void print(int n);
 
     void setPixel(int x, int y);
-    void drawLine(int x0, int y0, int x1, int y1, uint8_t pattern = 1);
+    void drawLine(int x0, int y0, int x1, int y1, uint8_t pattern = 0xFF);
     void drawFrame(int x, int y, int w, int h);
     void drawRect(int x, int y, int w, int h);
     void invertRect(int x, int y, int w, int h);

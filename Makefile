@@ -127,7 +127,7 @@ build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
 
-build/host/test_hemispheres: harness/tests/test_hemispheres.cpp build/host/Hemispheres.host.o $(HARNESS_SRCS)
+build/host/test_hemispheres: harness/tests/test_hemispheres.cpp harness/tests/applet_test_helpers.cpp build/host/Hemispheres.host.o $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
 

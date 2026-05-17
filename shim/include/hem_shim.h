@@ -1,4 +1,10 @@
 #pragma once
+
+#ifndef NT_HEM_NO_IMPL
+#include "hem_shim_impl.h"
+#define NT_HEM_NO_IMPL 1
+#endif
+
 #include <distingnt/api.h>
 #include <new>
 #include <cstring>

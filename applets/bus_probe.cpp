@@ -3,18 +3,16 @@
 #include <cstring>
 
 struct _busProbe : public _NT_algorithm {
-    int targetBus;
     float testLevel;
 };
 
-enum { kParamBus, kParamLevel };
+enum { kParamOut, kParamOutMode, kParamLevel };
 static const _NT_parameter parameters[] = {
-    { .name = "Bus",   .min = 1, .max = kNT_lastBus, .def = 1,
-      .unit = kNT_unitNone, .scaling = 0, .enumStrings = NULL },
+    NT_PARAMETER_CV_OUTPUT_WITH_MODE("Out", 1, 13)
     { .name = "Level", .min = 0, .max = 100, .def = 50,
       .unit = kNT_unitPercent, .scaling = 0, .enumStrings = NULL },
 };
-static const uint8_t page1[] = { kParamBus, kParamLevel };
+static const uint8_t page1[] = { kParamOut, kParamOutMode, kParamLevel };
 static const _NT_parameterPage pages[] = {
     { .name = "Probe", .numParams = ARRAY_SIZE(page1), .params = page1 },
 };
@@ -32,28 +30,33 @@ _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs,
     auto* alg = new (ptrs.sram) _busProbe();
     alg->parameters     = parameters;
     alg->parameterPages = &parameterPages;
-    alg->targetBus      = 1;
     alg->testLevel      = 0.5f;
     return alg;
 }
 
 void parameterChanged(_NT_algorithm* self, int p) {
     auto* a = (_busProbe*)self;
-    if (p == kParamBus)   a->targetBus = a->v[kParamBus];
     if (p == kParamLevel) a->testLevel = a->v[kParamLevel] / 100.0f;
 }
 
 void step(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
     auto* a = (_busProbe*)self;
+    int bus = a->v[kParamOut];
+    if (bus < 1 || bus > kNT_lastBus) return;
     int numFrames = numFramesBy4 * 4;
-    float* out = busFrames + (a->targetBus - 1) * numFrames;
-    for (int i = 0; i < numFrames; ++i) out[i] = a->testLevel;
+    float* out = busFrames + (bus - 1) * numFrames;
+    bool replace = a->v[kParamOutMode];
+    if (replace) {
+        for (int i = 0; i < numFrames; ++i) out[i] = a->testLevel;
+    } else {
+        for (int i = 0; i < numFrames; ++i) out[i] += a->testLevel;
+    }
 }
 
 bool draw(_NT_algorithm* self) {
     auto* a = (_busProbe*)self;
     char buf[32];
-    int len = NT_intToString(buf, a->targetBus);
+    int len = NT_intToString(buf, a->v[kParamOut]);
     buf[len] = 0;
     NT_drawText(0, 30, "Probe bus:");
     NT_drawText(80, 30, buf);
@@ -63,7 +66,7 @@ bool draw(_NT_algorithm* self) {
 static const _NT_factory factory = {
     .guid = NT_MULTICHAR('P','r','o','B'),
     .name = "Bus probe",
-    .description = "Writes a known level onto the selected bus.",
+    .description = "Writes a known level onto the selected output bus.",
     .numSpecifications = 0,
     .calculateRequirements = calculateRequirements,
     .construct = construct,

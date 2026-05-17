@@ -291,3 +291,33 @@ TEST_CASE("brancher B9: serialise round-trip preserves p", "[brancher]") {
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE((packed & 0x7F) == 73);
 }
+
+TEST_CASE("brancher B2: p=100 always routes gate to output 0", "[brancher]") {
+    auto s = setup_brancher_left();
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(100));
+    seed_hem_rng(0xDEADBEEF);
+
+    // Sustained high gate across all 32 frames so Gate(0) reads true and
+    // the rising-edge transition fires Clock(0) exactly once for this step.
+    clear_bus(s.bus);
+    int gate_bus = bus_index(LEFT, 0, GATE_IN);
+    for (int f = 0; f < 32; ++f) s.bus[(gate_bus - 1) * 32 + f] = 6.0f;
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);
+}
+
+TEST_CASE("brancher B3: p=0 always routes gate to output 1", "[brancher]") {
+    auto s = setup_brancher_left();
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(0));
+    seed_hem_rng(0xDEADBEEF);
+
+    clear_bus(s.bus);
+    int gate_bus = bus_index(LEFT, 0, GATE_IN);
+    for (int f = 0; f < 32; ++f) s.bus[(gate_bus - 1) * 32 + f] = 6.0f;
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
+}

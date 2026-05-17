@@ -12,6 +12,38 @@ using hem_shim::kAppletBrancher;
 using hem_shim::kAppletCalculate;
 using namespace hem_test;
 
+namespace {
+
+struct CalcSetup {
+    nt::LoadedPlugin* loaded;
+    _NT_algorithm*    alg;
+    float*            bus;
+    hem_shim::HemispheresInstance* hi;
+};
+
+CalcSetup setup_calculate_left() {
+    nt::reset_runtime();
+    auto* loaded = nt::load_plugin();
+    REQUIRE(loaded != nullptr);
+    auto* alg = loaded->algorithm;
+    REQUIRE(alg != nullptr);
+    select_applet(alg, LEFT, kAppletCalculate);
+
+    float* bus = nt::bus_frames_base();
+    REQUIRE(bus != nullptr);
+    std::memset(bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    step_n_frames(loaded, alg, bus, 32);  // triggers swap + Start
+
+    return { loaded, alg, bus, as_instance(alg) };
+}
+
+void calculate_set_op(_NT_algorithm* alg, int op_left, int op_right) {
+    auto* hi = as_instance(alg);
+    get_applet(hi, LEFT)->OnDataReceive(pack_calculate(op_left, op_right));
+}
+
+}  // namespace
+
 TEST_CASE("hemispheres factory loads, steps, draws without crash", "[smoke]") {
     nt::reset_runtime();
 
@@ -40,36 +72,16 @@ TEST_CASE("hemispheres factory loads, steps, draws without crash", "[smoke]") {
 }
 
 TEST_CASE("calculate C1: Start defaults are MIN, MAX", "[calculate]") {
-    nt::reset_runtime();
-    auto* loaded = nt::load_plugin();
-    auto* alg    = loaded->algorithm;
-    select_applet(alg, LEFT, hem_shim::kAppletCalculate);
-
-    float* bus = nt::bus_frames_base();
-    std::memset(bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
-    step_n_frames(loaded, alg, bus, 32);  // triggers swap + Start
-
-    auto* hi = as_instance(alg);
-    uint64_t packed = get_applet(hi, LEFT)->OnDataRequest();
-    int op0 = (int)(packed & 0xFF);
-    int op1 = (int)((packed >> 8) & 0xFF);
-    REQUIRE(op0 == 0);  // MIN_FN
-    REQUIRE(op1 == 1);  // MAX_FN
+    auto s = setup_calculate_left();
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((packed & 0xFF)        == 0);  // MIN_FN
+    REQUIRE(((packed >> 8) & 0xFF) == 1);  // MAX_FN
 }
 
 TEST_CASE("calculate C13: serialise round-trip", "[calculate]") {
-    nt::reset_runtime();
-    auto* loaded = nt::load_plugin();
-    auto* alg    = loaded->algorithm;
-    select_applet(alg, LEFT, hem_shim::kAppletCalculate);
-
-    float* bus = nt::bus_frames_base();
-    std::memset(bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
-    step_n_frames(loaded, alg, bus, 32);
-
-    auto* hi = as_instance(alg);
-    get_applet(hi, LEFT)->OnDataReceive(pack_calculate(5, 7));
-    uint64_t packed = get_applet(hi, LEFT)->OnDataRequest();
+    auto s = setup_calculate_left();
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_calculate(5, 7));
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE((packed & 0xFF)        == 5);
     REQUIRE(((packed >> 8) & 0xFF) == 7);
 }

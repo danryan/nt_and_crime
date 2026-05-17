@@ -1,5 +1,6 @@
 #include "applet_test_helpers.h"
 #include "nt_runtime.h"
+#include <cmath>
 #include <cstring>
 
 // hem_rng_state is defined in shim/src/globals.cpp and declared extern in
@@ -62,7 +63,7 @@ int step_n_frames(nt::LoadedPlugin* loaded, _NT_algorithm* alg, float* bus, int 
 }
 
 int volts_to_int(float v) {
-    return (int)(v * 1536.0f);
+    return (int)std::lroundf(v * 1536.0f);
 }
 
 float int_to_volts(int hem_units) {

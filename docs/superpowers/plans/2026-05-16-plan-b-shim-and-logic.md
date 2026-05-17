@@ -58,12 +58,12 @@ Each header has one clear responsibility. `HemisphereApplet.h` is the largest fi
 **Files:**
 - Modify: `Makefile`
 
-- [ ] **Step 1: Confirm `make arm` currently produces 3 .o files**
+- [x] **Step 1: Confirm `make arm` currently produces 3 .o files**
 
 Run: `make clean && make arm`
 Expected: `build/arm/{gainCustomUI,gain,bus_probe}.o`. No errors.
 
-- [ ] **Step 2: Add Logic.o build rule**
+- [x] **Step 2: Add Logic.o build rule**
 
 Add to `Makefile` after the existing `build/arm/bus_probe.o` rule:
 
@@ -83,7 +83,7 @@ Update the `arm` aggregate target to include `Logic.o`:
 arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Logic.o
 ```
 
-- [ ] **Step 3: Stub Logic.cpp so the rule has something to compile**
+- [x] **Step 3: Stub Logic.cpp so the rule has something to compile**
 
 `applets/Logic.cpp`:
 
@@ -93,12 +93,12 @@ arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/L
 extern "C" uintptr_t pluginEntry(_NT_selector, uint32_t) { return 0; }
 ```
 
-- [ ] **Step 4: Verify `make arm` succeeds**
+- [x] **Step 4: Verify `make arm` succeeds**
 
 Run: `make arm`
 Expected: 4 .o files, no errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Makefile applets/Logic.cpp

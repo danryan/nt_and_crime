@@ -1,3 +1,4 @@
-// Placeholder; real wrapper added in Task 11.
-#include <distingnt/api.h>
-extern "C" uintptr_t pluginEntry(_NT_selector, uint32_t) { return 0; }
+#include "hem_shim.h"
+#include "Logic.h"
+
+NT_HEM_PLUGIN(Logic, "Hl01", "Hem: Logic", "Phazerville Hemisphere Logic applet")

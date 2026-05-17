@@ -150,6 +150,25 @@ Initially hypothesised that emitting `kNT_rectangle` calls would improve legibil
 
 Plan D's three candidate paths (A: leave as-is, B: vectorize, C: hand-craft) all became unnecessary; the original assessment that icons were "misshapen" was a rendering bug, not a design issue.
 
+## Round 5 (Plan E multi-applet pair)
+
+One NT slot hosts two applets side-by-side, replicating Phazerville O_C left/right hemisphere layout. Single-applet path remains unchanged.
+
+| Change | Why |
+|--------|-----|
+| `HS::HEM_SIDE` adds `RIGHT_HEMISPHERE`; `APPLET_CURSOR_COUNT` becomes 2 | Pair needs two cursor and edit-state slots. `cursor_countdown[]` and `enc_edit[]` auto-resize. |
+| `HemisphereApplet::channel_offset()` = `hemisphere * 2` | Applet code reads/writes channels 0/1; offset shifts to 0/1 (left) or 2/3 (right) at the base class. Applet source untouched. |
+| `In/Clock/Gate/Out/ViewIn/ViewOut/StartADCLag/EndOfADCLag` route through `ch + channel_offset()` | All per-channel I/O paths funnel through one offset. Left hemisphere offset = 0; single-applet shim behaviour preserved. |
+| `gfx_offset` promoted from `#define 0` macro to `extern int HS::gfx_offset` | Pair draw flips it 0 → 128 between left and right `View()` calls. Single-applet path keeps default 0. |
+| `NT_HEM_PAIR(LeftKlass, RightKlass, guid, name, desc)` macro + `PairShim<L, R>` template | Mirrors `NT_HEM_PLUGIN`/`Shim<T>`. 16 routing parameters (4 gates, 4 CVs, 4 outs + modes). Tick loop calls `left.Controller()` then `right.Controller()`. Draw memsets, sets `gfx_offset = 0`, calls `left.View()`, sets `gfx_offset = 128`, calls `right.View()`. |
+| Pair `customUi` routes L encoder/button to left applet, R encoder/button to right applet, no forced `isEditing` toggle | Each side's edit mode is owned by its own button-toggled `enc_edit[side].isEditing`. Differs from single-applet path where R encoder is always "edit-mode" (cursor moves on L, value adjusts on R). |
+| Pair `serialise`/`deserialise` writes/reads `hem_left_hi/lo` and `hem_right_hi/lo` | Both 64-bit applet states preserved independently. |
+| `PairShim::prev_gate` sized 4 (vs single-applet `Shim::prev_gate` sized 2) | Pair tracks four input gate edges. |
+
+### Routing collision pitfall
+
+Loading multiple shim plug-ins (single or pair) in the same NT preset means all instances default to the same input/output buses. The user must re-route each slot. Pair plug-ins reduce the problem (one slot = two applets) but do not eliminate it for presets that combine multiple shim slots.
+
 ## Observations
 
 - The C++11 `constrain` polymorphism issue is recurring. Three argument types make it brittle; consider a non-template Arduino-style macro if more applets hit this.

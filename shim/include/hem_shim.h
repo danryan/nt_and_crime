@@ -26,8 +26,8 @@ inline const _NT_parameter* shim_parameters() {
     static const _NT_parameter params[] = {
         NT_PARAMETER_CV_INPUT("Gate (ch A)", 0, 1)
         NT_PARAMETER_CV_INPUT("Gate (ch B)", 0, 2)
-        NT_PARAMETER_CV_INPUT("CV (ch A)",   0, 3)
-        NT_PARAMETER_CV_INPUT("CV (ch B)",   0, 4)
+        NT_PARAMETER_CV_INPUT("CV (ch A)",   0, 5)
+        NT_PARAMETER_CV_INPUT("CV (ch B)",   0, 6)
         NT_PARAMETER_IO("Out (ch A)", 0, 13, kNT_unitCvOutput)
         { .name = "Out (ch A) mode", .min = 0, .max = 1, .def = 1, .unit = kNT_unitOutputMode, .scaling = 0, .enumStrings = NULL },
         NT_PARAMETER_IO("Out (ch B)", 0, 14, kNT_unitCvOutput)

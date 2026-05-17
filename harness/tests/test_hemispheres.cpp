@@ -10,10 +10,14 @@
 
 using hem_shim::kAppletBrancher;
 using hem_shim::kAppletCalculate;
-using namespace hem_test;
 using Catch::Approx;
+using namespace hem_test;
 
 namespace {
+
+void clear_bus(float* bus) {
+    std::memset(bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+}
 
 struct CalcSetup {
     nt::LoadedPlugin* loaded;
@@ -32,14 +36,13 @@ CalcSetup setup_calculate_left() {
 
     float* bus = nt::bus_frames_base();
     REQUIRE(bus != nullptr);
-    std::memset(bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    clear_bus(bus);
     step_n_frames(loaded, alg, bus, 32);  // triggers swap + Start
 
     return { loaded, alg, bus, as_instance(alg) };
 }
 
-void calculate_set_op(_NT_algorithm* alg, int op_left, int op_right) {
-    auto* hi = as_instance(alg);
+void calculate_set_op(hem_shim::HemispheresInstance* hi, int op_left, int op_right) {
     get_applet(hi, LEFT)->OnDataReceive(pack_calculate(op_left, op_right));
 }
 
@@ -57,7 +60,7 @@ TEST_CASE("hemispheres factory loads, steps, draws without crash", "[smoke]") {
 
     float* bus = nt::bus_frames_base();
     REQUIRE(bus != nullptr);
-    std::memset(bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    clear_bus(bus);
 
     int advanced = step_n_frames(loaded, alg, bus, 320);
     REQUIRE(advanced == 320);
@@ -89,9 +92,9 @@ TEST_CASE("calculate C13: serialise round-trip", "[calculate]") {
 
 TEST_CASE("calculate C2: MIN selects lesser of In(0), In(1)", "[calculate]") {
     auto s = setup_calculate_left();
-    calculate_set_op(s.alg, 0, 0);  // MIN both channels
+    calculate_set_op(s.hi, 0, 0);  // MIN both channels
 
-    std::memset(s.bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, 2.0f, 8);
     set_cv(s.bus, LEFT, 1, 4.0f, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32);
@@ -102,9 +105,9 @@ TEST_CASE("calculate C2: MIN selects lesser of In(0), In(1)", "[calculate]") {
 
 TEST_CASE("calculate C3: MAX selects greater of In(0), In(1)", "[calculate]") {
     auto s = setup_calculate_left();
-    calculate_set_op(s.alg, 1, 1);  // MAX both channels
+    calculate_set_op(s.hi, 1, 1);  // MAX both channels
 
-    std::memset(s.bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, 2.0f, 8);
     set_cv(s.bus, LEFT, 1, 4.0f, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32);
@@ -115,9 +118,9 @@ TEST_CASE("calculate C3: MAX selects greater of In(0), In(1)", "[calculate]") {
 
 TEST_CASE("calculate C4: SUM clamps at HEMISPHERE_MAX_CV", "[calculate]") {
     auto s = setup_calculate_left();
-    calculate_set_op(s.alg, 2, 2);  // SUM both channels
+    calculate_set_op(s.hi, 2, 2);  // SUM both channels
 
-    std::memset(s.bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, 6.0f, 8);   // = HEMISPHERE_MAX_CV (6V)
     set_cv(s.bus, LEFT, 1, 0.5f, 8);   // would push past max
     step_n_frames(s.loaded, s.alg, s.bus, 32);
@@ -127,9 +130,9 @@ TEST_CASE("calculate C4: SUM clamps at HEMISPHERE_MAX_CV", "[calculate]") {
 
 TEST_CASE("calculate C5: SUM clamps at HEMISPHERE_MIN_CV", "[calculate]") {
     auto s = setup_calculate_left();
-    calculate_set_op(s.alg, 2, 2);
+    calculate_set_op(s.hi, 2, 2);  // SUM both channels
 
-    std::memset(s.bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, -6.0f, 8);  // = HEMISPHERE_MIN_CV (-6V)
     set_cv(s.bus, LEFT, 1, -0.5f, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32);

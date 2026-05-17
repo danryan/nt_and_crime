@@ -11,6 +11,7 @@
 using hem_shim::kAppletBrancher;
 using hem_shim::kAppletCalculate;
 using namespace hem_test;
+using Catch::Approx;
 
 namespace {
 
@@ -84,4 +85,54 @@ TEST_CASE("calculate C13: serialise round-trip", "[calculate]") {
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE((packed & 0xFF)        == 5);
     REQUIRE(((packed >> 8) & 0xFF) == 7);
+}
+
+TEST_CASE("calculate C2: MIN selects lesser of In(0), In(1)", "[calculate]") {
+    auto s = setup_calculate_left();
+    calculate_set_op(s.alg, 0, 0);  // MIN both channels
+
+    std::memset(s.bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);
+    set_cv(s.bus, LEFT, 1, 4.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.01f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(2.0f).margin(0.01f));
+}
+
+TEST_CASE("calculate C3: MAX selects greater of In(0), In(1)", "[calculate]") {
+    auto s = setup_calculate_left();
+    calculate_set_op(s.alg, 1, 1);  // MAX both channels
+
+    std::memset(s.bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);
+    set_cv(s.bus, LEFT, 1, 4.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(4.0f).margin(0.01f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(4.0f).margin(0.01f));
+}
+
+TEST_CASE("calculate C4: SUM clamps at HEMISPHERE_MAX_CV", "[calculate]") {
+    auto s = setup_calculate_left();
+    calculate_set_op(s.alg, 2, 2);  // SUM both channels
+
+    std::memset(s.bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    set_cv(s.bus, LEFT, 0, 6.0f, 8);   // = HEMISPHERE_MAX_CV (6V)
+    set_cv(s.bus, LEFT, 1, 0.5f, 8);   // would push past max
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(6.0f).margin(0.01f));
+}
+
+TEST_CASE("calculate C5: SUM clamps at HEMISPHERE_MIN_CV", "[calculate]") {
+    auto s = setup_calculate_left();
+    calculate_set_op(s.alg, 2, 2);
+
+    std::memset(s.bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
+    set_cv(s.bus, LEFT, 0, -6.0f, 8);  // = HEMISPHERE_MIN_CV (-6V)
+    set_cv(s.bus, LEFT, 1, -0.5f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(-6.0f).margin(0.01f));
 }

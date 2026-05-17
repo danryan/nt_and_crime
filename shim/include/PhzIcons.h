@@ -7,5 +7,6 @@ extern const uint8_t brancher[8];
 extern const uint8_t slew[8];
 extern const uint8_t calculate[8];
 extern const uint8_t burst[8];
+extern const uint8_t gateDelay[8];
 extern const uint8_t thresholdLogicNeuron[8];
 }

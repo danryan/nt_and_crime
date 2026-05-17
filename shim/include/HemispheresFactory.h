@@ -11,6 +11,7 @@
 #include "TLNeuron.h"
 #include "Calculate.h"
 #include "Burst.h"
+#include "GateDelay.h"
 
 namespace hem_shim {
 
@@ -20,6 +21,7 @@ enum AppletIndex : uint8_t {
     kAppletBrancher,
     kAppletBurst,
     kAppletCalculate,
+    kAppletGateDelay,
     kAppletLogic,
     kAppletSlew,
     kAppletTLNeuron,
@@ -28,7 +30,7 @@ enum AppletIndex : uint8_t {
 
 inline const char* const* applet_enum_strings() {
     static const char* const names[kAppletCount] = {
-        "Empty", "AttenOff", "Brancher", "Burst", "Calculate", "Logic", "Slew", "TLNeuron"
+        "Empty", "AttenOff", "Brancher", "Burst", "Calculate", "GateDelay", "Logic", "Slew", "TLNeuron"
     };
     return names;
 }
@@ -56,7 +58,8 @@ constexpr size_t kMaxAppletSize =
     cmax(sizeof(TLNeuron),
     cmax(sizeof(Calculate),
     cmax(sizeof(Brancher),
-         sizeof(Burst))))))));
+    cmax(sizeof(GateDelay),
+         sizeof(Burst)))))))));
 
 constexpr size_t kMaxAppletAlign =
     cmax(alignof(Empty),
@@ -66,7 +69,8 @@ constexpr size_t kMaxAppletAlign =
     cmax(alignof(TLNeuron),
     cmax(alignof(Calculate),
     cmax(alignof(Brancher),
-         alignof(Burst))))))));
+    cmax(alignof(GateDelay),
+         alignof(Burst)))))))));
 
 template <class T>
 inline HemisphereApplet* make_applet(void* sram) {
@@ -82,6 +86,7 @@ inline AppletFactory applet_factory(AppletIndex idx) {
         &make_applet<Brancher>,
         &make_applet<Burst>,
         &make_applet<Calculate>,
+        &make_applet<GateDelay>,
         &make_applet<Logic>,
         &make_applet<Slew>,
         &make_applet<TLNeuron>,

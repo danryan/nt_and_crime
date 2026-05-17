@@ -183,3 +183,38 @@ TEST_CASE("calculate C8: both channels read both inputs (asymmetric quirk)", "[c
     REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(1.0f).margin(0.01f));
     REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(3.0f).margin(0.01f));
 }
+
+TEST_CASE("calculate C9: S&H output stays at zero before clock", "[calculate]") {
+    auto s = setup_calculate_left();
+    calculate_set_op(s.hi, 5, 5);  // S&H both channels
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);  // input CV present
+    set_cv(s.bus, LEFT, 1, 3.0f, 8);
+    // No gate written; Clock(ch) never fires; S&H never latches.
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.01f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(0.0f).margin(0.01f));
+}
+
+TEST_CASE("calculate C10: S&H captures input on clock edge", "[calculate]") {
+    auto s = setup_calculate_left();
+    calculate_set_op(s.hi, 5, 5);  // S&H both channels
+
+    // Step 1: rising edge on Gate(0) plus held CV.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);
+    set_gate(s.bus, LEFT, 0, 0, 8);  // rising edge at frame 0
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    // Subsequent steps: keep CV at 2V, no new gate edges. ADC lag is internal
+    // to the vendor; stepping ~16 buffers (512 samples) is safely past it.
+    for (int i = 0; i < 16; ++i) {
+        clear_bus(s.bus);
+        set_cv(s.bus, LEFT, 0, 2.0f, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+    }
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.1f));
+}

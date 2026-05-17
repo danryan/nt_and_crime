@@ -46,6 +46,29 @@ void calculate_set_op(hem_shim::HemispheresInstance* hi, int op_left, int op_rig
     get_applet(hi, LEFT)->OnDataReceive(pack_calculate(op_left, op_right));
 }
 
+struct BranchSetup {
+    nt::LoadedPlugin* loaded;
+    _NT_algorithm*    alg;
+    float*            bus;
+    hem_shim::HemispheresInstance* hi;
+};
+
+BranchSetup setup_brancher_left() {
+    nt::reset_runtime();
+    auto* loaded = nt::load_plugin();
+    REQUIRE(loaded != nullptr);
+    auto* alg = loaded->algorithm;
+    REQUIRE(alg != nullptr);
+    select_applet(alg, LEFT, kAppletBrancher);
+
+    float* bus = nt::bus_frames_base();
+    REQUIRE(bus != nullptr);
+    clear_bus(bus);
+    step_n_frames(loaded, alg, bus, 32);  // triggers swap + Start
+
+    return { loaded, alg, bus, as_instance(alg) };
+}
+
 }  // namespace
 
 TEST_CASE("hemispheres factory loads, steps, draws without crash", "[smoke]") {
@@ -254,4 +277,17 @@ TEST_CASE("calculate C12: Rnd+ latches to clocked after first Clock(0)", "[calcu
         step_n_frames(s.loaded, s.alg, s.bus, 32);
         REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(v_after_clock).margin(0.001f));
     }
+}
+
+TEST_CASE("brancher B1: Start sets p = 50", "[brancher]") {
+    auto s = setup_brancher_left();
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((packed & 0x7F) == 50);
+}
+
+TEST_CASE("brancher B9: serialise round-trip preserves p", "[brancher]") {
+    auto s = setup_brancher_left();
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(73));
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((packed & 0x7F) == 73);
 }

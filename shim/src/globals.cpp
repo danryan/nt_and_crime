@@ -33,5 +33,5 @@ void HS::IOFrame::ClockOut(DAC_CHANNEL ch, int) {
 }
 
 #include "CVInputMap.h"
-CVInputMap cvmap[4] = {{0}, {1}, {2}, {3}};
-DigitalInputMap trigmap[4] = {{0}, {1}, {2}, {3}};
+CVInputMap cvmap[4] = {CVInputMap(0), CVInputMap(1), CVInputMap(2), CVInputMap(3)};
+DigitalInputMap trigmap[4] = {DigitalInputMap(0), DigitalInputMap(1), DigitalInputMap(2), DigitalInputMap(3)};

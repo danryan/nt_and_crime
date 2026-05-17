@@ -6,6 +6,7 @@
 #endif
 
 #include <distingnt/api.h>
+#include <distingnt/serialisation.h>
 #include <new>
 #include <cstring>
 #include "HemisphereApplet.h"

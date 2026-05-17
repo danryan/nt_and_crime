@@ -1,4 +1,6 @@
 #pragma once
+#include <cstdint>
+#include <cstddef>
 #include "OC_gpio.h"
 
 #define ONE_OCTAVE (12 << 7)                                    // 1536 hem units per V
@@ -27,17 +29,14 @@ enum HELP_SECTIONS {
 }
 using namespace HS;
 
-constexpr void Pack(uint64_t& data, struct PackLocation p, uint64_t value);
-constexpr int Unpack(const uint64_t& data, struct PackLocation p);
-
 struct PackLocation { size_t location; size_t size; };
-constexpr void Pack(uint64_t& data, PackLocation p, uint64_t value) {
+inline void Pack(uint64_t& data, PackLocation p, uint64_t value) {
     data |= (value << p.location);
 }
-constexpr int Unpack(const uint64_t& data, PackLocation p) {
+inline int Unpack(const uint64_t& data, PackLocation p) {
     uint64_t mask = 1;
     for (size_t i = 1; i < p.size; ++i) mask |= (uint64_t(1) << i);
-    return (data >> p.location) & mask;
+    return static_cast<int>((data >> p.location) & mask);
 }
 
 // Help array — populated by applet's SetHelp, read by debug/help screens.

@@ -1,5 +1,7 @@
 # Phase 5: Land time-injection harness helper + cat-C time-sensitive applets (autonomous)
 
+SUPERSEDED 2026-05-18 by `docs/superpowers/prompts/2026-05-18-phase5-deps-kickoff.md`. Preflight audit found the cat-C applet inventory at the current shim surface is exhausted: only 4 candidates (ResetClock, Shuffle, Xfader, Scope) fit without pulling deferred vendor-class dependencies, below the 5-applet abort floor. Phase 5 pivoted to a vendor-dependency port batch (VectorOscillator+WaveformManager, Lorenz, tideslite+PhaseExtractor, RelabiManager, ClockManager, Quantizer subsystem, CVInputMap) so Phase 6 can complete the remaining applet inventory in one parallel fan-out. The text below is retained as historical record of the original applet-scoped plan.
+
 Phase 4 shipped 7 Hemisphere applet ports on `main` at squash commit `c68d6bc`: Binary, ShiftGate, Trending, ProbabilityDivider (4 Phase 3 deferrals) plus ADEG, ADSREG, GameOfLife (3 cat-B). ResetClock was demoted to Phase 5 because it requires a category-C time-injection helper not in Phase 4's bounded scope.
 
 The Phase 4 brainstorm at `docs/superpowers/brainstorms/2026-05-18-phase4-applets-brainstorm.md` enumerates Phase 5 carry-forward:

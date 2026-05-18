@@ -28,6 +28,7 @@ using hem_shim::kAppletRunglBook;
 using hem_shim::kAppletSchmitt;
 using hem_shim::kAppletSlew;
 using hem_shim::kAppletStairs;
+using hem_shim::kAppletSwitch;
 using hem_shim::kAppletTLNeuron;
 using Catch::Approx;
 using namespace hem_test;
@@ -2129,4 +2130,61 @@ TEST_CASE("stairs ST6: rand=1 mode keeps output within CV range and differs acro
 
     float v2 = read_cv_at(s.bus, LEFT, 0, 0, 8);
     REQUIRE(v2 == Approx(0.0f).margin(0.01f));  // endpoint: rand disabled, exact 0V
+// Switch tests
+// Vendor: Switch.h.
+// Channel 0: sequential switch - Clock(0) toggles step (0->1->0) each Controller tick.
+//   Out(0) = In(step). 10x risk: one Clock(0) buffer toggles step 10 times (even),
+//   so net effect is zero. Testing channel 0 without Clock(0) is reliable; testing
+//   toggle via Clock(0) is not (attempt-1 SW2 was defeated by this).
+// Channel 1: gated switch - Gate(1) high selects In(1), otherwise In(0).
+//   No 10x risk on the gated switch path (Gate is polled per tick, not a counter).
+// OnDataRequest returns 0; active[] is runtime-only state.
+
+TEST_CASE("switch SW1: Start defaults - OnDataRequest is 0 (no serialised state)", "[switch]") {
+    // Vendor Start(): active[0]=1, active[1]=1.
+    // OnDataRequest() returns 0 (Switch.h:64-67). No fields to decode.
+    auto s = setup_applet(kAppletSwitch);
+    REQUIRE(get_applet(s.hi, LEFT)->OnDataRequest() == 0);
+}
+
+TEST_CASE("switch SW2: Out(0) passes In(0) when no clock received (step=0 at Start)", "[switch]") {
+    // Start() leaves step=0. With no Clock(0) fired, step stays 0.
+    // Controller: Out(0) = In(step) = In(0).
+    // Set In(0)=1V, In(1)=4V. After one buffer with no clock, Out(0) must read ~1V.
+    auto s = setup_applet(kAppletSwitch);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    set_cv(s.bus, LEFT, 1, 4.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(1.0f).margin(0.1f));
+}
+
+TEST_CASE("switch SW3: Out(1) reads In(0) when Gate(1) is low", "[switch]") {
+    // Controller ch1: Gate(1) low -> active[1]=1, Out(1)=In(0).
+    // Set In(0)=2V, In(1)=5V. No gate on ch1. Out(1) must read ~2V.
+    auto s = setup_applet(kAppletSwitch);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);
+    set_cv(s.bus, LEFT, 1, 5.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(2.0f).margin(0.1f));
+}
+
+TEST_CASE("switch SW4: Out(1) reads In(1) when Gate(1) is high (gated select)", "[switch]") {
+    // Controller ch1: Gate(1) high -> active[1]=2, Out(1)=In(1).
+    // Set In(0)=2V, In(1)=5V. Hold gate on ch1. Out(1) must read ~5V.
+    // Gate(1) is polled per Controller tick (not a counter); no 10x accumulation risk.
+    auto s = setup_applet(kAppletSwitch);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);
+    set_cv(s.bus, LEFT, 1, 5.0f, 8);
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(5.0f).margin(0.1f));
 }

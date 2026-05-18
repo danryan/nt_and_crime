@@ -10,6 +10,7 @@
 
 using hem_shim::kAppletBrancher;
 using hem_shim::kAppletCalculate;
+using hem_shim::kAppletLogic;
 using Catch::Approx;
 using namespace hem_test;
 
@@ -44,6 +45,10 @@ AppletSetup setup_applet(hem_shim::AppletIndex idx, HemSide side = LEFT) {
 
 void calculate_set_op(hem_shim::HemispheresInstance* hi, int op_left, int op_right) {
     get_applet(hi, LEFT)->OnDataReceive(pack_calculate(op_left, op_right));
+}
+
+void logic_set_op(hem_shim::HemispheresInstance* hi, int op_left, int op_right) {
+    get_applet(hi, LEFT)->OnDataReceive(pack_logic(op_left, op_right));
 }
 
 }  // namespace
@@ -425,4 +430,130 @@ TEST_CASE("brancher B4: p=50 yields ~50/50 routing over 1000 clocks", "[brancher
     REQUIRE(count_1 >= 460);
     REQUIRE(count_1 <= 540);
     REQUIRE(count_0 + count_1 >= 950);  // some rolls may land on neither output
+}
+
+TEST_CASE("logic L1: Start defaults are AND, XOR", "[logic]") {
+    auto s = setup_applet(kAppletLogic);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((packed & 0xFF)        == 0);  // AND
+    REQUIRE(((packed >> 8) & 0xFF) == 2);  // XOR
+}
+
+TEST_CASE("logic L2: AND outputs s1 AND s2", "[logic]") {
+    auto s = setup_applet(kAppletLogic);
+    logic_set_op(s.hi, 0, 0);  // AND both
+
+    // s1=low, s2=low -> 0
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+
+    // s1=high, s2=low -> 0
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+
+    // s1=low, s2=high -> 0
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+
+    // s1=high, s2=high -> 1
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+}
+
+TEST_CASE("logic L3: OR outputs s1 OR s2", "[logic]") {
+    auto s = setup_applet(kAppletLogic);
+    logic_set_op(s.hi, 1, 1);
+
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+}
+
+TEST_CASE("logic L4: XOR outputs s1 XOR s2", "[logic]") {
+    auto s = setup_applet(kAppletLogic);
+    logic_set_op(s.hi, 2, 2);
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);  // s1=high only
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    hold_gate(s.bus, LEFT, 1, 8);  // both high -> XOR=0
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+}
+
+TEST_CASE("logic L5: NAND, NOR, XNOR invert AND/OR/XOR", "[logic]") {
+    auto s = setup_applet(kAppletLogic);
+
+    // NAND s1=s2=high -> 0 (inverted AND)
+    logic_set_op(s.hi, 3, 3);
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+
+    // NOR s1=s2=low -> 1 (inverted OR)
+    logic_set_op(s.hi, 4, 4);
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    // XNOR s1=s2=high -> 1 (inverted XOR)
+    logic_set_op(s.hi, 5, 5);
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+}
+
+TEST_CASE("logic L6: CV-controlled mode picks op from CV", "[logic]") {
+    // Vendor Logic.h:25-29: when operation[ch] == 6, the actual op is selected
+    // from CV by scaling abs(In(ch)) to [0, 5] and using that as the op index.
+    auto s = setup_applet(kAppletLogic);
+    logic_set_op(s.hi, 6, 6);  // CV-controlled both channels
+
+    // CV near 0 -> idx 0 -> AND. s1=s2=high -> 1.
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    hold_gate(s.bus, LEFT, 1, 8);
+    // No CV written; In(0) == 0 -> idx 0 -> AND.
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+}
+
+TEST_CASE("logic L7: serialise round-trip preserves ops", "[logic]") {
+    auto s = setup_applet(kAppletLogic);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_logic(5, 3));
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((packed & 0xFF)        == 5);
+    REQUIRE(((packed >> 8) & 0xFF) == 3);
 }

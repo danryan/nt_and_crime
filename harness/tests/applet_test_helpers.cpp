@@ -90,4 +90,9 @@ uint64_t pack_brancher(int p) {
     return (uint64_t)(p & 0x7F);
 }
 
+uint64_t pack_logic(int op_left, int op_right) {
+    return ((uint64_t)(op_left  & 0xFF))
+         | ((uint64_t)(op_right & 0xFF) << 8);
+}
+
 }  // namespace hem_test

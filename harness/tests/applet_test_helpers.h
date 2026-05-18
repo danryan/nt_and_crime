@@ -82,4 +82,8 @@ uint64_t pack_calculate(int op_left, int op_right);
 // Brancher's `choice` field is not serialised by vendor.
 uint64_t pack_brancher(int p);
 
+// Mirrors Logic::OnDataRequest packing: bits [0,8] = op_left, [8,8] = op_right.
+// Ops: 0=AND, 1=OR, 2=XOR, 3=NAND, 4=NOR, 5=XNOR, 6=CV-controlled.
+uint64_t pack_logic(int op_left, int op_right);
+
 }  // namespace hem_test

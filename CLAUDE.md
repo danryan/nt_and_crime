@@ -115,13 +115,15 @@ Applet ports run in phases. Each phase produces three documents that are require
 
 Abort reports for failed phases live under `docs/superpowers/abort-reports/`. The Phase 3 retrospective (`2026-05-18-phase3-attempt-1-retrospective.md`) and the ResetClock spec-mismatch report (`2026-05-18-resetclock-spec-mismatch.md`) are required reading before any Phase 4+ kickoff because they encode the failure modes the framework now guards against.
 
-Phase numbering convention: Phase 1+2 ported 14 applets (the existing baseline). Phase 3 retry ported 10 more (merged via squash commit `87596f4`; the underlying 12-commit history is preserved at `refs/archive/phase3-attempt-1/*` archive refs plus the brainstorm/spec/plan/retrospective documents). Phase 4 is bounded to 5 Phase-3 deferrals plus 5-8 category-B applets.
+Phase numbering convention: Phase 1+2 ported 14 applets (the existing baseline). Phase 3 retry ported 10 more (merged via squash commit `87596f4`; the underlying 12-commit history is preserved at `refs/archive/phase3-attempt-1/*` archive refs plus the brainstorm/spec/plan/retrospective documents). Phase 4 shipped 7 applets (squash `c68d6bc`, 4 Phase-3 deferrals plus 3 cat-B). Phase 5 pivoted at preflight from cat-C applet ports to a vendor dep port batch (kickoff at `docs/superpowers/prompts/2026-05-18-phase5-deps-kickoff.md`, merged `4df1c6a`): VectorOscillator+WaveformManager+RelabiManager bundled, Lorenz, tideslite+PhaseExtractor, full ClockManager, Quantizer subsystem (possibly split), CVInputMap, plus the time-injection helper. Phase 6 inherits the unblocked applet inventory and ports it under the standard parallel implementer pattern.
 
 ## Parallel execution
 
 The project rule at `~/.claude/rules/parallel-execution.md` is load-bearing. Independent per-applet test ports are parallelized via isolated worktrees plus subagent dispatch in a single message. End-to-end wallclock equals the slowest single port plus integration, not the sum. Phase 3 attempt 1's failure traces directly to dispatching from `main` instead of the feature branch and to enforcing the implementer contract via prose instead of a pre-commit hook; both are now fixed and codified in the plan template. After `git worktree add`, run `git submodule update --init --recursive --depth=1` in the new worktree before any build; worktrees do not inherit submodule state.
 
 A pre-commit hook at `.git/hooks/pre-commit` enforces the implementer contract: it rejects commits on `phase<N>-port/*` or `phase<N>-shim/*` branches that stage forbidden-surface shim files, and rejects commits on any branch not derived from the active feature branch. The hook is a no-op on other branches. Do not remove or weaken it without updating the active phase's plan; the framework relies on it.
+
+Dep-port phases (Phase 5 shape) add a stricter hook rule: on `phase<N>-dep/*` branches the hook hard-rejects any commit that stages `shim/include/applet_indices.h`, `shim/include/HemispheresFactory.h`, or `shim/include/PhzIcons.h`. Those three files are owned by the integration step on the feature branch; dep implementers must never touch them. Operational enforcement of the "no applet ports in a dep-port phase" invariant.
 
 ## Workflow
 
@@ -134,6 +136,13 @@ Standard sequence for any non-trivial change:
 5. **Integration** on the feature branch: cherry-pick implementer commits, add registration entries, run `make test-applets` and `make arm`.
 6. **PR** opened by the feature branch. Hardware smoke check happens after PR open since it needs physical access.
 
+## Audit disciplines (Phase 5 lessons)
+
+- Load-bearing infrastructure (helpers, shim subsystems) is designed in the kickoff prompt or preflight, not the brainstorm. Brainstorms categorize and select; they do not design under deadline.
+- Cat-C demotion threshold: if more than 2 of N candidates carry deferred deps in audit, halt and assess whether the boundary is wrong, not just whether scope is small. High demotion rate is evidence of mis-drawn boundaries.
+- Per-dep LoC counted in preflight drives split/monolithic decisions, not brainstorm wrestling. Thresholds: under 1500 monolithic, 1500-2250 split, over 2250 halt and carve sub-phase.
+- Tiny deps (under ~150 LoC) that have no standalone use bundle into the bigger dep they serve. Two implementers for one logical unit is more risk than reward.
+
 ## Markdown discipline
 
 After editing any `.md` file, run `markdownlint <file>` and fix all errors. The repo's `.markdownlint.json` relaxes a small set of rules (long lines, HTML, sibling-only duplicate headings); the rest are enforced.
@@ -145,3 +154,7 @@ After editing any `.md` file, run `markdownlint <file>` and fix all errors. The 
 ## Merging PRs from a worktree
 
 `gh pr merge` from inside a worktree fails when the default branch is checked out in the parent directory. Always pass `--repo danryan/nt_and_crime` and avoid `--delete-branch` (which triggers a local checkout). Use `gh pr merge <N> --squash --subject "..." --repo danryan/nt_and_crime`; delete the worktree and feature branch separately.
+
+## Removing worktrees with submodules
+
+`git worktree remove .worktrees/<name>` fails with "working trees containing submodules cannot be moved or removed". Always pass `--force` when removing a worktree that initialized submodules (every worktree in this repo does, since `make vendor` ran or submodules were init'd during provisioning).

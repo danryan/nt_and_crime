@@ -13,6 +13,7 @@ using hem_shim::kAppletBrancher;
 using hem_shim::kAppletBurst;
 using hem_shim::kAppletCalculate;
 using hem_shim::kAppletCompare;
+using hem_shim::kAppletGatedVCA;
 using hem_shim::kAppletLogic;
 using hem_shim::kAppletSlew;
 using Catch::Approx;
@@ -871,4 +872,71 @@ TEST_CASE("compare CM4: serialise round-trip preserves level", "[compare]") {
     compare_set(s.hi, 200);
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE((packed & 0xFF) == 200);
+}
+
+TEST_CASE("gated_vca GV1: Out(0) is zero when Gate(0) is low", "[gated_vca]") {
+    auto s = setup_applet(kAppletGatedVCA);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);  // signal
+    set_cv(s.bus, LEFT, 1, 6.0f, 8);  // amplitude = max
+    // No gate written.
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.05f));
+}
+
+TEST_CASE("gated_vca GV2: Out(0) passes signal scaled by amplitude when Gate(0) is high", "[gated_vca]") {
+    // Vendor formula: output = Proportion(amplitude, HEMISPHERE_MAX_INPUT_CV, signal).
+    // amplitude = HEMISPHERE_MAX_INPUT_CV (6V) -> output = signal (1:1).
+    auto s = setup_applet(kAppletGatedVCA);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);  // signal
+    set_cv(s.bus, LEFT, 1, 6.0f, 8);  // amplitude (full)
+    hold_gate(s.bus, LEFT, 0, 8);     // gate open
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(3.0f).margin(0.1f));
+}
+
+TEST_CASE("gated_vca GV3: Out(1) is normally-on (passes signal unless Gate(1) mutes)", "[gated_vca]") {
+    auto s = setup_applet(kAppletGatedVCA);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);
+    set_cv(s.bus, LEFT, 1, 6.0f, 8);
+    // No gate on either input.
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(3.0f).margin(0.1f));
+}
+
+TEST_CASE("gated_vca GV4: Out(1) mutes when Gate(1) is high", "[gated_vca]") {
+    auto s = setup_applet(kAppletGatedVCA);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);
+    set_cv(s.bus, LEFT, 1, 6.0f, 8);
+    hold_gate(s.bus, LEFT, 1, 8);  // mute
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(0.0f).margin(0.05f));
+}
+
+TEST_CASE("gated_vca GV5: half amplitude halves signal", "[gated_vca]") {
+    auto s = setup_applet(kAppletGatedVCA);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 4.0f, 8);  // signal
+    set_cv(s.bus, LEFT, 1, 3.0f, 8);  // amplitude = half of max
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.1f));
+}
+
+TEST_CASE("gated_vca GV6: serialise is no-op (returns 0)", "[gated_vca]") {
+    auto s = setup_applet(kAppletGatedVCA);
+    REQUIRE(get_applet(s.hi, LEFT)->OnDataRequest() == 0);
 }

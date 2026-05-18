@@ -30,6 +30,7 @@ using hem_shim::kAppletSlew;
 using hem_shim::kAppletStairs;
 using hem_shim::kAppletSwitch;
 using hem_shim::kAppletTLNeuron;
+using hem_shim::kAppletVoltage;
 using Catch::Approx;
 using namespace hem_test;
 
@@ -143,6 +144,11 @@ void schmitt_set(hem_shim::HemispheresInstance* hi, int low, int high) {
     get_applet(hi, LEFT)->OnDataReceive(pack_schmitt(low, high));
 void stairs_set(hem_shim::HemispheresInstance* hi, int steps, int dir, int rand) {
     get_applet(hi, LEFT)->OnDataReceive(pack_stairs(steps, dir, rand));
+void voltage_set(hem_shim::HemispheresInstance* hi,
+                 int voltage0, int voltage1,
+                 int gate0, int gate1) {
+    get_applet(hi, LEFT)->OnDataReceive(
+        pack_voltage(voltage0, voltage1, gate0, gate1));
 }
 
 }  // namespace
@@ -2187,4 +2193,114 @@ TEST_CASE("switch SW4: Out(1) reads In(1) when Gate(1) is high (gated select)", 
     step_n_frames(s.loaded, s.alg, s.bus, 32);
 
     REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(5.0f).margin(0.1f));
+// Voltage tests
+// Vendor: Voltage.h. Constant CV source with gate polarity control.
+//   VOLTAGE_INCREMENTS = 128 hem units per semitone (= ONE_OCTAVE / 12).
+//   VOLTAGE_MAX = HEMISPHERE_MAX_CV / 128 = 9216 / 128 = 72 (6V).
+//   VOLTAGE_MIN = HEMISPHERE_MIN_CV / 128 = -9216 / 128 = -72 (-6V).
+//   OnDataRequest: voltage[0]+256 at [0,9), gap at [9,1), voltage[1]+256 at [10,9),
+//                  gate[0] at [19,1), gate[1] at [20,1).
+//   gate[ch]=0: normally-on (output except when Gate(ch) high).
+//   gate[ch]=1: normally-off (output only when Gate(ch) high).
+//   No 10x risk: Controller polls Gate(ch) per-tick, no internal counter.
+
+TEST_CASE("voltage V1: Start defaults match vendor", "[voltage]") {
+    // Start(): voltage[0]=VOLTAGE_MAX=72, voltage[1]=VOLTAGE_MIN=-72, gate[ch]=0.
+    // Packed: voltage[0]+256=328 at [0,9), voltage[1]+256=184 at [10,9), gate=0,0.
+    auto s = setup_applet(kAppletVoltage);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int v0   = (int)((packed)       & 0x1FF) - 256;
+    int v1   = (int)((packed >> 10) & 0x1FF) - 256;
+    int gap  = (int)((packed >> 9)  & 0x1);
+    int g0   = (int)((packed >> 19) & 0x1);
+    int g1   = (int)((packed >> 20) & 0x1);
+    REQUIRE(v0  == 72);
+    REQUIRE(v1  == -72);
+    REQUIRE(gap == 0);
+    REQUIRE(g0  == 0);
+    REQUIRE(g1  == 0);
+}
+
+TEST_CASE("voltage V2: serialise round-trip preserves all fields", "[voltage]") {
+    // Pack non-default values well inside VOLTAGE_MIN..-72..72=VOLTAGE_MAX.
+    // voltage[0]=24 (=3V), voltage[1]=-12 (=-1.5V), gate[0]=1, gate[1]=0.
+    auto s = setup_applet(kAppletVoltage);
+    voltage_set(s.hi, 24, -12, 1, 0);
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int v0  = (int)((packed)       & 0x1FF) - 256;
+    int v1  = (int)((packed >> 10) & 0x1FF) - 256;
+    int gap = (int)((packed >> 9)  & 0x1);
+    int g0  = (int)((packed >> 19) & 0x1);
+    int g1  = (int)((packed >> 20) & 0x1);
+    REQUIRE(v0  == 24);
+    REQUIRE(v1  == -12);
+    REQUIRE(gap == 0);  // gap bit must be zero after round-trip
+    REQUIRE(g0  == 1);
+    REQUIRE(g1  == 0);
+}
+
+TEST_CASE("voltage V3: normally-on (gate[ch]=0) outputs voltage without gate, silences with gate", "[voltage]") {
+    // gate[0]=0: Out(0)=voltage[0]*128 when Gate(0) not high; Out(0)=0 when Gate(0) high.
+    // voltage[0]=24 => 24*128=3072 hem units => 2V.
+    auto s = setup_applet(kAppletVoltage);
+    voltage_set(s.hi, 24, -12, 0, 0);  // gate[0] = normally-on
+
+    // No gate: output should be voltage[0] * 128 = 3072 hem = 2V.
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.01f));
+
+    // Gate high: output should be 0.
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.01f));
+}
+
+TEST_CASE("voltage V4: normally-off (gate[ch]=1) silences without gate, outputs voltage with gate", "[voltage]") {
+    // gate[1]=1: Out(1)=0 when Gate(1) not high; Out(1)=voltage[1]*128 when Gate(1) high.
+    // voltage[1]=-12 => -12*128=-1536 hem units => -1V.
+    auto s = setup_applet(kAppletVoltage);
+    voltage_set(s.hi, 24, -12, 0, 1);  // gate[1] = normally-off
+
+    // No gate: output should be 0.
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(0.0f).margin(0.01f));
+
+    // Gate high: output should be voltage[1] * 128 = -1536 hem = -1V.
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(-1.0f).margin(0.01f));
+}
+
+TEST_CASE("voltage V5: gap bit at position 9 is always zero in OnDataRequest output", "[voltage]") {
+    // If we force-set bit 9 via a crafted packed word and then do OnDataReceive +
+    // OnDataRequest, the vendor Pack calls do not write bit 9, so it must be zero.
+    // voltage[0]=24 -> packed field = (24+256)=280 at [0,9); 280 in binary is
+    // 0b100011000 (9 bits). Bit 9 of the raw word is outside that field. The
+    // pack_voltage helper explicitly does not write bit 9, keeping it zero.
+    auto s = setup_applet(kAppletVoltage);
+
+    // Build a packed word with bit 9 set to verify vendor OnDataRequest clears it.
+    uint64_t dirty = pack_voltage(24, -12, 1, 0);
+    dirty |= (uint64_t(1) << 9);  // force gap bit high before feeding OnDataReceive
+    get_applet(s.hi, LEFT)->OnDataReceive(dirty);
+
+    // OnDataRequest must not propagate bit 9.
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int gap = (int)((packed >> 9) & 0x1);
+    REQUIRE(gap == 0);
+
+    // Fields must still round-trip correctly.
+    int v0 = (int)((packed)       & 0x1FF) - 256;
+    int v1 = (int)((packed >> 10) & 0x1FF) - 256;
+    int g0 = (int)((packed >> 19) & 0x1);
+    int g1 = (int)((packed >> 20) & 0x1);
+    REQUIRE(v0 == 24);
+    REQUIRE(v1 == -12);
+    REQUIRE(g0 == 1);
+    REQUIRE(g1 == 0);
 }

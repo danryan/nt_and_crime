@@ -222,6 +222,13 @@ uint64_t pack_stairs(int steps, int dir, int rand) {
     data |= ((uint64_t)(steps & 0x1F));
     data |= ((uint64_t)(dir   & 0x03)) << 5;
     data |= ((uint64_t)(rand  & 0x01)) << 7;
+uint64_t pack_voltage(int voltage0, int voltage1, int gate0, int gate1) {
+    uint64_t data = 0;
+    data |= ((uint64_t)((voltage0 + 256) & 0x1FF));        // [0,9)
+    // bit 9 left as 0 (vendor gap between voltage[0] and voltage[1])
+    data |= ((uint64_t)((voltage1 + 256) & 0x1FF)) << 10;  // [10,9)
+    data |= ((uint64_t)(gate0 & 0x1)) << 19;               // [19,1)
+    data |= ((uint64_t)(gate1 & 0x1)) << 20;               // [20,1)
     return data;
 }
 

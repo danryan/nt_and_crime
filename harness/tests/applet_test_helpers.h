@@ -192,5 +192,15 @@ uint64_t pack_schmitt(int low, int high);
 //   bits [7, 1)  = rand   (0=off, 1=on; default 0)
 // No bias fields. All fields stored without offset.
 uint64_t pack_stairs(int steps, int dir, int rand);
+// Mirrors Voltage::OnDataRequest packing (21 bits used, 1-bit gap):
+//   bits [0, 9)  = voltage[0] + 256  (biased; semitone units, VOLTAGE_INCREMENTS=128)
+//   bit  9       = UNUSED gap (must be 0; not written by vendor Pack calls)
+//   bits [10, 9) = voltage[1] + 256  (biased; same units)
+//   bit  19      = gate[0]            (0 = normally-on, 1 = normally-off)
+//   bit  20      = gate[1]
+// VOLTAGE_MAX = HEMISPHERE_MAX_CV / VOLTAGE_INCREMENTS = 72 (6V).
+// VOLTAGE_MIN = HEMISPHERE_MIN_CV / VOLTAGE_INCREMENTS = -72 (-6V).
+// Defaults after Start(): voltage[0]=72, voltage[1]=-72, gate[0]=0, gate[1]=0.
+uint64_t pack_voltage(int voltage0, int voltage1, int gate0, int gate1);
 
 }  // namespace hem_test

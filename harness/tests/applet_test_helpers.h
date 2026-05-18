@@ -121,4 +121,8 @@ uint64_t pack_compare(int level);
 uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
                           int width_b, int range_b, int skip_b);
 
+// Mirrors GateDelay::OnDataRequest: bits [0,11] = time[0], [11,11] = time[1].
+// Times are in milliseconds, valid range 0..2000 (clamped by vendor).
+uint64_t pack_gate_delay(int time_left, int time_right);
+
 }  // namespace hem_test

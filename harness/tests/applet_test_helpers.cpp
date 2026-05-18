@@ -146,4 +146,9 @@ uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
     return data;
 }
 
+uint64_t pack_gate_delay(int time_left, int time_right) {
+    return ((uint64_t)(time_left  & 0x7FF))
+         | ((uint64_t)(time_right & 0x7FF) << 11);
+}
+
 }  // namespace hem_test

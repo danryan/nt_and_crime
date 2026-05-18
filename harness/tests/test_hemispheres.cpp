@@ -15,6 +15,7 @@ using hem_shim::kAppletButton;
 using hem_shim::kAppletCalculate;
 using hem_shim::kAppletClkToGate;
 using hem_shim::kAppletCompare;
+using hem_shim::kAppletGateDelay;
 using hem_shim::kAppletGatedVCA;
 using hem_shim::kAppletLogic;
 using hem_shim::kAppletSlew;
@@ -85,6 +86,10 @@ void clk_to_gate_set(hem_shim::HemispheresInstance* hi,
                      int width_b, int range_b, int skip_b) {
     get_applet(hi, LEFT)->OnDataReceive(
         pack_clk_to_gate(width_a, range_a, skip_a, width_b, range_b, skip_b));
+}
+
+void gate_delay_set(hem_shim::HemispheresInstance* hi, int time_left, int time_right) {
+    get_applet(hi, LEFT)->OnDataReceive(pack_gate_delay(time_left, time_right));
 }
 
 }  // namespace
@@ -1078,4 +1083,61 @@ TEST_CASE("clk_to_gate CG5: serialise round-trip preserves all per-side fields",
     REQUIRE(w1 == 77);
     REQUIRE(r1_abs == 50); REQUIRE(r1_sign == 0);
     REQUIRE(sk1 == 99);
+}
+
+TEST_CASE("gate_delay GD1: Start defaults time[0]=time[1]=1000", "[gate_delay]") {
+    auto s = setup_applet(kAppletGateDelay);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int t0 = (int)((packed) & 0x7FF);
+    int t1 = (int)((packed >> 11) & 0x7FF);
+    REQUIRE(t0 == 1000);
+    REQUIRE(t1 == 1000);
+}
+
+TEST_CASE("gate_delay GD2: gate appears at output after configured delay", "[gate_delay]") {
+    // Vendor reality: GateDelay::Controller records `Gate(ch)` (sustained high)
+    // into a 1-bit-per-ms tape, then plays back from (location - mod_time). The
+    // shim's read_gate reports gate_high based on the LAST frame of the input
+    // buffer, so a single-sample pulse via set_gate is never seen as Gate()=true.
+    // Instead we hold the input gate high across one buffer (records `true` for
+    // ~one body iteration), then let it drop and run idle buffers until the
+    // recorded true emerges at the play head 100 ms later.
+    //
+    // Body throttle: Controller body runs every 16 internal ticks; one buffer
+    // step issues ~10 ticks (numFrames/3 with numFrames=32), so body runs ~0.625
+    // times per buffer. 100 ms of recorded delay needs roughly 100/0.625 = 160
+    // buffer steps, plus some slack for the record-to-play offset and the body
+    // schedule alignment.
+    auto s = setup_applet(kAppletGateDelay);
+    gate_delay_set(s.hi, 100, 100);
+
+    // Hold gate high for one buffer so Gate(0) reads true inside Controller and
+    // the tape records true at the current record-head location.
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    // Output should NOT be high immediately at the start of the next buffer:
+    // the play head is reading from (location - 100), which still holds zeros.
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+
+    // Run many idle buffers; the recorded gate should emerge at the output
+    // once the play head catches up to the recorded `true` region.
+    bool saw_delayed = false;
+    for (int i = 0; i < 500 && !saw_delayed; ++i) {
+        clear_bus(s.bus);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        if (read_gate_at(s.bus, LEFT, 0, 0, 8)) saw_delayed = true;
+    }
+    REQUIRE(saw_delayed);
+}
+
+TEST_CASE("gate_delay GD3: serialise round-trip preserves both times", "[gate_delay]") {
+    auto s = setup_applet(kAppletGateDelay);
+    gate_delay_set(s.hi, 250, 750);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE(((int)(packed & 0x7FF)) == 250);
+    REQUIRE(((int)((packed >> 11) & 0x7FF)) == 750);
 }

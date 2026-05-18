@@ -367,3 +367,38 @@ TEST_CASE("brancher B6: Clock(1) toggles flip-flop choice", "[brancher]") {
     REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
     REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
 }
+
+TEST_CASE("brancher B7: OnButtonPress flips choice before next gate", "[brancher]") {
+    // Vendor: OnButtonPress sets choice = 1 - choice. So if we press the
+    // button BEFORE a sustained-high gate's next step, GateOut writes to the
+    // FLIPPED output.
+    //
+    // Sequence:
+    //   Step 1: Raise gate. Clock(0) fires once (rising edge), choice rolls
+    //           to 0 at p=100, output 0 high.
+    //   Button press: choice flips from 0 to 1.
+    //   Step 2: Keep gate high. NO new rising edge (prev_high stays true
+    //           across the buffer), so Clock(0) does not fire. The bottom
+    //           branch !clocked || flipflopmode still drives GateOut(choice,
+    //           Gate(0)=true), which now writes to output 1 (flipped).
+    auto s = setup_brancher_left();
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(100));
+    seed_hem_rng(0xDEADBEEF);
+
+    // Step 1: gate rising edge + sustained high. choice rolls to 0.
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    // Flip choice via button press.
+    get_applet(s.hi, LEFT)->OnButtonPress();
+
+    // Step 2: gate stays high; no new rising edge. GateOut writes to choice
+    // (now 1).
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+}

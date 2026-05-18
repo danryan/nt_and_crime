@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstddef>
 #include "OC_gpio.h"
+#include "quant/OC_scales.h"
 
 #define ONE_OCTAVE (12 << 7)                                    // 1536 hem units per V
 #define HEMISPHERE_MAX_INPUT_CV (6 * ONE_OCTAVE)                // 9216 (T4.1)
@@ -77,5 +78,106 @@ extern int cursor_countdown[HS::APPLET_CURSOR_COUNT];
 // EditMode toggle state per side. Logic uses just LEFT_HEMISPHERE.
 struct EncoderEditor { bool isEditing; };
 extern EncoderEditor enc_edit[HS::APPLET_CURSOR_COUNT];
+
+// Quantizer channel pool. Mirrors vendor HSUtils.h:97-107.
+enum QUANT_CHANNEL {
+    QUANT_CHANNEL_1,
+    QUANT_CHANNEL_2,
+    QUANT_CHANNEL_3,
+    QUANT_CHANNEL_4,
+    QUANT_CHANNEL_5,
+    QUANT_CHANNEL_6,
+    QUANT_CHANNEL_7,
+    QUANT_CHANNEL_8,
+
+    QUANT_CHANNEL_COUNT
+};
+
+// Mirrors vendor HSUtils.h:122-127.
+struct QuantEngineSettings {
+    int16_t scale;
+    int8_t root_note;
+    int8_t octave;
+    uint16_t mask;
+};
+
+// Mirrors vendor HSUtils.h:128-184. Wraps braids::Quantizer with OC scale
+// selection, root note, and octave offset.
+struct QuantEngine : public QuantEngineSettings {
+    braids::Quantizer quantizer;
+
+    QuantEngine() {
+        scale = OC::Scales::SCALE_SEMI;
+        mask = 0xffff;
+        root_note = 0;
+        octave = 0;
+        quantizer.Init();
+        Reconfig();
+    }
+
+    void Reconfig() {
+        quantizer.Configure(OC::Scales::GetScale(scale), mask);
+    }
+    void Configure(int scale_, uint16_t mask_) {
+        CONSTRAIN(scale_, 0, OC::Scales::NUM_SCALES - 1);
+        scale = scale_;
+        if (mask_) mask = mask_;
+        Reconfig();
+    }
+    void EditMask(int idx, bool on) {
+        mask = on ? (mask | (1u << idx)) : (mask & ~(1u << idx));
+    }
+    void NudgeScale(int dir) {
+        const int max = OC::Scales::NUM_SCALES;
+        scale += dir;
+        if (scale >= max) scale = 0;
+        if (scale < 0) scale = max - 1;
+        Reconfig();
+    }
+    void RotateMask(int dir) {
+        const size_t scale_size = OC::Scales::GetScale(scale).num_notes;
+        uint16_t used_bits = ~(0xffffU << scale_size);
+        mask &= used_bits;
+
+        if (dir < 0) {
+            dir = -dir;
+            mask = (mask >> dir) | (mask << (scale_size - dir));
+        } else {
+            mask = (mask << dir) | (mask >> (scale_size - dir));
+        }
+        mask |= ~used_bits; // fill upper bits
+
+        Reconfig();
+    }
+
+    int Process(int cv, int root, int transpose) {
+        if (root == 0) root = (root_note << 7);
+        return quantizer.Process(cv, root, transpose) + (octave * ONE_OCTAVE);
+    }
+    int Lookup(int note) {
+        return quantizer.Lookup(note) + (root_note << 7) + (octave * ONE_OCTAVE);
+    }
+
+    const int Size() {
+        return OC::Scales::GetScale(scale).num_notes;
+    }
+};
+
+// Global quantizer engine pool. Defined in shim/src/quant/q_engine.cpp.
+extern QuantEngine q_engine[QUANT_CHANNEL_COUNT];
+
+// Quantizer helper free functions. Mirrors vendor HSUtils.h:224-235.
+QuantEngine& GetQuantEngine(int ch);
+int GetLatestNoteNumber(int ch);
+int Quantize(int ch, int cv, int root = 0, int transpose = 0);
+int QuantizerLookup(int ch, int note);
+void QuantizerConfigure(int ch, int scale, uint16_t mask = 0xffff);
+int GetScale(int ch);
+int GetRootNote(int ch);
+int SetRootNote(int ch, int root);
+void NudgeRootNote(int ch, int dir);
+void NudgeOctave(int ch, int dir);
+void NudgeScale(int ch, int dir);
+void QuantizerEdit(int ch);
 
 }  // namespace HS

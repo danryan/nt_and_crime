@@ -21,3 +21,9 @@ inline auto constrain(T x, U lo, V hi) -> typename std::common_type<T, U, V>::ty
 #ifndef max
 #define max(a, b) std::max((a), (b))
 #endif
+
+// Arduino-style micros() shim. Returns the shim's monotonic tick counter
+// cast to uint32_t. Used by vendor applets only as a seed source for
+// randomSeed; precise wall-clock semantics are not required.
+namespace OC { namespace CORE { extern volatile uint32_t ticks; } }
+inline uint32_t micros() { return (uint32_t)OC::CORE::ticks; }

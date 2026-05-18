@@ -235,3 +235,11 @@ inline int hem_shim_random(int min_inclusive, int max_exclusive) {
 }
 inline int hem_shim_random(int max_exclusive) { return hem_shim_random(0, max_exclusive); }
 #define random(...) hem_shim_random(__VA_ARGS__)
+
+// Arduino-style randomSeed. Vendor applets (ProbabilityDivider) call
+// randomSeed(micros()) before generating new loop content; the shim
+// re-seeds the xorshift32 RNG. A zero seed is replaced because xorshift
+// stalls at 0.
+inline void randomSeed(uint32_t seed) {
+    hem_rng_state = seed ? seed : 0xDEADBEEFu;
+}

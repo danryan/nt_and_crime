@@ -111,8 +111,8 @@ For every existing TEST_CASE that calls `setup_calculate_left()` or `setup_branc
 
 Use a search-and-replace:
 
-- `setup_calculate_left()` → `setup_applet(kAppletCalculate)`
-- `setup_brancher_left()` → `setup_applet(kAppletBrancher)`
+- Replace `setup_calculate_left()` with `setup_applet(kAppletCalculate)`.
+- Replace `setup_brancher_left()` with `setup_applet(kAppletBrancher)`.
 
 `calculate_set_op` and other applet-specific helpers stay.
 
@@ -1812,6 +1812,111 @@ On the NT module:
 - [ ] **Step 4: No additional commit**
 
 This task verifies prior commits. No file changes. Proceed to PR creation (or local merge) if hardware passes.
+
+---
+
+## Recap: Adding a New Applet Test (Future Authors)
+
+This section is the durable instruction set for adding host-side logic tests for any future Hemispheres applet. Read it before extending `test_hemispheres.cpp`. It assumes Phase 1 and Phase 2 are merged and the helper API in `harness/tests/applet_test_helpers.{h,cpp}` is in place.
+
+### Mental model
+
+The test harness links `applets/Hemispheres.cpp` directly into a Catch2 host binary. Each test allocates a `HemispheresInstance`, calls `Hemispheres_construct`, selects an applet via the left or right selector parameter, drives the bus with helper setters, calls `Hemispheres_step` to run `Controller()`, then asserts on the output bus or on packed state read back via `OnDataRequest`. There is no hardware in the loop. There is no audio. There is no real time.
+
+Three things make this work:
+
+- A slim `applet_indices.h` enum lets test TUs name applets without pulling in vendor headers that violate ODR.
+- A test seam `hem_test::get_applet_impl(HemispheresInstance*, int side)` lives in `applets/Hemispheres.cpp` (the canonical TU that owns the vendor `#define`s) and exposes the active left or right applet pointer.
+- The helper module addresses the bus by side, channel, and axis instead of raw bus index, so tests never compute `(bidx - 1) * numFrames` themselves.
+
+### Three-step recipe
+
+For every new applet, do exactly these three things in order. Do not invent a fourth.
+
+1. Read the vendor source. Open `lib/O_C-BankCBlind/software/o_c_REV/HEM_<Applet>.ino`. Find `Start()`, `Controller()`, `OnDataRequest()`, and `OnDataReceive()`. Write down: which CV inputs it consumes, which outputs it drives, which gate inputs trigger behavior, what state it serializes, and the exact bit layout of `OnDataRequest`. Cross-check the bit layout against `Pack(data, PackLocation{offset, width}, value)` calls. The order of `Pack` calls is the bit order. Note any gaps (bits skipped between `Pack` calls). Note any width that does not match the field's natural type.
+
+2. Add a `pack_<applet>` helper to `applet_test_helpers.{h,cpp}` if the applet serializes state. If it serializes nothing (Button, GatedVCA), skip this step. The helper takes named parameters in field order, validates ranges with `REQUIRE` or `assert`, packs into a `uint64_t` matching the vendor bit layout exactly, and explicitly zeroes any documented gap bits. Keep the helper signature stable: future tests will call it.
+
+3. Add a per-applet setup helper plus TEST_CASEs in `test_hemispheres.cpp`. The setup helper calls `setup_applet(kApplet<Name>, LEFT)` and returns the `AppletSetup`. The TEST_CASEs cover, at minimum: Start defaults (what `Controller()` does on frame 1 with no inputs), each documented branch in `Controller()` (one case per branch), and a serialize round-trip via `OnDataRequest` then `OnDataReceive` (if the applet serializes state). Tag every case with `[<applet_tag>]` so `make test-applets ARGS='[<tag>]'` runs the subset.
+
+### Bus contract (do not relearn this)
+
+| Axis | Bus indices | Helper |
+|---|---|---|
+| Gate inputs | 1..4 (channels A..D) | `set_gate`, `hold_gate` |
+| CV inputs | 5..8 (channels A..D) | `set_cv` |
+| CV outputs | 13..16 (channels A..D) | `read_cv_at` |
+| Gate outputs | 13..16 (channels A..D, same range as CV out) | `read_gate_at` |
+
+Left side owns channels A and B. Right side owns C and D. The helper takes `HemSide` and a per-side channel index (0 or 1), and resolves to the absolute bus index internally. Never index the bus directly in a test.
+
+### Unit conventions
+
+- Pitch CV in hem units. 1V = 1536 (one octave). `volts_to_int(float v)` rounds via `std::lroundf`, not truncation. Negative volts round correctly.
+- `HEMISPHERE_MAX_CV` is 9216 (6V), not 7680. Saturation tests must use the correct ceiling.
+- Gate high is 6.0f on the float bus. `set_gate` writes one frame; `hold_gate` writes all `numFrames` frames in the slice.
+- A "frame" inside `Controller()` is one of the 10 iterations per `step()` call (`numFrames/3` where `numFrames = 32`, so 10 iterations). Tests usually want exactly one `step()` per assertion.
+
+### State injection
+
+Hemispheres has no `parameterChanged` callback. Selector swaps propagate inside `step()` via `maybe_swap()`. To force an applet's internal state into a known configuration without driving inputs across many frames:
+
+1. Build packed state with the relevant `pack_<applet>(...)` helper.
+2. Cast the instance: `auto* hi = as_instance(self)`.
+3. Get the applet pointer: `auto* applet = get_applet(hi, LEFT)`.
+4. Call `applet->OnDataReceive(packed)`.
+
+This is the fast path for tests that need to assert behavior at a specific operating point (Calculate operator selection, AttenuateOffset attenuation level, and similar).
+
+### Determinism
+
+For any applet that reads `random()` (Brancher, Burst, TLNeuron, Cumulus), seed at the start of each TEST_CASE with `seed_hem_rng(<int>)`. Same seed gives the same sequence. Without seeding, tests are flaky.
+
+Statistical tests (probability fairness, distribution shape) need at least 1000 trials and a tolerance margin. Phase 1's Brancher B4 case uses 1000 trials at p=50 with a +/-40 window on expected 500.
+
+### Anti-patterns to avoid
+
+The following mistakes were made during Phase 1 or Phase 2 and caught in review. Do not repeat them.
+
+- Including `hemispheres_shim.h` or `HemispheresFactory.h` from a test TU. This produces 66 duplicate symbols because vendor headers define `hem_MIN/MAX/SUM/DIFF/MEAN` non-inline. Use `applet_indices.h` only.
+- Duplicating the `HemSide` enum in `applets/Hemispheres.cpp`. The seam takes `int side`. Only the helper header declares `HemSide`.
+- Truncating volts with `(int)(v * 1536.0f)`. Negative values round toward zero, not nearest. Use `std::lroundf`.
+- Listing right side as channel B. Right side is channels C and D (per-side channels 0 and 1 still, but absolute channels are 2 and 3).
+- Forgetting `using Catch::Approx;` at the top of the test TU. Catch1 puts `Approx` in the `Catch::` namespace.
+- Asserting on raw bus floats with `==`. Use `Approx(expected).margin(epsilon)`.
+- Adding a TEST_CASE without a tag. The `make test-applets ARGS='[<tag>]'` workflow depends on tags.
+- Packing a serialized field with the wrong width. Re-read the vendor `Pack(...)` call before writing the helper. A field declared as `uint8_t` may still be packed at 4 bits.
+- Skipping gap bits in `pack_<applet>` when the vendor layout has them (Cumulus bits 11..12). Explicitly write `0` into gap bits and assert them in the round-trip test.
+
+### File touch list per new applet
+
+| File | Change |
+|---|---|
+| `applet_test_helpers.h` | Add `pack_<applet>(...)` declaration (if applet serializes state). |
+| `applet_test_helpers.cpp` | Add `pack_<applet>(...)` body. |
+| `test_hemispheres.cpp` | Add per-applet setup helper, TEST_CASEs with `[<applet_tag>]`. |
+
+No other files should change. If you find yourself editing `applets/Hemispheres.cpp`, the `Makefile`, or `applet_indices.h` to add a test, stop and check whether you are extending the harness itself rather than adding a single applet test. Harness extensions need their own plan.
+
+### Verification per applet
+
+After adding the TEST_CASEs:
+
+```bash
+make test-applets ARGS='[<applet_tag>]'
+```
+
+Then run the full suite:
+
+```bash
+make test
+```
+
+If you changed a `pack_<applet>` helper that other applets share (none do today, but future applets may share helpers), run every affected tag, not just the new one.
+
+### Hardware gate
+
+The host tests cover logic. They do not cover the ARM build path, DSP behavior, or NT firmware integration. After any harness change or any new applet test merges, run the hardware sanity gate from Task 13 step 3 before considering the work shippable.
 
 ---
 

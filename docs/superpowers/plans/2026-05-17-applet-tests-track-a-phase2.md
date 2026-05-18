@@ -795,16 +795,17 @@ TEST_CASE("burst B1: Start defaults number=4, spacing=50, div=1, jitter=0, accel
     REQUIRE(accel   == 0);
 }
 
-TEST_CASE("burst B2: Clock(0) fires a burst that produces gate pulses on output 0", "[burst]") {
-    // After a Clock(0) edge, Burst emits `number` pulses on output 0 at `spacing`
-    // intervals. Run for many steps after the clock; assert that output 0 went
-    // high at least once.
+TEST_CASE("burst B2: Clock(1) fires a burst that produces gate pulses on output 0", "[burst]") {
+    // Vendor Burst.h: btrig = Clock(1) is the burst trigger (Clock(0) is the
+    // tap-tempo spacing capture). After a Clock(1) edge with In(0) settled,
+    // Burst emits `number` pulses on output 0 at `spacing` intervals. Run for
+    // many steps after the clock; assert that output 0 went high at least once.
     auto s = setup_applet(kAppletBurst);
     burst_set(s.hi, 2, 50, 1, 0, 0);  // 2 pulses, default spacing
     seed_hem_rng(0xDEADBEEF);
 
     clear_bus(s.bus);
-    set_gate(s.bus, LEFT, 0, 0, 8);  // Clock(0) edge
+    set_gate(s.bus, LEFT, 1, 0, 8);  // Clock(1) edge = burst trigger
     step_n_frames(s.loaded, s.alg, s.bus, 32);
 
     bool saw_pulse = read_gate_at(s.bus, LEFT, 0, 0, 8);

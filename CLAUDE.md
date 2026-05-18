@@ -101,6 +101,21 @@ Phase numbering convention: Phase 1+2 ported 14 applets (the existing baseline).
 
 The project rule at `~/.claude/rules/parallel-execution.md` is load-bearing. Independent per-applet test ports are parallelized via isolated worktrees plus subagent dispatch in a single message. End-to-end wallclock equals the slowest single port plus integration, not the sum. Phase 3 attempt 1's failure traces directly to dispatching from `main` instead of the feature branch and to enforcing the implementer contract via prose instead of a pre-commit hook; both are now fixed and codified in the plan template.
 
+A pre-commit hook at `.git/hooks/pre-commit` enforces the implementer contract: it rejects commits on `phase<N>-port/*` or `phase<N>-shim/*` branches that stage forbidden-surface shim files, and rejects commits on any branch not derived from the active feature branch. The hook is a no-op on other branches. Do not remove or weaken it without updating the active phase's plan; the framework relies on it.
+
+## Workflow
+
+Standard sequence for any non-trivial change:
+
+1. **Brainstorm** the scope under `docs/superpowers/brainstorms/`. Vendor SHA at the top, status per applet, exclusions named.
+2. **Spec** under `docs/superpowers/specs/` with the canonical recipe plus per-applet entries plus the spec footer (Recipe spot-check, Per-entry verification, Shim prereq verification).
+3. **Plan** under `docs/superpowers/plans/` declaring parallelism, inlining the worktree-dispatch checklist and pre-commit hook content.
+4. **Fan-out** via `superpowers:subagent-driven-development`. One implementer subagent per applet, each in its own worktree branched from the feature branch (never from `main`).
+5. **Integration** on the feature branch: cherry-pick implementer commits, add registration entries, run `make test-applets` and `make arm`.
+6. **PR** opened by the feature branch. Hardware smoke check happens after PR open since it needs physical access.
+
+Phase 4 kickoff prompt template lives at `~/Downloads/phase4_kickoff_prompt.md`.
+
 ## Markdown discipline
 
 After editing any `.md` file, run `markdownlint <file>` and fix all errors. The repo's `.markdownlint.json` relaxes a small set of rules (long lines, HTML, sibling-only duplicate headings); the rest are enforced.
@@ -108,3 +123,7 @@ After editing any `.md` file, run `markdownlint <file>` and fix all errors. The 
 ## Deployment
 
 `make deploy` requires the NT to be in USB disk mode (Misc menu) and mounted (default `/Volumes/NT`). `make deploy-sysex` requires NT firmware v1.13+ for the plug-in rescan sysex, and the NT must be free of any other USB-MIDI client. See `docs/hardware-deploy.md` and `docs/nt-sysex-protocol.md` for the full procedure.
+
+## Merging PRs from a worktree
+
+`gh pr merge` from inside a worktree fails when the default branch is checked out in the parent directory. Always pass `--repo danryan/nt_and_crime` and avoid `--delete-branch` (which triggers a local checkout). Use `gh pr merge <N> --squash --subject "..." --repo danryan/nt_and_crime`; delete the worktree and feature branch separately.

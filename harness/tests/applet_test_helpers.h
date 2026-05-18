@@ -203,4 +203,22 @@ uint64_t pack_stairs(int steps, int dir, int rand);
 // Defaults after Start(): voltage[0]=72, voltage[1]=-72, gate[0]=0, gate[1]=0.
 uint64_t pack_voltage(int voltage0, int voltage1, int gate0, int gate1);
 
+// === BEGIN adeg ===
+// === END adeg ===
+
+// === BEGIN adsreg ===
+// === END adsreg ===
+
+// === BEGIN game_of_life ===
+// === END game_of_life ===
+
+// === BEGIN prob_div ===
+// === END prob_div ===
+
+// === BEGIN shift_gate ===
+// === END shift_gate ===
+
+// === BEGIN trending ===
+// === END trending ===
+
 }  // namespace hem_test

@@ -2335,3 +2335,24 @@ TEST_CASE("voltage V5: gap bit at position 9 is always zero in OnDataRequest out
     REQUIRE(g0 == 1);
     REQUIRE(g1 == 0);
 }
+
+// === BEGIN adeg ===
+// === END adeg ===
+
+// === BEGIN adsreg ===
+// === END adsreg ===
+
+// === BEGIN binary ===
+// === END binary ===
+
+// === BEGIN game_of_life ===
+// === END game_of_life ===
+
+// === BEGIN prob_div ===
+// === END prob_div ===
+
+// === BEGIN shift_gate ===
+// === END shift_gate ===
+
+// === BEGIN trending ===
+// === END trending ===

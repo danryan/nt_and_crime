@@ -250,5 +250,22 @@ uint64_t pack_voltage(int voltage0, int voltage1, int gate0, int gate1) {
     return data;
 }
 
+// === BEGIN adeg ===
+// === END adeg ===
+
+// === BEGIN adsreg ===
+// === END adsreg ===
+
+// === BEGIN game_of_life ===
+// === END game_of_life ===
+
+// === BEGIN prob_div ===
+// === END prob_div ===
+
+// === BEGIN shift_gate ===
+// === END shift_gate ===
+
+// === BEGIN trending ===
+// === END trending ===
 
 }  // namespace hem_test

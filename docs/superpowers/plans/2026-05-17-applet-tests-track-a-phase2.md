@@ -363,7 +363,9 @@ git -c commit.gpgsign=false commit -m "feat(test-applets): logic L1-L7 boolean o
 
 Vendor source: `vendor/O_C-Phazerville/software/src/applets/AttenuateOffset.h`.
 
-AttenuateOffset is the first Phase 2 applet to use Modulate. It applies per-channel attenuation (`level[ch]` is a percent in [-200%, +200%]) and a per-channel offset (`offset[ch]` in semitones; `offset * ATTENOFF_INCREMENTS` adds to the int signal). Gate(1) high enables mix mode: Out(1) becomes Out(0) + Out(1). `Start()` sets `level[ch] = ATTENOFF_MAX_LEVEL` (= 100, full attenuation) and offset[ch] = 0.
+AttenuateOffset is the first Phase 2 applet to use Modulate. It applies per-channel attenuation and a per-channel offset (`offset[ch]` in semitones; `offset * ATTENOFF_INCREMENTS` adds to the int signal). Gate(1) high enables mix mode: Out(1) becomes Out(0) + Out(1). `Start()` sets `level[ch] = ATTENOFF_MAX_LEVEL` and `offset[ch] = 0`.
+
+Vendor reality (verify with the grep below before authoring values): `ATTENOFF_MAX_LEVEL = 63`, `ATTENOFF_INCREMENTS = 128`. Unity gain is `level == ATTENOFF_MAX_LEVEL` (63), not 100. Level range is `[-126, +126]` (constrained to `[-MAX*2, +MAX*2]`). Bias on packed level is `+ATTENOFF_MAX_LEVEL*2 = +126`.
 
 Vendor `ATTENOFF_INCREMENTS` and `ATTENOFF_MAX_LEVEL` constants: look them up in `HSUtils.h` or `AttenuateOffset.h` before writing the test scaling.
 
@@ -415,7 +417,7 @@ In `harness/tests/applet_test_helpers.cpp` (replace the constant values if `ATTE
 
 ```cpp
 namespace {
-constexpr int kAttenOffMaxLevel = 100;  // mirrors ATTENOFF_MAX_LEVEL in vendor HSUtils.h
+constexpr int kAttenOffMaxLevel = 63;  // mirrors ATTENOFF_MAX_LEVEL in vendor AttenuateOffset.h
 }
 
 uint64_t pack_atten_off(int offset_left, int offset_right,
@@ -455,19 +457,19 @@ TEST_CASE("atten_off A1: Start defaults level[0]=level[1]=100, offset=0", "[atte
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     int off0 = (int)((packed) & 0x1FF) - 256;
     int off1 = (int)((packed >> 10) & 0x1FF) - 256;
-    int lev0 = (int)((packed >> 19) & 0xFF) - 200;  // ATTENOFF_MAX_LEVEL*2 bias
-    int lev1 = (int)((packed >> 27) & 0xFF) - 200;
+    int lev0 = (int)((packed >> 19) & 0xFF) - 126;  // ATTENOFF_MAX_LEVEL*2 bias (63*2)
+    int lev1 = (int)((packed >> 27) & 0xFF) - 126;
     bool mix = ((packed >> 35) & 0x1) != 0;
     REQUIRE(off0 == 0);
     REQUIRE(off1 == 0);
-    REQUIRE(lev0 == 100);
-    REQUIRE(lev1 == 100);
+    REQUIRE(lev0 == 63);
+    REQUIRE(lev1 == 63);
     REQUIRE(mix == false);
 }
 
 TEST_CASE("atten_off A2: unity gain passes signal through", "[atten_off]") {
     auto s = setup_applet(kAppletAttenuateOffset);
-    atten_off_set(s.hi, 0, 0, 100, 100, false);
+    atten_off_set(s.hi, 0, 0, 63, 63, false);  // level == ATTENOFF_MAX_LEVEL = unity
 
     clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, 2.0f, 8);
@@ -478,22 +480,25 @@ TEST_CASE("atten_off A2: unity gain passes signal through", "[atten_off]") {
     REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(3.0f).margin(0.05f));
 }
 
-TEST_CASE("atten_off A3: 50% level halves signal", "[atten_off]") {
+TEST_CASE("atten_off A3: half level halves signal", "[atten_off]") {
+    // level=31 with MAX_LEVEL=63 yields ~0.492 gain. Integer division accumulates
+    // rounding (4V -> 6144 hem units -> 31*6144/63 = 3023 -> 1.968V). Use a wider
+    // margin to absorb the rounding.
     auto s = setup_applet(kAppletAttenuateOffset);
-    atten_off_set(s.hi, 0, 0, 50, 50, false);
+    atten_off_set(s.hi, 0, 0, 31, 31, false);
 
     clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, 4.0f, 8);
     set_cv(s.bus, LEFT, 1, 4.0f, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32);
 
-    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.05f));
-    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(2.0f).margin(0.05f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.1f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(2.0f).margin(0.1f));
 }
 
-TEST_CASE("atten_off A4: -100% level inverts signal", "[atten_off]") {
+TEST_CASE("atten_off A4: negative unity level inverts signal", "[atten_off]") {
     auto s = setup_applet(kAppletAttenuateOffset);
-    atten_off_set(s.hi, 0, 0, -100, -100, false);
+    atten_off_set(s.hi, 0, 0, -63, -63, false);  // -ATTENOFF_MAX_LEVEL = full inversion
 
     clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, 2.0f, 8);
@@ -504,9 +509,9 @@ TEST_CASE("atten_off A4: -100% level inverts signal", "[atten_off]") {
 
 TEST_CASE("atten_off A5: positive offset shifts signal up", "[atten_off]") {
     // Offset is in semitones (ATTENOFF_INCREMENTS = ONE_OCTAVE / 12 = 128 hem units).
-    // offset=12 -> +1V shift.
+    // offset=12 -> +1V shift. level=63 = unity.
     auto s = setup_applet(kAppletAttenuateOffset);
-    atten_off_set(s.hi, 12, 0, 100, 100, false);
+    atten_off_set(s.hi, 12, 0, 63, 63, false);
 
     clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, 1.0f, 8);
@@ -517,8 +522,8 @@ TEST_CASE("atten_off A5: positive offset shifts signal up", "[atten_off]") {
 
 TEST_CASE("atten_off A6: output clamps at HEMISPHERE_MAX_CV", "[atten_off]") {
     auto s = setup_applet(kAppletAttenuateOffset);
-    // 100% gain, offset +12 semitones (=1V); input 6V; signal 7V before clamp; expected 6V.
-    atten_off_set(s.hi, 12, 0, 100, 100, false);
+    // Unity gain, offset +12 semitones (=1V); input 6V; signal 7V before clamp; expected 6V.
+    atten_off_set(s.hi, 12, 0, 63, 63, false);
 
     clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, 6.0f, 8);
@@ -529,9 +534,8 @@ TEST_CASE("atten_off A6: output clamps at HEMISPHERE_MAX_CV", "[atten_off]") {
 
 TEST_CASE("atten_off A7: mix mode sums Out(0) into Out(1)", "[atten_off]") {
     auto s = setup_applet(kAppletAttenuateOffset);
-    // Out(0) computes signal_0 = 100% * 1V + 0 = 1V. Out(1) computes signal_1 =
-    // 100% * 2V + 0 = 2V. With mix=true, Out(1) becomes signal_0 + signal_1 = 3V.
-    atten_off_set(s.hi, 0, 0, 100, 100, true);
+    // Unity gain. Out(0) = 1V, Out(1) base = 2V. With mix=true, Out(1) = 1V + 2V = 3V.
+    atten_off_set(s.hi, 0, 0, 63, 63, true);
 
     clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, 1.0f, 8);
@@ -543,20 +547,22 @@ TEST_CASE("atten_off A7: mix mode sums Out(0) into Out(1)", "[atten_off]") {
 }
 
 TEST_CASE("atten_off A8: serialise round-trip preserves all fields", "[atten_off]") {
+    // Level 100 lies within constraint range [-126, +126]. (Plan must not exceed
+    // ATTENOFF_MAX_LEVEL*2 = 126 or OnDataReceive will clamp and break the round trip.)
     auto s = setup_applet(kAppletAttenuateOffset);
-    atten_off_set(s.hi, -12, 24, -50, 150, true);
+    atten_off_set(s.hi, -12, 24, -50, 100, true);
 
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     int off0 = (int)((packed) & 0x1FF) - 256;
     int off1 = (int)((packed >> 10) & 0x1FF) - 256;
-    int lev0 = (int)((packed >> 19) & 0xFF) - 200;
-    int lev1 = (int)((packed >> 27) & 0xFF) - 200;
+    int lev0 = (int)((packed >> 19) & 0xFF) - 126;  // bias = ATTENOFF_MAX_LEVEL*2 = 126
+    int lev1 = (int)((packed >> 27) & 0xFF) - 126;
     bool mix = ((packed >> 35) & 0x1) != 0;
 
     REQUIRE(off0 == -12);
     REQUIRE(off1 == 24);
     REQUIRE(lev0 == -50);
-    REQUIRE(lev1 == 150);
+    REQUIRE(lev1 == 100);
     REQUIRE(mix == true);
 }
 ```

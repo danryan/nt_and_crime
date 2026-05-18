@@ -10,6 +10,8 @@ Vendor pin: `vendor/O_C-Phazerville` at `7800d929`
 
 Phase 1 and Phase 2 ported 13 vendor Hemisphere applets plus the shim-local `Empty` into the disting NT compatibility shim, each with a host-side Catch2 test suite that drives the plug-in's NT API. Phase 3 ports a further 15 category-A applets in parallel under the same harness. No harness change, no new shim helpers.
 
+Phase 3 ports single-applet plug-ins only. Pair-applet variants (the `LogicCalculate` canary in commit `3b0c65b`) are deferred per the brainstorm's pair-applet decision.
+
 The recipe section below is the canonical port pattern, derived from the five primary-reference files. Per-applet entries describe only the deltas from the recipe. The plan document (`docs/superpowers/plans/2026-05-18-phase3-applets-plan.md`) translates the entries into a parallel worklist.
 
 ## Recipe
@@ -98,7 +100,7 @@ Field-value choices for the round-trip case must stay inside the vendor's `OnDat
 
 ### Integration ordering
 
-The integration step is sequenced. It edits `applet_indices.h` and `HemispheresFactory.h` in alphabetical order for all 17 applets at once, then runs the full host test suite (`make test-applets`) and verifies the `arm` build (`make arm`). Implementer commits land on their isolated branches; the integration commit picks them up via cherry-pick or merge, resolves the alpha-ordering inserts mechanically, and pushes a single integrated branch.
+The integration step is sequenced. It edits `applet_indices.h` and `HemispheresFactory.h` in alphabetical order for all 15 applets at once, then runs the full host test suite (`make test-applets`) and verifies the `arm` build (`make arm`). Implementer commits land on their isolated branches; the integration commit picks them up via cherry-pick or merge, resolves the alpha-ordering inserts mechanically, and pushes a single integrated branch.
 
 ## Per-applet entries
 
@@ -119,7 +121,7 @@ Each entry lists: vendor file, category (always A for Phase 3), bit layout (veri
 - Vendor: `vendor/O_C-Phazerville/software/src/applets/ClockDivider.h`.
 - Category: A.
 - `OnDataRequest` (`ClockDivider.h:91-98`): 32 bits used. Per channel `i` in {0,1}: bits `[0+i*8, 8) = div[i] + 32`, bits `[16+i*8, 8) = divmult[1+i*2].steps + 32`. Both fields are biased by +32 to encode negative multipliers.
-- `Start()` (`ClockDivider.h`): `divmult[0].steps = 2; divmult[2].steps = 4`. (`div[]` is in-class initialized; check the field declaration in source.)
+- `Start()` (`ClockDivider.h:42-45` plus in-class inits at `ClockDivider.h:122` and `util/clkdivmult.h:7`): `div[0]=1, div[1]=2` (in-class). `divmult[0].steps=2, divmult[2].steps=4` (Start). `divmult[1].steps=1, divmult[3].steps=1` (default from `struct ClkDivMult { int8_t steps = 1; }`). Packed default = `33 | 34<<8 | 33<<16 | 33<<24` (each field biased +32).
 - Observables: Per-side clock division on Clock(0)/Clock(1) inputs; gate outputs on Out(0)/Out(1) at the divided rate.
 - Test concerns: Two-channel pack helper, both fields biased by +32. Behavior cases: div=2 produces an output gate every second input clock; div=4 every fourth. Default-state case asserts the in-class field initialisers.
 - Analogue: ClkToGate (per-side gate timing, two-field pack helper with bias).
@@ -192,7 +194,7 @@ Each entry lists: vendor file, category (always A for Phase 3), bit layout (veri
 - `Start()` (`RunglBook.h:33`): `threshold = ONE_OCTAVE * 2 = 3072` (= 2V).
 - Observables: 8-bit Rungler shift register on Clock(0). `Out(0)` is the register's high byte; `Out(1)` is a single bit.
 - Test concerns: Seed RNG. Default-state case asserts threshold=3072. Round-trip with threshold=5000. Behavior cases: drive Clock(0) 8 times with In(0) above and below threshold, assert `Out(0)` walks across a range of values; freeze via Gate(1) and assert register rotates rather than shifts.
-- Test budget: at the Phase 3 ceiling (~50 step() calls total). Each Clock(0) edge needs a set_gate buffer plus a clear_bus buffer, so 8 input clocks = 16 step() calls; three behavior cases plus default plus round-trip lands near the budget. Be sparing if adding cases.
+- Test budget: at the Phase 3 ~50 step()-call ceiling (3 behavior cases of 16 step() calls each plus defaults plus round-trip); be sparing if adding cases.
 - Analogue: Slew (single CV-out with one signed time-domain param).
 
 ### Schmitt
@@ -220,10 +222,10 @@ Each entry lists: vendor file, category (always A for Phase 3), bit layout (veri
 - Vendor: `vendor/O_C-Phazerville/software/src/applets/Stairs.h`.
 - Category: A.
 - `OnDataRequest` (`Stairs.h:236-242`): 8 bits. `steps` at `[0,5)`, `dir` at `[5,2)`, `rand` at `[7,1)`.
-- `Start()` (`Stairs.h:78-100`): `steps=1, dir=0, rand=0`. (`steps=1` because the field stores `steps - 1` semantics in some implementations; verify against source.)
+- `Start()` (`Stairs.h:78-100` plus field declaration `Stairs.h:269`): `steps=1, dir=0, rand=0`. `steps` is `int8_t` and the pack helper writes it directly (no `-1` bias); default packed value = 1. The comment at `Stairs.h:269` ("starting at 0v and ending at 5v (if > 0 steps)") confirms 1 means "1 step total".
 - Observables: Clock(0) steps a CV up, down, or up-down through `n` divisions of `HEMISPHERE_MAX_CV`. `dir` selects direction. `rand=1` enables random stepping.
 - Test concerns: 8-bit pack helper. Behavior case: `steps=4, dir=0 (up)`; drive 4 Clock(0) edges; assert `Out(0)` takes 4 distinct ascending values that span 0 to `HEMISPHERE_MAX_CV * 3/4`. Round-trip with `steps=8, dir=2, rand=1`.
-- 10x clocked-multiplier caveat: one rising edge on Gate(0) makes the shim's `clocked[ch]` flag stay asserted for all `ticks_this_step = numFrames / 3 = 10` inner Controller calls in that buffer. A single set_gate pulse therefore steps `curr_step` 10 times, not once. Adjust step counts in assertions accordingly. Precedent and detailed mechanic in Cumulus CU2 (`harness/tests/test_hemispheres.cpp:1264`); do not re-explain it in the implementer commit.
+- 10x clocked-multiplier caveat: each Clock(0) edge advances `curr_step` 10 times per buffer, not once. Apply the Cumulus CU2 precedent (`harness/tests/test_hemispheres.cpp:1264`) for both assertion math and commit-comment style; do not re-explain the mechanic.
 - Analogue: Cumulus (stepped CV on clock with multi-field pack).
 
 ### Switch

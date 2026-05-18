@@ -204,21 +204,66 @@ uint64_t pack_stairs(int steps, int dir, int rand);
 uint64_t pack_voltage(int voltage0, int voltage1, int gate0, int gate1);
 
 // === BEGIN adeg ===
+// Mirrors ADEG::OnDataRequest packing (16 bits):
+//   bits [0,8) = attack (0..HEM_ADEG_MAX_VALUE=255)
+//   bits [8,8) = decay
+// No bias.
+uint64_t pack_adeg(int attack, int decay);
 // === END adeg ===
 
 // === BEGIN adsreg ===
+// Mirrors ADSREG::OnDataRequest packing (64 bits):
+// Per channel ch in {0,1}:
+//   bits [ch*32 +  0, 8) = setting[ATTACK]   (1..STAGE_MAX_VALUE=255)
+//   bits [ch*32 +  8, 8) = setting[DECAY]
+//   bits [ch*32 + 16, 8) = setting[SUSTAIN]
+//   bits [ch*32 + 24, 8) = setting[RELEASE]
+// No bias. OnDataReceive constrains each field to [1, STAGE_MAX_VALUE] for
+// attack/decay/release; sustain stays [0, STAGE_MAX_VALUE].
+uint64_t pack_adsreg(int a0, int d0, int s0, int r0,
+                     int a1, int d1, int s1, int r1);
 // === END adsreg ===
 
 // === BEGIN game_of_life ===
+// Mirrors GameOfLife::OnDataRequest packing (6 bits):
+//   bits [0,6) = weight  (0..63; controls global density divisor)
+// No bias. Board state is not serialised; vendor relies on Start() reseed.
+uint64_t pack_game_of_life(int weight);
 // === END game_of_life ===
 
 // === BEGIN prob_div ===
+// Mirrors ProbabilityDivider::OnDataRequest packing (40 bits):
+//   bits [0,4)   = weight_1   (0..MAX_WEIGHT=15)
+//   bits [4,4)   = weight_2
+//   bits [8,4)   = weight_4
+//   bits [12,4)  = weight_8
+//   bits [16,8)  = loop_length (0..MAX_LOOP_LENGTH=32)
+//   bits [24,16) = loop_linker.GetSeed() (16-bit seed)
+// No bias on any field. loop_step / loop_index / skip_steps are runtime-only.
+uint64_t pack_prob_div(int weight_1, int weight_2, int weight_4, int weight_8,
+                       int loop_length, int seed);
 // === END prob_div ===
 
 // === BEGIN shift_gate ===
+// Mirrors ShiftGate::OnDataRequest packing (32 bits used):
+//   bits [0,4)  = length[0] - 1  (vendor stores length-1; receive adds 1 back)
+//   bits [4,4)  = length[1] - 1
+//   bits [8,1)  = trigger[0]     (0 = Gate, 1 = Trigger)
+//   bits [9,1)  = trigger[1]
+//   bits [16,16) = reg[0]        (only ch0 register persisted)
+// reg[1] is not serialised; tests cannot inject ch1 register state via pack.
+uint64_t pack_shift_gate(int length_left, int length_right,
+                         int trigger_left, int trigger_right,
+                         int reg_left);
 // === END shift_gate ===
 
 // === BEGIN trending ===
+// Mirrors Trending::OnDataRequest packing (16 bits used):
+//   bits [0,4)  = assign[0]    (0..5: Rising, Falling, Moving, Steady, ChgState, ChgValue)
+//   bits [4,4)  = assign[1]
+//   bits [8,8)  = sensitivity  (4..TRENDING_MAX_SENS=124)
+// No bias on any field.
+uint64_t pack_trending(int assign_left, int assign_right, int sensitivity);
 // === END trending ===
 
 }  // namespace hem_test

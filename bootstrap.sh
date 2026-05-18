@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REQUIRED_BINS=(git make python3 pip3 curl arm-none-eabi-c++)
+REQUIRED_BINS=(git make python3 pip3 curl arm-none-eabi-c++ arm-none-eabi-gcc arm-none-eabi-ld arm-none-eabi-objcopy arm-none-eabi-nm arm-none-eabi-objdump)
 MISSING=()
 for bin in "${REQUIRED_BINS[@]}"; do
     if ! command -v "$bin" >/dev/null 2>&1; then
@@ -83,6 +83,50 @@ if [ ! -f harness/include/catch.hpp ] || [ ! -f harness/src/catch_main.cpp ]; th
 
     mv "$tmp_hpp" harness/include/catch.hpp
     mv "$tmp_cpp" harness/src/catch_main.cpp
+fi
+
+# compiler-rt PIC-builtins sanity check. NT firmware does not link
+# libgcc / libsupc++ / libstdc++; shim/src/compiler_rt/ vendors the EABI
+# 64-bit divide helpers verbatim from llvm-project llvmorg-19.1.0. Verify
+# the expected source files are present so make arm does not fail with a
+# cryptic missing-include later.
+COMPILER_RT_SOURCES=(
+    shim/src/compiler_rt/divdi3.c
+    shim/src/compiler_rt/udivdi3.c
+    shim/src/compiler_rt/divmoddi4.c
+    shim/src/compiler_rt/udivmoddi4.c
+    shim/src/compiler_rt/arm/aeabi_div0.c
+    shim/src/compiler_rt/arm/aeabi_ldivmod.S
+    shim/src/compiler_rt/arm/aeabi_uldivmod.S
+    shim/src/compiler_rt/int_lib.h
+    shim/src/compiler_rt/int_types.h
+    shim/src/compiler_rt/int_util.h
+    shim/src/compiler_rt/int_endianness.h
+    shim/src/compiler_rt/int_div_impl.inc
+    shim/src/compiler_rt/assembly.h
+)
+COMPILER_RT_MISSING=()
+for f in "${COMPILER_RT_SOURCES[@]}"; do
+    [ -f "$f" ] || COMPILER_RT_MISSING+=("$f")
+done
+if [ ${#COMPILER_RT_MISSING[@]} -gt 0 ]; then
+    echo "bootstrap: missing vendored compiler-rt sources (required for make arm):" >&2
+    for m in "${COMPILER_RT_MISSING[@]}"; do echo "  - $m" >&2; done
+    echo "Restore from upstream: curl from https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-19.1.0/compiler-rt/lib/builtins/" >&2
+    exit 1
+fi
+
+# PIC libgcc multilib check. The toolchain should NOT ship a PIC libgcc
+# multilib for v7e-m+dp/hard; if it does, vendoring compiler-rt may have
+# become optional (but is still preferred for license + maintenance
+# reasons). This bullet is sanity verification of continued correctness.
+LIBGCC_NOPIC=$(arm-none-eabi-gcc -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -print-libgcc-file-name 2>/dev/null || true)
+LIBGCC_PIC=$(arm-none-eabi-gcc -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -fPIC -print-libgcc-file-name 2>/dev/null || true)
+if [ -n "$LIBGCC_NOPIC" ] && [ -n "$LIBGCC_PIC" ] && [ "$LIBGCC_NOPIC" != "$LIBGCC_PIC" ]; then
+    echo "bootstrap: NOTE: arm-none-eabi-gcc reports distinct PIC vs non-PIC libgcc paths." >&2
+    echo "  non-PIC: $LIBGCC_NOPIC" >&2
+    echo "  PIC:     $LIBGCC_PIC" >&2
+    echo "  This is unusual; compiler-rt vendoring remains the preferred path." >&2
 fi
 
 echo "bootstrap: OK"

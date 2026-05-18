@@ -5,6 +5,11 @@
 
 namespace hem_shim {
 
+// Time-injection override-global. When > 0, step() consumes this value as
+// the inner-tick budget for one call then clears it to 0. Used by harness
+// helper hem_test::step_n_inner_ticks. Defined once in shim/src/globals.cpp.
+extern int inner_ticks_override;
+
 // ---------------------------------------------------------------------------
 // Hemispheres plug-in: pair-only with runtime applet selectors per side.
 // ---------------------------------------------------------------------------
@@ -166,10 +171,17 @@ struct HemispheresShim {
         { auto g = read_gate(kHemGateInD, busFrames, numFrames, v, prev_gate(3));
           HS::frame.clocked[3] = g.rising; HS::frame.gate_high[3] = g.high; }
 
-        int ticks_this_step = numFrames / 3;
-        if (ticks_this_step < 1) ticks_this_step = 1;
+        int ticks_this_step;
+        if (hem_shim::inner_ticks_override > 0) {
+            ticks_this_step = hem_shim::inner_ticks_override;
+            hem_shim::inner_ticks_override = 0;
+        } else {
+            ticks_this_step = numFrames / 3;
+            if (ticks_this_step < 1) ticks_this_step = 1;
+        }
         for (int i = 0; i < ticks_this_step; ++i) {
             OC::CORE::ticks += 1;
+            clock_m.advance_one_tick();  // Layer 0b: dep-clock-mgr drives this
             for (int ch = 0; ch < 4; ++ch) {
                 if (HS::frame.clock_countdown[ch] > 0) {
                     if (--HS::frame.clock_countdown[ch] == 0)

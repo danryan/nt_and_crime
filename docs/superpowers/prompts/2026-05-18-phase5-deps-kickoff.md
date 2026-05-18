@@ -203,6 +203,28 @@ The helper lands as part of Layer 0, before any dep implementer dispatch.
 
 Layer 0a (sequential, lands before Layer 0b):
 
+**Phase 5 Layer 3 carry-over (inherited; verify only, do not re-extract):**
+`shim/src/compiler_rt/` already contains vendored llvm-project `llvmorg-19.1.0`
+builtins for the EABI 64-bit divide helpers (`divdi3.c`, `udivdi3.c`,
+`divmoddi4.c`, `udivmoddi4.c`, `arm/aeabi_div0.c`, `arm/aeabi_ldivmod.S`,
+`arm/aeabi_uldivmod.S`) plus headers (`int_lib.h`, `int_types.h`,
+`int_util.h`, `int_endianness.h`, `assembly.h`, `int_div_impl.inc`).
+Makefile compiles them with `arm-none-eabi-gcc -fPIC` (NOT `c++` — name
+mangling breaks the EABI symbol names) and partial-links them into
+`Hemispheres.o` via `ld -r --strip-debug`. `cxx_runtime_stubs.cpp`
+provides `__aeabi_atexit`, `__dso_handle`, operator `new` stub, and
+bare-metal `std::__throw_bad_function_call`. Reason: NT firmware does
+not link libgcc / libsupc++ / libstdc++. **Do not switch to libgcc
+extraction** — toolchain ships no PIC libgcc multilib for
+`v7e-m+dp/hard`, so non-PIC libgcc helpers mixed with `-fPIC` plug-in
+code cause "relocation of non-loaded section" warnings at every load.
+Verification (preflight + Layer 3): `arm-none-eabi-nm
+build/arm/Hemispheres.o | grep aeabi` shows helpers as `T` (defined);
+`arm-none-eabi-objdump -h build/arm/Hemispheres.o | awk '...!/ALLOC/...'`
+shows zero non-loaded sections; hardware deploy via
+`make deploy-sysex SYSEX_PLUGIN=build/arm/Hemispheres.o` loads with no
+warning on the NT screen.
+
 1. `shim/include/util/util_macros.h`: `SCALE8_16`, `USAT16`, and any other shared vendor math macros pulled by Lorenz, VectorOsc, or Quantizer. Preflight surface audit confirmed no collision.
 2. `shim/include/Arduino.h` extensions: free-function `millis()` paralleling existing `micros()`. `elapsedMillis` class (Arduino idiom for tick-delta tracking; used by VectorLFO, Tuner, others). Both back onto `OC::CORE::ticks`.
 3. Time-injection helper + both unit tests (Cumulus equivalence + Empty+held-gate tick-advancement invariant).
@@ -298,6 +320,8 @@ After audit, post a preflight report with:
 - Per-dep audit. Each of the 6 deps (after vec-osc/relabi-mgr bundling) gets a one-line status: fits cleanly / needs N additional vendor headers / would require X LoC adjustment. Plus the quantizer LoC count that drives the split decision (monolithic / split / halt).
 - Test baseline: 155 cases / 1803 assertions at `45e12f4`.
 - Confirm `make test-applets` + `make arm` pass on `dr/phase5-deps-plan` at branch creation.
+- Compiler-rt helper coverage check. Build `make build/arm/Hemispheres.o` and run `arm-none-eabi-nm build/arm/Hemispheres.o | grep ' U '` to enumerate remaining unresolved EABI symbols. Expected: `NT_*`, `_NT_jsonStream`/`_NT_jsonParse`, libc primitives (`memcpy`, `memset`, `memmove`, `strlen`), `logf`, `_GLOBAL_OFFSET_TABLE_` — all NT-firmware-provided. If any new `__aeabi_*` or libstdc++/libsupc++ symbol surfaces (e.g., `__aeabi_dmul`, `__aeabi_d2lz`, `_ZSt9terminatev`), vendor the corresponding `compiler-rt` source file into `shim/src/compiler_rt/` and add to `COMPILER_RT_SRCS` in Makefile BEFORE Layer 1 dispatch. Surfacing new helpers mid-Layer-1 means an implementer's dep introduced a runtime call that the existing helper set doesn't cover.
+- PIC-consistency sanity check. `arm-none-eabi-gcc -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -fPIC -print-libgcc-file-name` must return the same path as the same command without `-fPIC` (verifies no PIC libgcc multilib appeared; if it did, the libgcc path becomes an option but compiler-rt remains the chosen path for license + maintenance reasons). This bullet is sanity verification of continued correctness, NOT path decision.
 
 If any collision surfaces in the shared-surface audit, the brainstorm restructures the Layer 0 deliverable before any Layer 0 work starts. Cheap to catch in preflight, expensive to discover mid-Layer-0.
 
@@ -390,6 +414,7 @@ During Layer 0a:
 - `make arm` fails or produces warnings.
 - Any macro added to `util_macros.h` collides with an existing shim symbol despite preflight audit (means audit missed something; halt and re-audit).
 - Pre-commit hook fails to reject a test commit that stages `applet_indices.h` / `HemispheresFactory.h` / `PhzIcons.h` on a `phase5-dep/*` branch.
+- PIC consistency violated: any new `shim/src/compiler_rt/*` file (added in response to a new unresolved EABI helper) compiled without `-fPIC`, OR any non-PIC `.o` enters the partial-link of `Hemispheres.o`. Verify with `arm-none-eabi-readelf -A build/arm/compiler_rt/<file>.o | grep PIC` and `arm-none-eabi-readelf -d build/arm/Hemispheres.linked.o | grep -i pic`. Mixed PIC/non-PIC causes "relocation of non-loaded section" warnings on NT and was the root cause of the Phase 5 Layer 3 detour.
 
 During Layer 0b:
 

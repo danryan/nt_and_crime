@@ -113,15 +113,54 @@ build/arm/bus_probe.o: applets/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
 
+build/arm/aeabi_probe.o: applets/aeabi_probe.cpp
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+
 # Hem shim sources (header-only for now; compiled as part of each applet's TU)
 SHIM_INCLUDE := -Ishim/include
 HEM_APPLET_INCLUDE := -Ivendor/O_C-Phazerville/software/src/applets
 
 SHIM_DEPS := $(wildcard shim/include/*.h) $(wildcard shim/include/*/*.h) $(wildcard shim/src/*.cpp)
 
-build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS)
+# compiler-rt builtins compiled with -fPIC to match plug-in PIC code model.
+# Toolchain ships no PIC libgcc multilib for v7e-m+dp/hard, so we vendor
+# compiler-rt sources directly. Sources under shim/src/compiler_rt/ are
+# verbatim from llvm-project tag llvmorg-19.1.0.
+ARM_LD := arm-none-eabi-ld
+ARM_CC := arm-none-eabi-gcc
+# compiler-rt files compiled as C (not C++) so symbols are not name-mangled.
+# Strip the C++-only ARM_FLAGS entries (-fno-rtti, -fno-exceptions,
+# -fno-threadsafe-statics) when compiling .c files; gcc accepts the C++ flags
+# silently but it is cleaner to express intent.
+ARM_CFLAGS := -std=c99 -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard \
+              -mthumb -Os -fPIC -Wall -I$(NT_API_INCLUDE)
+
+COMPILER_RT_SRCS := \
+    shim/src/compiler_rt/divdi3.c \
+    shim/src/compiler_rt/udivdi3.c \
+    shim/src/compiler_rt/divmoddi4.c \
+    shim/src/compiler_rt/udivmoddi4.c \
+    shim/src/compiler_rt/arm/aeabi_div0.c \
+    shim/src/compiler_rt/arm/aeabi_ldivmod.S \
+    shim/src/compiler_rt/arm/aeabi_uldivmod.S
+COMPILER_RT_OBJS := \
+    $(patsubst shim/src/compiler_rt/%.c,build/arm/compiler_rt/%.o,$(filter %.c,$(COMPILER_RT_SRCS))) \
+    $(patsubst shim/src/compiler_rt/%.S,build/arm/compiler_rt/%.o,$(filter %.S,$(COMPILER_RT_SRCS)))
+
+build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.c
+	mkdir -p $(@D)
+	$(ARM_CC) $(ARM_CFLAGS) -Ishim/src/compiler_rt -c -o $@ $<
+
+build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.S
+	mkdir -p $(@D)
+	$(ARM_CC) $(ARM_CFLAGS) -Ishim/src/compiler_rt -c -o $@ $<
+
+build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS) $(COMPILER_RT_OBJS)
 	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o build/arm/Hemispheres.raw.o $<
+	$(ARM_LD) -r --strip-debug build/arm/Hemispheres.raw.o $(COMPILER_RT_OBJS) -o build/arm/Hemispheres.linked.o
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/Hemispheres.linked.o $@
 
 build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/host
@@ -135,7 +174,21 @@ build/host/test_hemispheres: harness/tests/test_hemispheres.cpp harness/tests/ap
 test-applets: build/host/test_hemispheres
 	./build/host/test_hemispheres
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Hemispheres.o
+# Phase 5 dep tests. Each per-dep Catch2 binary builds against the same
+# harness shim as test_hemispheres but is standalone so a single dep test
+# can run in isolation. test-deps runs all 6.
+DEP_TESTS := test_dep_vec_osc test_dep_lorenz test_dep_tideslite \
+             test_dep_clock_mgr test_dep_quant test_dep_cv_map
+
+build/host/test_dep_%: harness/tests/test_dep_%.cpp build/host/Hemispheres.host.o $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-deps
+test-deps: $(addprefix build/host/, $(DEP_TESTS))
+	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
+
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/Hemispheres.o
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

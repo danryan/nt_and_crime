@@ -16,3 +16,14 @@
 constexpr int Proportion(const int numerator, const int denominator, const int max_value) {
     return denominator == 0 ? 0 : (int)((int64_t)numerator * max_value / denominator);
 }
+
+// SCALE8_16 mirrors vendor util/util_math.h:164. USAT16 mirrors the ARM
+// __USAT(x, 16) intrinsic used by vendor APP_LORENZ.h: saturate-to-unsigned
+// 16-bit (clamp into [0, 65535]). Both guarded so deps and applets that
+// re-include can omit the headers if already in scope.
+#ifndef SCALE8_16
+#define SCALE8_16(x) ((((x + 1) << 16) >> 8) - 1)
+#endif
+#ifndef USAT16
+#define USAT16(x) ((x) > 65535 ? 65535 : ((x) < 0 ? 0 : (x)))
+#endif

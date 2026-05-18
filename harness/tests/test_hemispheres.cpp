@@ -2741,3 +2741,138 @@ TEST_CASE("Trending TR4: assign packed values out of range mask correctly", "[tr
     REQUIRE((int)((data >> 8) & 0xFF) == 124);
 }
 // === END trending ===
+
+// === BEGIN helper ===
+// Time-injection helper unit tests (Layer 0a #7). Both must pass before
+// Phase 5 Layer 0a is considered complete.
+
+TEST_CASE("helper H1: step_n_inner_ticks equivalent to step_n_frames on Cumulus at N=10", "[helper]") {
+    // step_n_inner_ticks(.., 10) must produce state byte-identical to
+    // step_n_frames(.., 32) on Cumulus (32 frames / 3 = 10 inner ticks).
+    auto s_inner = setup_applet(kAppletCumulus);
+    cumulus_set(s_inner.hi, 0, 1, 0, 0);
+    step_n_inner_ticks(s_inner.loaded, s_inner.alg, s_inner.bus, 10);
+    uint64_t state_inner = get_applet(s_inner.hi, LEFT)->OnDataRequest();
+
+    auto s_frames = setup_applet(kAppletCumulus);
+    cumulus_set(s_frames.hi, 0, 1, 0, 0);
+    step_n_frames(s_frames.loaded, s_frames.alg, s_frames.bus, 32);
+    uint64_t state_frames = get_applet(s_frames.hi, LEFT)->OnDataRequest();
+
+    CHECK(state_inner == state_frames);
+}
+
+TEST_CASE("helper H2: step_n_inner_ticks tick-advancement invariant under load (N=1000)", "[helper]") {
+    // Empty applet + held gate on ch 0. Pre-load clock_countdown[0] = 1000.
+    // step_n_inner_ticks(.., 1000) must advance OC::CORE::ticks by exactly
+    // 1000, hold clocked[0] true, decrement clock_countdown[0] by 1000.
+    auto s = setup_applet(hem_shim::kAppletEmpty);
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    HS::frame.clock_countdown[0] = 1000;
+    uint32_t ticks_before = OC::CORE::ticks;
+
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 1000);
+
+    uint32_t ticks_after = OC::CORE::ticks;
+    CHECK(ticks_after - ticks_before == 1000);
+    CHECK(HS::frame.clock_countdown[0] == 0);
+    CHECK(HS::frame.clocked[0] == true);
+}
+// === END helper ===
+
+// === BEGIN vector_lfo ===
+// Phase 6 applet test region (unblocked by dep-vec-osc).
+// === END vector_lfo ===
+
+// === BEGIN vector_eg ===
+// Phase 6 applet test region (unblocked by dep-vec-osc).
+// === END vector_eg ===
+
+// === BEGIN vector_mod ===
+// Phase 6 applet test region (unblocked by dep-vec-osc).
+// === END vector_mod ===
+
+// === BEGIN vector_morph ===
+// Phase 6 applet test region (unblocked by dep-vec-osc).
+// === END vector_morph ===
+
+// === BEGIN relabi ===
+// Phase 6 applet test region (unblocked by dep-vec-osc + Relabi bundle).
+// === END relabi ===
+
+// === BEGIN lower_renz ===
+// Phase 6 applet test region (unblocked by dep-lorenz).
+// === END lower_renz ===
+
+// === BEGIN ebb_and_lfo ===
+// Phase 6 applet test region (unblocked by dep-tideslite).
+// === END ebb_and_lfo ===
+
+// === BEGIN wtvco ===
+// Phase 6 applet test region (unblocked by dep-tideslite; audit pending).
+// === END wtvco ===
+
+// === BEGIN metronome ===
+// Phase 6 applet test region (unblocked by dep-clock-mgr).
+// === END metronome ===
+
+// === BEGIN pigeons ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END pigeons ===
+
+// === BEGIN strum ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END strum ===
+
+// === BEGIN shredder ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END shredder ===
+
+// === BEGIN carpeggio ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END carpeggio ===
+
+// === BEGIN squanch ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END squanch ===
+
+// === BEGIN chordinator ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END chordinator ===
+
+// === BEGIN dual_quant ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END dual_quant ===
+
+// === BEGIN enigma_jr ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END enigma_jr ===
+
+// === BEGIN offset_quant ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END offset_quant ===
+
+// === BEGIN multi_scale ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END multi_scale ===
+
+// === BEGIN scale_duet ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END scale_duet ===
+
+// === BEGIN duo_tet ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END duo_tet ===
+
+// === BEGIN ens_osc_key ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END ens_osc_key ===
+
+// === BEGIN calibr8 ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END calibr8 ===
+
+// === BEGIN combin8 ===
+// Phase 6 applet test region (unblocked by dep-cv-map).
+// === END combin8 ===

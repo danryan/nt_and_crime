@@ -66,6 +66,12 @@ public:
         return 0;
     }
 
+    // Mirrors vendor HemisphereApplet.h Quantize member. Delegates to the
+    // HS:: channel pool, offsetting ch by the applet's hemisphere side.
+    int Quantize(int ch, int cv, int root = 0, int transpose = 0) {
+        return HS::Quantize(ch + channel_offset(), cv, root, transpose);
+    }
+
     void Out(int ch, int value)         { HS::frame.Out((DAC_CHANNEL)(ch + channel_offset()), value); }
     void ClockOut(int ch, int ticks = HEMISPHERE_CLOCK_TICKS) { HS::frame.ClockOut((DAC_CHANNEL)(ch + channel_offset()), ticks); }
     void GateOut(int ch, bool high)     { Out(ch, high ? (PULSE_VOLTAGE * ONE_OCTAVE) : 0); }

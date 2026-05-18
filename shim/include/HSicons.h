@@ -15,3 +15,8 @@ extern const uint8_t CLOSED_ICON[8];
 extern const uint8_t OPEN_ICON[8];
 extern const uint8_t GATE_ICON[8];
 extern const uint8_t MOD_ICON[8];
+extern const uint8_t CHECK_ON_ICON[8];
+extern const uint8_t CHECK_OFF_ICON[8];
+extern const uint8_t STAIRS_ICON[8];
+extern const uint8_t UP_BTN_ICON[8];
+extern const uint8_t RESET_ICON[8];

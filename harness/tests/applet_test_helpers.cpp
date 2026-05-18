@@ -193,6 +193,9 @@ uint64_t pack_env_follow(int gain0, int gain1, int duck0, int duck1, int speed) 
     data |= ((uint64_t)(duck0        & 0x01)) << 10;
     data |= ((uint64_t)(duck1        & 0x01)) << 11;
     data |= ((uint64_t)((speed - 1)  & 0x0F)) << 12;
+    return data;
+}
+
 uint64_t pack_poly_div(int div_enabled, int div0_steps, int div1_steps,
                        int div2_steps, int div3_steps) {
     uint64_t data = 0;
@@ -201,6 +204,9 @@ uint64_t pack_poly_div(int div_enabled, int div0_steps, int div1_steps,
     data |= ((uint64_t)(div1_steps  & 0x3F)) << 14;
     data |= ((uint64_t)(div2_steps  & 0x3F)) << 20;
     data |= ((uint64_t)(div3_steps  & 0x3F)) << 26;
+    return data;
+}
+
 uint64_t pack_rnd_walk(int yClkSrc, int yClkDiv, int range,
                        int step, int smoothness, int cvRange) {
     uint64_t data = 0;
@@ -210,18 +216,30 @@ uint64_t pack_rnd_walk(int yClkSrc, int yClkDiv, int range,
     data |= ((uint64_t)(step       & 0xFF)) << 13;
     data |= ((uint64_t)(smoothness & 0xFF)) << 21;
     data |= ((uint64_t)(cvRange    & 0x03)) << 29;
+    return data;
+}
+
 uint64_t pack_rungl_book(int threshold) {
     uint64_t data = 0;
     data |= ((uint64_t)(threshold & 0xFFFF));
+    return data;
+}
+
 uint64_t pack_schmitt(int low, int high) {
     uint64_t data = 0;
     data |= ((uint64_t)(low  & 0xFFFF));
     data |= ((uint64_t)(high & 0xFFFF)) << 16;
+    return data;
+}
+
 uint64_t pack_stairs(int steps, int dir, int rand) {
     uint64_t data = 0;
     data |= ((uint64_t)(steps & 0x1F));
     data |= ((uint64_t)(dir   & 0x03)) << 5;
     data |= ((uint64_t)(rand  & 0x01)) << 7;
+    return data;
+}
+
 uint64_t pack_voltage(int voltage0, int voltage1, int gate0, int gate1) {
     uint64_t data = 0;
     data |= ((uint64_t)((voltage0 + 256) & 0x1FF));        // [0,9)

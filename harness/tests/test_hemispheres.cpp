@@ -124,26 +124,40 @@ void cumulus_set(hem_shim::HemispheresInstance* hi,
 
 void clock_skip_set(hem_shim::HemispheresInstance* hi, int p0, int p1) {
     get_applet(hi, LEFT)->OnDataReceive(pack_clock_skip(p0, p1));
+}
+
 void env_follow_set(hem_shim::HemispheresInstance* hi,
                     int gain0, int gain1, int duck0, int duck1, int speed) {
     get_applet(hi, LEFT)->OnDataReceive(
         pack_env_follow(gain0, gain1, duck0, duck1, speed));
+}
+
 void poly_div_set(hem_shim::HemispheresInstance* hi,
                   int div_enabled, int div0_steps, int div1_steps,
                   int div2_steps, int div3_steps) {
     get_applet(hi, LEFT)->OnDataReceive(
         pack_poly_div(div_enabled, div0_steps, div1_steps, div2_steps, div3_steps));
+}
+
 void rnd_walk_set(hem_shim::HemispheresInstance* hi,
                   int yClkSrc, int yClkDiv, int range,
                   int step, int smoothness, int cvRange) {
     get_applet(hi, LEFT)->OnDataReceive(
         pack_rnd_walk(yClkSrc, yClkDiv, range, step, smoothness, cvRange));
+}
+
 void rungl_book_set(hem_shim::HemispheresInstance* hi, int threshold) {
     get_applet(hi, LEFT)->OnDataReceive(pack_rungl_book(threshold));
+}
+
 void schmitt_set(hem_shim::HemispheresInstance* hi, int low, int high) {
     get_applet(hi, LEFT)->OnDataReceive(pack_schmitt(low, high));
+}
+
 void stairs_set(hem_shim::HemispheresInstance* hi, int steps, int dir, int rand) {
     get_applet(hi, LEFT)->OnDataReceive(pack_stairs(steps, dir, rand));
+}
+
 void voltage_set(hem_shim::HemispheresInstance* hi,
                  int voltage0, int voltage1,
                  int gate0, int gate1) {
@@ -1419,6 +1433,8 @@ TEST_CASE("clock_divider CD3: Clock(1) triggers Reset, clearing clock_count stat
     clock_divider_set(s.hi, 2, 2, 1, 1);  // div0=2, div1=2, pass-through multiplier stages
 
     // Drive Clock(0) once to advance clock_count inside divmult[0].
+}
+
 TEST_CASE("poly_div PD1: Start defaults match in-class field initializers", "[poly_div]") {
     // Vendor PolyDiv.h:51-53 in-class init: divider[4] = {{4,0},{3,0},{2,0},{1,0}}.
     // Vendor PolyDiv.h:178 in-class init: div_enabled = 0b00100001 (= 0x21).
@@ -1474,15 +1490,17 @@ TEST_CASE("poly_div PD3: state-injection, Clock(0) fires Out(0) with divider[0] 
     set_gate(s.bus, LEFT, 0, 0, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32);
 
-    // Drive Clock(1) to trigger Reset(). clock_count returns to 0.
+    // Drive Clock(1) to trigger Reset(). step_index returns to -1.
     clear_bus(s.bus);
     set_gate(s.bus, LEFT, 1, 0, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32);
 
-    // After Reset, OnDataRequest still reflects div[0]=2 (serialised field unchanged).
+    // After all that activity, OnDataRequest still reflects the injected state.
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
-    int d0 = (int)((packed) & 0xFF) - 32;
-    REQUIRE(d0 == 2);
+    int de   = (int)(packed & 0xFF);
+    int d0_s = (int)((packed >> 8) & 0x3F);
+    REQUIRE(de   == 0x01);
+    REQUIRE(d0_s == 4);
 }
 
 TEST_CASE("clock_divider CD4: div[0]=2 fires ClockOut(0) 5 times per Clock(0) buffer", "[clock_divider]") {
@@ -1556,6 +1574,7 @@ TEST_CASE("clock_divider CD5: negative div (multiplier mode) round-trip via stat
 // pass) and p=0 (always skip) the result is deterministic regardless of
 // attempt count; tests assert gate presence or absence per buffer.
 // ---------------------------------------------------------------------------
+}
 
 TEST_CASE("clock_skip CS1: Start defaults match vendor", "[clock_skip]") {
     // Vendor Start(): p[0] = 100 - 25*0 = 100, p[1] = 100 - 25*1 = 75.
@@ -1600,8 +1619,11 @@ TEST_CASE("clock_skip CS4: p=0 always skips gate on Clock(0)", "[clock_skip]") {
     seed_hem_rng(0xDEADBEEF);
 
     for (int trial = 0; trial < 10; ++trial) {
-    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);   // divider[0] fired
-    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);  // no divider routes to Out B
+        clear_bus(s.bus);
+        set_gate(s.bus, LEFT, 0, 0, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+    }
 }
 
 TEST_CASE("poly_div PD4: div_enabled=0 disables all channels, no output on Clock(0)", "[poly_div]") {
@@ -1618,6 +1640,8 @@ TEST_CASE("poly_div PD4: div_enabled=0 disables all channels, no output on Clock
         step_n_frames(s.loaded, s.alg, s.bus, 32);
         REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
     }
+}
+
 // ---------------------------------------------------------------------------
 // EnvFollow tests
 // ---------------------------------------------------------------------------
@@ -1848,6 +1872,8 @@ TEST_CASE("rnd_walk RW4: smoothness reduces step-to-step output delta vs zero sm
     float unsmoothed = measure_max_delta(0);
     float smoothed   = measure_max_delta(200);
     REQUIRE(smoothed < unsmoothed);
+}
+
 TEST_CASE("rungl_book RB1: Start defaults threshold = ONE_OCTAVE * 2 (3072)", "[rungl_book]") {
     // Vendor RunglBook.h:34-36: Start() sets threshold = ONE_OCTAVE * 2.
     // ONE_OCTAVE = 1536 hem units/V. Default threshold = 3072 (2V).
@@ -1931,6 +1957,8 @@ TEST_CASE("rungl_book RB5: Gate(1) freeze rotates register, Out(0) unchanged fro
 
     // Rotation preserves all-ones pattern: Out(0) = 6V.
     REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(6.0f).margin(0.01f));
+}
+
 TEST_CASE("schmitt SC1: Start defaults match vendor (low=3200, high=3968)", "[schmitt]") {
     // Vendor Start() sets low=3200 (~2.1V) and high=3968 (~2.6V).
     // ONE_OCTAVE = 1536 hem units/V; pack layout: low at [0,16), high at [16,16).
@@ -2020,6 +2048,7 @@ TEST_CASE("schmitt SC6: Out(0) returns low when In(0) drops below low threshold"
 // 10x clocked-multiplier: one Clock(0) buffer fires Controller() 10 times,
 // advancing curr_step 10 times. Period for up-mode = steps+1.
 // ---------------------------------------------------------------------------
+}
 
 TEST_CASE("stairs ST1: Start defaults match vendor (steps=1, dir=0, rand=0)", "[stairs]") {
     auto s = setup_applet(kAppletStairs);
@@ -2145,6 +2174,7 @@ TEST_CASE("stairs ST6: rand=1 mode keeps output within CV range and differs acro
 // Channel 1: gated switch - Gate(1) high selects In(1), otherwise In(0).
 //   No 10x risk on the gated switch path (Gate is polled per tick, not a counter).
 // OnDataRequest returns 0; active[] is runtime-only state.
+}
 
 TEST_CASE("switch SW1: Start defaults - OnDataRequest is 0 (no serialised state)", "[switch]") {
     // Vendor Start(): active[0]=1, active[1]=1.
@@ -2203,6 +2233,7 @@ TEST_CASE("switch SW4: Out(1) reads In(1) when Gate(1) is high (gated select)", 
 //   gate[ch]=0: normally-on (output except when Gate(ch) high).
 //   gate[ch]=1: normally-off (output only when Gate(ch) high).
 //   No 10x risk: Controller polls Gate(ch) per-tick, no internal counter.
+}
 
 TEST_CASE("voltage V1: Start defaults match vendor", "[voltage]") {
     // Start(): voltage[0]=VOLTAGE_MAX=72, voltage[1]=VOLTAGE_MIN=-72, gate[ch]=0.

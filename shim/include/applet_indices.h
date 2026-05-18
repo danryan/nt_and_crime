@@ -18,13 +18,23 @@ enum AppletIndex : uint8_t {
     kAppletButton,
     kAppletCalculate,
     kAppletClkToGate,
+    kAppletClockDivider,
+    kAppletClockSkip,
     kAppletCompare,
     kAppletCumulus,
+    kAppletEnvFollow,
     kAppletGateDelay,
     kAppletGatedVCA,
     kAppletLogic,
+    kAppletPolyDiv,
+    kAppletRndWalk,
+    kAppletRunglBook,
+    kAppletSchmitt,
     kAppletSlew,
+    kAppletStairs,
+    kAppletSwitch,
     kAppletTLNeuron,
+    kAppletVoltage,
     kAppletCount
 };
 

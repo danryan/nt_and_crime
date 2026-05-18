@@ -452,7 +452,7 @@ void atten_off_set(hem_shim::HemispheresInstance* hi,
 Append:
 
 ```cpp
-TEST_CASE("atten_off A1: Start defaults level[0]=level[1]=100, offset=0", "[atten_off]") {
+TEST_CASE("atten_off A1: Start defaults level[0]=level[1]=63, offset=0", "[atten_off]") {
     auto s = setup_applet(kAppletAttenuateOffset);
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     int off0 = (int)((packed) & 0x1FF) - 256;

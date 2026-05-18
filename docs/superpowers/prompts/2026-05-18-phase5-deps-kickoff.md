@@ -183,13 +183,20 @@ LoC budget: 100 LoC.
 
 ## Time-injection helper (parent agent, Layer 0)
 
-The helper still lands in Phase 5 because it's small, isolated, and ready for Phase 6 cat-C applet ports. Design and unit test stay as the original Phase 5 prompt specified:
+The helper still lands in Phase 5 because it's small, isolated, and ready for Phase 6 cat-C applet ports. The API is frozen here (not a brainstorm output) so brainstorm + spec operate against a known helper:
 
 - API: `step_n_inner_ticks(loaded, alg, bus, N)` in `harness/tests/applet_test_helpers.{h,cpp}`.
 - Mechanism: file-scope `int hem_shim::inner_ticks_override` consumed-and-cleared by `step()`. If >0, `ticks_this_step = override`; else fallback to `numFrames/3`.
-- Honors 10x rule: `clocked[]` set once per step() prologue, held across all N inner ticks. `frame.clock_countdown[]` decrements N times.
-- Probe test: assert `step_n_inner_ticks(loaded, alg, bus, 10)` produces state byte-identical to `step_n_frames(loaded, alg, bus, 32)` for Cumulus.
-- Lands as part of Layer 0, before any dep implementer dispatch.
+- Honors 10x rule: `clocked[]` and `gate_high[]` set once per step() prologue, held across all N inner ticks. `frame.clock_countdown[]` decrements N times. `OC::CORE::ticks` advances N times.
+
+The helper unit test must satisfy BOTH invariants. A correct-but-useless helper passes one and fails the other:
+
+- (a) Equivalence under existing coverage. `step_n_inner_ticks(loaded, alg, bus, 10)` must produce state byte-identical to `step_n_frames(loaded, alg, bus, 32)` for Cumulus (the existing covered probe). Proves the helper is consistent with the established step() path at the default tick budget.
+- (b) Tick-advancement invariant under load. `step_n_inner_ticks(loaded, alg, bus, 1000)` must advance `OC::CORE::ticks` by exactly 1000, hold `clocked[ch]` true for all 1000 inner ticks when the input gate is held high (via `hold_gate`), and decrement `frame.clock_countdown[ch]` by exactly 1000 if pre-loaded to >=1000. This is a synthetic test against the Empty applet plus a held gate input; it does not require any Clock-driven applet to exist yet. Catches the failure mode of a helper that passes (a) on a non-Clock-driven applet (LFO phase accumulator) while silently breaking on a Clock-driven applet at high tick budgets.
+
+Both (a) and (b) must be green before Phase 5 considers Layer 0 done. Phase 6 then exercises the helper end-to-end against ResetClock (the natural Clock+time-driven probe); Phase 5 cannot use ResetClock for this purpose because no applet ports land in Phase 5.
+
+The helper lands as part of Layer 0, before any dep implementer dispatch.
 
 ## Layer 0 shared shim infrastructure (parent agent)
 
@@ -230,6 +237,15 @@ If any dep audit reveals nontrivial vendor edits would be required to compile ag
 - New hemisphere bus features (pair-applet variants, audio side, etc.).
 - Vendor SDK changes (`vendor/distingNT_API` stays at `cd12d876`).
 - The vendor commit `7800d929` pin stays.
+
+## Phase 6 disciplines (carry-forward, not Phase 5 scope)
+
+When Phase 6 audits cat-C applets against the now-shipped deps + helper, inherit these disciplines (lessons banked from the Phase 5 pivot audit):
+
+- Helper-design as discrete preflight deliverable, not brainstorm output. Phase 5's helper API was frozen in this kickoff prompt; Phase 6 applet-port prompts must do the same for any new infrastructure they introduce. Brainstorms categorize and select, they do not design infrastructure under deadline.
+- Tighter cat-C demotion abort threshold. Phase 5's superseded kickoff used "more than 3 of 7-9 candidates demote" which was too generous and concealed the cat-C inventory exhaustion until late in audit. Phase 6 should use "more than 2 of N demote, halt and assess whether the boundary is wrong or the inventory is small." A high demotion rate is evidence the boundary is mis-drawn, not that the scope is too small.
+- ResetClock is the natural first cat-C applet in Phase 6 because it exercises both Clock-driven state evolution and `OC::CORE::ticks` advancement. The helper's end-to-end correctness proof happens there. Other cat-C applets follow Phase 6's standard parallel implementer fan-out pattern.
+- Cat-C boundary revision is the expected outcome of a failed audit, not phase abort. If Phase 6 finds the cat-C inventory at Phase-5-extended-shim is again thin, the response is to refine boundary predicates and re-audit, not to halt or descope. The deps shipped in Phase 5 substantially change what fits.
 
 ## Vendor pin
 
@@ -342,7 +358,8 @@ During planning:
 
 During Layer 0:
 
-- Helper unit test fails against Cumulus.
+- Helper unit test (a) equivalence with Cumulus fails.
+- Helper unit test (b) tick-advancement invariant fails (any of: `OC::CORE::ticks` delta off, `clocked[]` not held, `clock_countdown[]` decrement count off).
 - Helper breaks any existing test in `make test-applets`.
 - `make arm` fails or produces warnings.
 - Any macro added to `util_macros.h` collides with an existing shim symbol.
@@ -382,7 +399,7 @@ If an abort fired, post the abort report instead.
 ## Success criteria
 
 - Three documents exist at declared paths.
-- Time-injection helper landed in Layer 0 with unit test green.
+- Time-injection helper landed in Layer 0 with BOTH unit tests green: (a) Cumulus equivalence at N=10, (b) tick-advancement invariant at N=1000 against Empty + held gate.
 - Layer 0 macro shim + Arduino.h extensions landed and used by at least 2 deps.
 - All 7 deps shipped with isolated unit tests green.
 - Quantizer split decision documented as a load-bearing call in the spec + PR description.

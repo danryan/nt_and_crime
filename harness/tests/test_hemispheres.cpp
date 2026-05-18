@@ -23,6 +23,7 @@ using hem_shim::kAppletGatedVCA;
 using hem_shim::kAppletLogic;
 using hem_shim::kAppletEnvFollow;
 using hem_shim::kAppletPolyDiv;
+using hem_shim::kAppletRndWalk;
 using hem_shim::kAppletSlew;
 using hem_shim::kAppletTLNeuron;
 using Catch::Approx;
@@ -127,6 +128,11 @@ void poly_div_set(hem_shim::HemispheresInstance* hi,
                   int div2_steps, int div3_steps) {
     get_applet(hi, LEFT)->OnDataReceive(
         pack_poly_div(div_enabled, div0_steps, div1_steps, div2_steps, div3_steps));
+void rnd_walk_set(hem_shim::HemispheresInstance* hi,
+                  int yClkSrc, int yClkDiv, int range,
+                  int step, int smoothness, int cvRange) {
+    get_applet(hi, LEFT)->OnDataReceive(
+        pack_rnd_walk(yClkSrc, yClkDiv, range, step, smoothness, cvRange));
 }
 
 }  // namespace
@@ -1687,4 +1693,143 @@ TEST_CASE("env_follow EF4: duck mode inverts envelope on ch1", "[env_follow]") {
     REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(0.0f).margin(0.5f));
         REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);
     }
+// ---------------------------------------------------------------------------
+// RndWalk tests
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct RndWalkFields {
+    int yClkSrc;
+    int yClkDiv;
+    int range;
+    int step;
+    int smoothness;
+    int cvRange;
+};
+
+RndWalkFields decode_rnd_walk(uint64_t packed) {
+    RndWalkFields f{};
+    f.yClkSrc    = (int)((packed >> 0)  & 0x01);
+    f.yClkDiv    = (int)((packed >> 1)  & 0x0F);
+    f.range      = (int)((packed >> 5)  & 0xFF);
+    f.step       = (int)((packed >> 13) & 0xFF);
+    f.smoothness = (int)((packed >> 21) & 0xFF);
+    f.cvRange    = (int)((packed >> 29) & 0x03);
+    return f;
+}
+
+}  // namespace
+
+TEST_CASE("rnd_walk RW1: Start defaults match vendor field initialisers", "[rnd_walk]") {
+    // Vendor RndWalk.h:162-167 declares per-field defaults:
+    //   yClkSrc=0, yClkDiv=1, range=20, step=20, smoothness=20, cvRange=3.
+    // Start() (RndWalk.h:44-54) sets currentVal[ch]=0, currentOut[ch]=0, cursor=0
+    // and calls UpdateAlpha() / UpdateMaxVal(). Serialised state comes entirely
+    // from the six in-class-initialised fields above.
+    auto s = setup_applet(kAppletRndWalk);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    auto f = decode_rnd_walk(packed);
+    REQUIRE(f.yClkSrc    == 0);
+    REQUIRE(f.yClkDiv    == 1);
+    REQUIRE(f.range      == 20);
+    REQUIRE(f.step       == 20);
+    REQUIRE(f.smoothness == 20);
+    REQUIRE(f.cvRange    == 3);
+}
+
+TEST_CASE("rnd_walk RW2: OnDataReceive then OnDataRequest round-trip preserves all six fields", "[rnd_walk]") {
+    // Non-default values inside vendor OnEncoderMove constrain bounds:
+    //   yClkSrc 0..1, yClkDiv 1..32 (stored in 4 bits so 5 is safe), range 0..255,
+    //   step 1..255, smoothness 0..255, cvRange 0..3.
+    // OnDataReceive does no further clamping; values are stored directly after Unpack.
+    auto s = setup_applet(kAppletRndWalk);
+    rnd_walk_set(s.hi, /*yClkSrc=*/1, /*yClkDiv=*/5, /*range=*/100,
+                 /*step=*/37, /*smoothness=*/200, /*cvRange=*/2);
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    auto f = decode_rnd_walk(packed);
+    REQUIRE(f.yClkSrc    == 1);
+    REQUIRE(f.yClkDiv    == 5);
+    REQUIRE(f.range      == 100);
+    REQUIRE(f.step       == 37);
+    REQUIRE(f.smoothness == 200);
+    REQUIRE(f.cvRange    == 2);
+}
+
+TEST_CASE("rnd_walk RW3: Out(0) stays within amplitude bound over 100 Clock(0) buffers", "[rnd_walk]") {
+    // smoothness=0 makes alpha = logf(1+0) * RECIP_LOG_MAX_SMOOTH_PLUS_1 = 0.
+    // one_minus_alpha = 1. So currentOut[ch] = 1*currentOut + 0*currentVal is
+    // instant: currentOut[ch] = currentVal[ch] every tick.
+    //
+    // 10x clocked-multiplier reality: one set_gate buffer sets clocked[0]=true
+    // for all ticks_this_step (= numFrames/3 = 10) inner Controller calls.
+    // Each tick where Clock(0) is true, the walk advances by randStep. The
+    // walk is bounded by the vendor guard:
+    //   currentVal += randStep * ((randInt > PROB_UP && currentVal < rangeScaled)
+    //                           - (randInt < PROB_DN && currentVal > -rangeScaled))
+    // so currentVal cannot exceed rangeScaled or fall below -rangeScaled by more
+    // than one randStep. With step=1 and cvRange=3 (FULL, max_val=9216),
+    // randStep = (float)random(1, 1) * (1.0/255) * 9216 * 0.5 = ~18 hem units.
+    // rangeScaled = (float)50 * (1.0/255) * 9216 = ~1807 hem units = ~1.18V.
+    // A generous 0.5V margin covers the maximum one-step overshoot and float
+    // rounding across 100 buffers (each up to 10 inner walk steps).
+    auto s = setup_applet(kAppletRndWalk);
+    rnd_walk_set(s.hi, /*yClkSrc=*/0, /*yClkDiv=*/1, /*range=*/50,
+                 /*step=*/1, /*smoothness=*/0, /*cvRange=*/3);
+    seed_hem_rng(0xDEADBEEF);
+
+    // rangeScaled in volts: 50 * (9216.0f / 255.0f) / 1536.0f
+    const float range_volts = 50.0f * (9216.0f / 255.0f) / 1536.0f;
+    const float bound = range_volts + 0.5f;
+
+    for (int i = 0; i < 100; ++i) {
+        clear_bus(s.bus);
+        set_gate(s.bus, LEFT, 0, 0, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+        float v = read_cv_at(s.bus, LEFT, 0, 0, 8);
+        REQUIRE(v >= -bound);
+        REQUIRE(v <=  bound);
+    }
+}
+
+TEST_CASE("rnd_walk RW4: smoothness reduces step-to-step output delta vs zero smoothness", "[rnd_walk]") {
+    // alpha = logf(1+smoothness) * RECIP_LOG_MAX_SMOOTH_PLUS_1.
+    // At smoothness=0, alpha=0 so Out tracks currentVal directly (instant).
+    // At smoothness=200, alpha ~ logf(201)*0.18034 ~ 0.957. Each of the 10
+    // inner Controller ticks per buffer blends ~4.3% of currentVal into
+    // currentOut: effective_alpha_per_buffer = 0.957^10 ~ 0.65. Consequently
+    // the smoothed output changes more slowly between Clock(0) buffers. We
+    // measure the maximum absolute delta between consecutive buffer samples
+    // over 60 clock pulses; the smoothed run must show a smaller maximum than
+    // the unsmoothed run.
+    const int N_PULSES = 60;
+
+    auto measure_max_delta = [&](int smoothness) -> float {
+        auto s = setup_applet(kAppletRndWalk);
+        rnd_walk_set(s.hi, /*yClkSrc=*/0, /*yClkDiv=*/1, /*range=*/64,
+                     /*step=*/20, /*smoothness=*/smoothness, /*cvRange=*/3);
+        seed_hem_rng(0xDEADBEEF);
+
+        float max_delta = 0.0f;
+        float prev = 0.0f;
+        for (int i = 0; i < N_PULSES; ++i) {
+            clear_bus(s.bus);
+            set_gate(s.bus, LEFT, 0, 0, 8);
+            step_n_frames(s.loaded, s.alg, s.bus, 32);
+            float v = read_cv_at(s.bus, LEFT, 0, 0, 8);
+            if (i > 0) {
+                float d = v - prev;
+                if (d < 0.0f) d = -d;
+                if (d > max_delta) max_delta = d;
+            }
+            prev = v;
+        }
+        return max_delta;
+    };
+
+    float unsmoothed = measure_max_delta(0);
+    float smoothed   = measure_max_delta(200);
+    REQUIRE(smoothed < unsmoothed);
 }

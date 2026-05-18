@@ -167,5 +167,14 @@ uint64_t pack_env_follow(int gain0, int gain1, int duck0, int duck1, int speed);
 // Vendor ForAllChannels iterates i=0..3; all four step fields must be provided.
 uint64_t pack_poly_div(int div_enabled, int div0_steps, int div1_steps,
                        int div2_steps, int div3_steps);
+// Mirrors RndWalk::OnDataRequest (31 bits, no bias on any field):
+//   bits [0,  1)  = yClkSrc    (0=TR1, 1=TR2)
+//   bits [1,  4)  = yClkDiv    (1..32, 4 bits stored)
+//   bits [5,  8)  = range      (0..255)
+//   bits [13, 8)  = step       (0..255)
+//   bits [21, 8)  = smoothness (0..255)
+//   bits [29, 2)  = cvRange    (0..3)
+uint64_t pack_rnd_walk(int yClkSrc, int yClkDiv, int range,
+                       int step, int smoothness, int cvRange);
 
 }  // namespace hem_test

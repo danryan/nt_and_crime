@@ -201,6 +201,15 @@ uint64_t pack_poly_div(int div_enabled, int div0_steps, int div1_steps,
     data |= ((uint64_t)(div1_steps  & 0x3F)) << 14;
     data |= ((uint64_t)(div2_steps  & 0x3F)) << 20;
     data |= ((uint64_t)(div3_steps  & 0x3F)) << 26;
+uint64_t pack_rnd_walk(int yClkSrc, int yClkDiv, int range,
+                       int step, int smoothness, int cvRange) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(yClkSrc    & 0x01));
+    data |= ((uint64_t)(yClkDiv    & 0x0F)) << 1;
+    data |= ((uint64_t)(range      & 0xFF)) << 5;
+    data |= ((uint64_t)(step       & 0xFF)) << 13;
+    data |= ((uint64_t)(smoothness & 0xFF)) << 21;
+    data |= ((uint64_t)(cvRange    & 0x03)) << 29;
     return data;
 }
 

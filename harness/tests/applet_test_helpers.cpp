@@ -130,6 +130,15 @@ uint64_t pack_compare(int level) {
     return (uint64_t)(level & 0xFF);
 }
 
+uint64_t pack_clock_divider(int div0, int div1, int divmult1_steps, int divmult3_steps) {
+    uint64_t data = 0;
+    data |= ((uint64_t)((div0          + 32) & 0xFF));
+    data |= ((uint64_t)((div1          + 32) & 0xFF)) << 8;
+    data |= ((uint64_t)((divmult1_steps + 32) & 0xFF)) << 16;
+    data |= ((uint64_t)((divmult3_steps + 32) & 0xFF)) << 24;
+    return data;
+}
+
 uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
                           int width_b, int range_b, int skip_b) {
     auto pack_side = [](int width, int range, int skip) -> uint64_t {
@@ -143,6 +152,13 @@ uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
     uint64_t data = 0;
     data |= pack_side(width_a, range_a, skip_a);
     data |= pack_side(width_b, range_b, skip_b) << 32;
+    return data;
+}
+
+uint64_t pack_clock_skip(int p0, int p1) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(p0 & 0x7F));
+    data |= ((uint64_t)(p1 & 0x7F)) << 7;
     return data;
 }
 
@@ -167,6 +183,70 @@ uint64_t pack_cumulus(int accoperator, int b_constant, int outmode_left, int out
     data |= ((uint64_t)(outmode_left  & 0x0F)) << 7;
     // bits 11..12 left as 0 (vendor gap)
     data |= ((uint64_t)(outmode_right & 0x0F)) << 13;
+    return data;
+}
+
+uint64_t pack_env_follow(int gain0, int gain1, int duck0, int duck1, int speed) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(gain0        & 0x1F));
+    data |= ((uint64_t)(gain1        & 0x1F)) << 5;
+    data |= ((uint64_t)(duck0        & 0x01)) << 10;
+    data |= ((uint64_t)(duck1        & 0x01)) << 11;
+    data |= ((uint64_t)((speed - 1)  & 0x0F)) << 12;
+    return data;
+}
+
+uint64_t pack_poly_div(int div_enabled, int div0_steps, int div1_steps,
+                       int div2_steps, int div3_steps) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(div_enabled & 0xFF));
+    data |= ((uint64_t)(div0_steps  & 0x3F)) <<  8;
+    data |= ((uint64_t)(div1_steps  & 0x3F)) << 14;
+    data |= ((uint64_t)(div2_steps  & 0x3F)) << 20;
+    data |= ((uint64_t)(div3_steps  & 0x3F)) << 26;
+    return data;
+}
+
+uint64_t pack_rnd_walk(int yClkSrc, int yClkDiv, int range,
+                       int step, int smoothness, int cvRange) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(yClkSrc    & 0x01));
+    data |= ((uint64_t)(yClkDiv    & 0x0F)) << 1;
+    data |= ((uint64_t)(range      & 0xFF)) << 5;
+    data |= ((uint64_t)(step       & 0xFF)) << 13;
+    data |= ((uint64_t)(smoothness & 0xFF)) << 21;
+    data |= ((uint64_t)(cvRange    & 0x03)) << 29;
+    return data;
+}
+
+uint64_t pack_rungl_book(int threshold) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(threshold & 0xFFFF));
+    return data;
+}
+
+uint64_t pack_schmitt(int low, int high) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(low  & 0xFFFF));
+    data |= ((uint64_t)(high & 0xFFFF)) << 16;
+    return data;
+}
+
+uint64_t pack_stairs(int steps, int dir, int rand) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(steps & 0x1F));
+    data |= ((uint64_t)(dir   & 0x03)) << 5;
+    data |= ((uint64_t)(rand  & 0x01)) << 7;
+    return data;
+}
+
+uint64_t pack_voltage(int voltage0, int voltage1, int gate0, int gate1) {
+    uint64_t data = 0;
+    data |= ((uint64_t)((voltage0 + 256) & 0x1FF));        // [0,9)
+    // bit 9 left as 0 (vendor gap between voltage[0] and voltage[1])
+    data |= ((uint64_t)((voltage1 + 256) & 0x1FF)) << 10;  // [10,9)
+    data |= ((uint64_t)(gate0 & 0x1)) << 19;               // [19,1)
+    data |= ((uint64_t)(gate1 & 0x1)) << 20;               // [20,1)
     return data;
 }
 

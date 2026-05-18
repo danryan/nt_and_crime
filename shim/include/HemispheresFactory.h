@@ -14,16 +14,29 @@
 #include "Burst.h"
 #include "Button.h"
 #include "ClkToGate.h"
+#include "ClockDivider.h"
+#include "ClockSkip.h"
 #include "Compare.h"
 #include "Cumulus.h"
+#include "EnvFollow.h"
 #include "GateDelay.h"
 #include "GatedVCA.h"
+#include "PolyDiv.h"
+#include "RndWalk.h"
+#include "RunglBook.h"
+#include "Schmitt.h"
+#include "Stairs.h"
+#include "Switch.h"
+#include "Voltage.h"
 
 namespace hem_shim {
 
 inline const char* const* applet_enum_strings() {
     static const char* const names[kAppletCount] = {
-        "Empty", "AttenOff", "Brancher", "Burst", "Button2", "Calculate", "Clk2Gate", "Compare", "Cumulus", "GateDelay", "Gated VCA", "Logic", "Slew", "TLNeuron"
+        "Empty", "AttenOff", "Brancher", "Burst", "Button2", "Calculate", "Clk2Gate",
+        "Clk Div", "Clk Skip", "Compare", "Cumulus", "EnvFollow", "GateDelay", "Gated VCA",
+        "Logic", "PolyDiv", "RndWalk", "RunglBook", "SchmittTr", "Slew",
+        "Stairs", "Switch", "TLNeuron", "Voltage"
     };
     return names;
 }
@@ -54,10 +67,20 @@ constexpr size_t kMaxAppletSize =
     cmax(sizeof(GateDelay),
     cmax(sizeof(Button),
     cmax(sizeof(ClkToGate),
+    cmax(sizeof(ClockDivider),
+    cmax(sizeof(ClockSkip),
     cmax(sizeof(Compare),
     cmax(sizeof(Cumulus),
+    cmax(sizeof(EnvFollow),
     cmax(sizeof(GatedVCA),
-         sizeof(Burst))))))))))))));
+    cmax(sizeof(PolyDiv),
+    cmax(sizeof(RndWalk),
+    cmax(sizeof(RunglBook),
+    cmax(sizeof(Schmitt),
+    cmax(sizeof(Stairs),
+    cmax(sizeof(Switch),
+    cmax(sizeof(Voltage),
+         sizeof(Burst))))))))))))))))))))))));
 
 constexpr size_t kMaxAppletAlign =
     cmax(alignof(Empty),
@@ -70,10 +93,20 @@ constexpr size_t kMaxAppletAlign =
     cmax(alignof(GateDelay),
     cmax(alignof(Button),
     cmax(alignof(ClkToGate),
+    cmax(alignof(ClockDivider),
+    cmax(alignof(ClockSkip),
     cmax(alignof(Compare),
     cmax(alignof(Cumulus),
+    cmax(alignof(EnvFollow),
     cmax(alignof(GatedVCA),
-         alignof(Burst))))))))))))));
+    cmax(alignof(PolyDiv),
+    cmax(alignof(RndWalk),
+    cmax(alignof(RunglBook),
+    cmax(alignof(Schmitt),
+    cmax(alignof(Stairs),
+    cmax(alignof(Switch),
+    cmax(alignof(Voltage),
+         alignof(Burst))))))))))))))))))))))));
 
 template <class T>
 inline HemisphereApplet* make_applet(void* sram) {
@@ -91,13 +124,23 @@ inline AppletFactory applet_factory(AppletIndex idx) {
         &make_applet<Button>,
         &make_applet<Calculate>,
         &make_applet<ClkToGate>,
+        &make_applet<ClockDivider>,
+        &make_applet<ClockSkip>,
         &make_applet<Compare>,
         &make_applet<Cumulus>,
+        &make_applet<EnvFollow>,
         &make_applet<GateDelay>,
         &make_applet<GatedVCA>,
         &make_applet<Logic>,
+        &make_applet<PolyDiv>,
+        &make_applet<RndWalk>,
+        &make_applet<RunglBook>,
+        &make_applet<Schmitt>,
         &make_applet<Slew>,
+        &make_applet<Stairs>,
+        &make_applet<Switch>,
         &make_applet<TLNeuron>,
+        &make_applet<Voltage>,
     };
     return table[idx];
 }

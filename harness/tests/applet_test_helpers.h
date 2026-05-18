@@ -78,6 +78,9 @@ void seed_hem_rng(uint32_t seed);
 // Mirrors Calculate::OnDataRequest packing: bits [0,8] = op_left, [8,8] = op_right.
 uint64_t pack_calculate(int op_left, int op_right);
 
+// Mirrors ClockSkip::OnDataRequest packing: bits [0,7) = p[0], [7,7) = p[1]. No bias.
+uint64_t pack_clock_skip(int p0, int p1);
+
 // Mirrors Brancher::OnDataRequest packing: bits [0,7] = p in 0..100.
 // Brancher's `choice` field is not serialised by vendor.
 uint64_t pack_brancher(int p);
@@ -113,6 +116,14 @@ uint64_t pack_atten_off(int offset_left, int offset_right,
 // HEM_COMPARE_MAX_VALUE is 255 in vendor Compare.h; default level is 128.
 uint64_t pack_compare(int level);
 
+// Mirrors ClockDivider::OnDataRequest packing (32 bits):
+//   bits [0, 8)  = div[0] + 32   (biased; positive=divide, negative=multiply, zero=mute)
+//   bits [8, 8)  = div[1] + 32
+//   bits [16, 8) = divmult[1].steps + 32  (second-stage multiplier for ch0)
+//   bits [24, 8) = divmult[3].steps + 32  (second-stage multiplier for ch1)
+// Both div[i] and divmult[1+i*2].steps are biased +32 on pack.
+uint64_t pack_clock_divider(int div0, int div1, int divmult1_steps, int divmult3_steps);
+
 // Mirrors ClkToGate::OnDataRequest: per side i in {0,1}:
 //   width[i] at (i*32+0, 7)
 //   abs(range[i]) at (i*32+8, 7)
@@ -138,5 +149,58 @@ uint64_t pack_tlneuron(int w0, int w1, int w2, int threshold);
 // IMPORTANT: bits 11..12 are unused in vendor packing; pack_cumulus explicitly
 // zeros them to avoid stale state leaking through preset round-trip.
 uint64_t pack_cumulus(int accoperator, int b_constant, int outmode_left, int outmode_right);
+
+// Mirrors EnvFollow::OnDataRequest packing (16 bits used):
+//   bits [0, 5)  = gain[0]   (1..31)
+//   bits [5, 5)  = gain[1]   (1..31)
+//   bits [10, 1) = duck[0]   (0 or 1)
+//   bits [11, 1) = duck[1]   (0 or 1)
+//   bits [12, 4) = speed - 1 (biased; caller passes natural speed 1..16)
+uint64_t pack_env_follow(int gain0, int gain1, int duck0, int duck1, int speed);
+// Mirrors PolyDiv::OnDataRequest (32 bits):
+//   bits [0, 8)  = div_enabled  (8-bit bitmask; bits 0-3 = dividers for Out A,
+//                                bits 4-7 = dividers for Out B)
+//   bits [8, 6)  = divider[0].steps  (6-bit, 0..63)
+//   bits [14,6)  = divider[1].steps
+//   bits [20,6)  = divider[2].steps
+//   bits [26,6)  = divider[3].steps
+// Vendor ForAllChannels iterates i=0..3; all four step fields must be provided.
+uint64_t pack_poly_div(int div_enabled, int div0_steps, int div1_steps,
+                       int div2_steps, int div3_steps);
+// Mirrors RndWalk::OnDataRequest (31 bits, no bias on any field):
+//   bits [0,  1)  = yClkSrc    (0=TR1, 1=TR2)
+//   bits [1,  4)  = yClkDiv    (1..32, 4 bits stored)
+//   bits [5,  8)  = range      (0..255)
+//   bits [13, 8)  = step       (0..255)
+//   bits [21, 8)  = smoothness (0..255)
+//   bits [29, 2)  = cvRange    (0..3)
+uint64_t pack_rnd_walk(int yClkSrc, int yClkDiv, int range,
+                       int step, int smoothness, int cvRange);
+// Mirrors RunglBook::OnDataRequest packing (16 bits):
+//   bits [0, 16) = threshold  (ONE_OCTAVE..ONE_OCTAVE*5 = 1536..7680; no bias)
+// Start() default: threshold = ONE_OCTAVE * 2 = 3072.
+uint64_t pack_rungl_book(int threshold);
+// Mirrors Schmitt::OnDataRequest packing (32 bits used):
+//   bits [0, 16)  = low  threshold (vendor int CV units, no bias)
+//   bits [16, 16) = high threshold (vendor int CV units, no bias)
+// Both fields are uint16_t in the vendor source; valid range 64..HEMISPHERE_MAX_CV.
+// Default: low=3200, high=3968.
+uint64_t pack_schmitt(int low, int high);
+// Mirrors Stairs::OnDataRequest packing (8 bits):
+//   bits [0, 5)  = steps  (0..31; default 1)
+//   bits [5, 2)  = dir    (0=up, 1=up-down, 2=down; default 0)
+//   bits [7, 1)  = rand   (0=off, 1=on; default 0)
+// No bias fields. All fields stored without offset.
+uint64_t pack_stairs(int steps, int dir, int rand);
+// Mirrors Voltage::OnDataRequest packing (21 bits used, 1-bit gap):
+//   bits [0, 9)  = voltage[0] + 256  (biased; semitone units, VOLTAGE_INCREMENTS=128)
+//   bit  9       = UNUSED gap (must be 0; not written by vendor Pack calls)
+//   bits [10, 9) = voltage[1] + 256  (biased; same units)
+//   bit  19      = gate[0]            (0 = normally-on, 1 = normally-off)
+//   bit  20      = gate[1]
+// VOLTAGE_MAX = HEMISPHERE_MAX_CV / VOLTAGE_INCREMENTS = 72 (6V).
+// VOLTAGE_MIN = HEMISPHERE_MIN_CV / VOLTAGE_INCREMENTS = -72 (-6V).
+// Defaults after Start(): voltage[0]=72, voltage[1]=-72, gate[0]=0, gate[1]=0.
+uint64_t pack_voltage(int voltage0, int voltage1, int gate0, int gate1);
 
 }  // namespace hem_test

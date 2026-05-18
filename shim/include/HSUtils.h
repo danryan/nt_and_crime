@@ -10,6 +10,9 @@
 #define HEMISPHERE_CENTER_DETENT 80
 #define HEMISPHERE_CLOCK_TICKS 175
 #define HEMISPHERE_CURSOR_TICKS 5000
+#define HEMISPHERE_3V_CV (3 * ONE_OCTAVE)
+static constexpr uint32_t HEMISPHERE_PULSE_ANIMATION_TIME = 500;
+static constexpr uint32_t HEMISPHERE_PULSE_ANIMATION_TIME_LONG = 1200;
 
 #define PULSE_VOLTAGE 6                                         // octave_max on T4.1
 #define HEMISPHERE_MIN_CV (-(PULSE_VOLTAGE * ONE_OCTAVE))
@@ -22,6 +25,7 @@ using simfloat = int32_t;
 #endif
 
 #define ForEachChannel(ch) for (int_fast8_t ch = 0; (ch) < 2; ++(ch))
+#define ForAllChannels(ch) for (int_fast8_t ch = 0; (ch) < 4; ++(ch))
 namespace HS { extern int gfx_offset; }
 using HS::gfx_offset;
 #define BottomAlign(h) (62 - (h))

@@ -76,6 +76,26 @@ Bus-level "fires once per N input edges" assertions are unreliable for these app
 
 Per-applet entries in the design specs must state which shape they use. New applet ports MUST acknowledge this rule in their test concerns or test failures will look mysterious.
 
+## Vendor compat headers compile against shim
+
+Vendor non-applet headers (`HSProbLoopLinker.h`, `SegmentDisplay.h`, etc.) usually compile against the shim without needing a shim stub. They depend on `graphics` (already global in `hem_graphics.h`), `HEM_SIDE` (already in `HSUtils.h` via `using namespace HS;`), and `<cstdint>` types — all in scope by the time the include chain reaches them. Check whether the vendor header compiles as-is before preemptively writing a stub.
+
+## Proportion is a free function (not a member)
+
+`Proportion(numerator, denominator, max_value)` lives in `shim/include/util/util_math.h` as a free function mirroring vendor `util/util_math.h:48`. Vendor applets with nested helper structs (ADSREG's `MiniADSR`) call `Proportion(...)` unqualified; name lookup from inside a nested class binds to the enclosing class's inherited `HemisphereApplet::Proportion` as a non-static member and fails. Adding `Proportion` as a member of `HemisphereApplet` re-introduces this hazard. Keep it free.
+
+## Changed() and changed_cv update
+
+`HemisphereApplet::Changed(int ch)` reads `HS::frame.changed_cv[ch + channel_offset()]`. The shim populates `changed_cv[i]` in `step()` by comparing `inputs[i]` against a static `last_cv[4]`; a channel's flag flips when the delta exceeds `HEMISPHERE_CHANGE_THRESHOLD = 32` hem units (~1/8 semitone, vendor `HSUtils.h:25`).
+
+## Single-shot gate tests must clear the bus between steps
+
+`set_gate(bus, side, ch, 0, 8)` writes a 1-sample pulse at frame 0. Subsequent `step()` calls see the same bus and the shim's rising-edge detector refires every step unless `clear_bus(bus)` runs between. Tests that need a single `Clock` edge then a long step window MUST clear the bus after the edge-firing step, otherwise `StartADCLag` re-runs each buffer and `EndOfADCLag` never trips.
+
+## IOFrame array-initializer quirk
+
+`bool/int arr[4] = { -1 };` initializes ONLY `arr[0]` to -1; `arr[1..3]` default-initialize to 0. The shim's `adc_lag_countdown[4] = { -1 };` in `HSIOFrame.h` is the load-bearing example. Be careful when reading initial state of any per-channel array in the shim.
+
 ## Pack helper convention
 
 `pack_<applet>` helpers in `harness/tests/applet_test_helpers.cpp` mirror the vendor `OnDataRequest` byte-by-byte. Rules:
@@ -99,7 +119,7 @@ Phase numbering convention: Phase 1+2 ported 14 applets (the existing baseline).
 
 ## Parallel execution
 
-The project rule at `~/.claude/rules/parallel-execution.md` is load-bearing. Independent per-applet test ports are parallelized via isolated worktrees plus subagent dispatch in a single message. End-to-end wallclock equals the slowest single port plus integration, not the sum. Phase 3 attempt 1's failure traces directly to dispatching from `main` instead of the feature branch and to enforcing the implementer contract via prose instead of a pre-commit hook; both are now fixed and codified in the plan template.
+The project rule at `~/.claude/rules/parallel-execution.md` is load-bearing. Independent per-applet test ports are parallelized via isolated worktrees plus subagent dispatch in a single message. End-to-end wallclock equals the slowest single port plus integration, not the sum. Phase 3 attempt 1's failure traces directly to dispatching from `main` instead of the feature branch and to enforcing the implementer contract via prose instead of a pre-commit hook; both are now fixed and codified in the plan template. After `git worktree add`, run `git submodule update --init --recursive --depth=1` in the new worktree before any build; worktrees do not inherit submodule state.
 
 A pre-commit hook at `.git/hooks/pre-commit` enforces the implementer contract: it rejects commits on `phase<N>-port/*` or `phase<N>-shim/*` branches that stage forbidden-surface shim files, and rejects commits on any branch not derived from the active feature branch. The hook is a no-op on other branches. Do not remove or weaken it without updating the active phase's plan; the framework relies on it.
 

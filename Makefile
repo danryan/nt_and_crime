@@ -21,6 +21,7 @@ help:
 	@echo "make arm      - build all NT plug-ins under build/arm/"
 	@echo "make host     - build host simulator at build/host/sim_gainCustomUI"
 	@echo "make test     - run all scripted scenarios"
+	@echo "make test-applets - run host Catch2 binary for Hemispheres applet logic"
 	@echo "make deploy        - copy build/arm/*.o to DEVICE/programs/plug-ins/ (default DEVICE: /Volumes/NT; NT must be in USB disk mode)"
 	@echo "make deploy-sysex  - push build/arm/Hemispheres.o via USB-MIDI sysex (NT firmware v1.13+, no reboot)"
 	@echo "make clean    - remove build/"
@@ -122,6 +123,18 @@ build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
 
+build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+
+build/host/test_hemispheres: harness/tests/test_hemispheres.cpp harness/tests/applet_test_helpers.cpp build/host/Hemispheres.host.o $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-applets
+test-applets: build/host/test_hemispheres
+	./build/host/test_hemispheres
+
 arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Hemispheres.o
 
 DEVICE ?= /Volumes/NT
@@ -141,7 +154,7 @@ SYSEX_PLUGIN ?= build/arm/Hemispheres.o
 deploy-sysex: $(SYSEX_PLUGIN)
 	python3 harness/scripts/push_plugin_to_device.py $(SYSEX_ID) $(SYSEX_PLUGIN)
 
-test: host
+test: host test-applets
 	python3 harness/scripts/run_scenario.py tests/scenarios/gainCustomUI/zero_signal.yaml
 
 vendor:

@@ -19,20 +19,20 @@ void clear_bus(float* bus) {
     std::memset(bus, 0, sizeof(float) * nt::num_buses() * nt::bus_frame_count());
 }
 
-struct CalcSetup {
+struct AppletSetup {
     nt::LoadedPlugin* loaded;
     _NT_algorithm*    alg;
     float*            bus;
     hem_shim::HemispheresInstance* hi;
 };
 
-CalcSetup setup_calculate_left() {
+AppletSetup setup_applet(hem_shim::AppletIndex idx, HemSide side = LEFT) {
     nt::reset_runtime();
     auto* loaded = nt::load_plugin();
     REQUIRE(loaded != nullptr);
     auto* alg = loaded->algorithm;
     REQUIRE(alg != nullptr);
-    select_applet(alg, LEFT, kAppletCalculate);
+    select_applet(alg, side, idx);
 
     float* bus = nt::bus_frames_base();
     REQUIRE(bus != nullptr);
@@ -44,29 +44,6 @@ CalcSetup setup_calculate_left() {
 
 void calculate_set_op(hem_shim::HemispheresInstance* hi, int op_left, int op_right) {
     get_applet(hi, LEFT)->OnDataReceive(pack_calculate(op_left, op_right));
-}
-
-struct BranchSetup {
-    nt::LoadedPlugin* loaded;
-    _NT_algorithm*    alg;
-    float*            bus;
-    hem_shim::HemispheresInstance* hi;
-};
-
-BranchSetup setup_brancher_left() {
-    nt::reset_runtime();
-    auto* loaded = nt::load_plugin();
-    REQUIRE(loaded != nullptr);
-    auto* alg = loaded->algorithm;
-    REQUIRE(alg != nullptr);
-    select_applet(alg, LEFT, kAppletBrancher);
-
-    float* bus = nt::bus_frames_base();
-    REQUIRE(bus != nullptr);
-    clear_bus(bus);
-    step_n_frames(loaded, alg, bus, 32);  // triggers swap + Start
-
-    return { loaded, alg, bus, as_instance(alg) };
 }
 
 }  // namespace
@@ -99,14 +76,14 @@ TEST_CASE("hemispheres factory loads, steps, draws without crash", "[smoke]") {
 }
 
 TEST_CASE("calculate C1: Start defaults are MIN, MAX", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE((packed & 0xFF)        == 0);  // MIN_FN
     REQUIRE(((packed >> 8) & 0xFF) == 1);  // MAX_FN
 }
 
 TEST_CASE("calculate C13: serialise round-trip", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     get_applet(s.hi, LEFT)->OnDataReceive(pack_calculate(5, 7));
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE((packed & 0xFF)        == 5);
@@ -114,7 +91,7 @@ TEST_CASE("calculate C13: serialise round-trip", "[calculate]") {
 }
 
 TEST_CASE("calculate C2: MIN selects lesser of In(0), In(1)", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 0, 0);  // MIN both channels
 
     clear_bus(s.bus);
@@ -127,7 +104,7 @@ TEST_CASE("calculate C2: MIN selects lesser of In(0), In(1)", "[calculate]") {
 }
 
 TEST_CASE("calculate C3: MAX selects greater of In(0), In(1)", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 1, 1);  // MAX both channels
 
     clear_bus(s.bus);
@@ -140,7 +117,7 @@ TEST_CASE("calculate C3: MAX selects greater of In(0), In(1)", "[calculate]") {
 }
 
 TEST_CASE("calculate C4: SUM clamps at HEMISPHERE_MAX_CV", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 2, 2);  // SUM both channels
 
     clear_bus(s.bus);
@@ -152,7 +129,7 @@ TEST_CASE("calculate C4: SUM clamps at HEMISPHERE_MAX_CV", "[calculate]") {
 }
 
 TEST_CASE("calculate C5: SUM clamps at HEMISPHERE_MIN_CV", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 2, 2);  // SUM both channels
 
     clear_bus(s.bus);
@@ -164,7 +141,7 @@ TEST_CASE("calculate C5: SUM clamps at HEMISPHERE_MIN_CV", "[calculate]") {
 }
 
 TEST_CASE("calculate C6: DIFF returns absolute difference", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 3, 3);  // DIFF both channels
 
     clear_bus(s.bus);
@@ -182,7 +159,7 @@ TEST_CASE("calculate C6: DIFF returns absolute difference", "[calculate]") {
 }
 
 TEST_CASE("calculate C7: MEAN returns (a+b)/2", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 4, 4);  // MEAN both channels
 
     clear_bus(s.bus);
@@ -196,7 +173,7 @@ TEST_CASE("calculate C8: both channels read both inputs (asymmetric quirk)", "[c
     // Vendor Calculate.h:82-84. result = calc_fn[op[ch]](In(0), In(1)).
     // In(0) and In(1) are shared across channels, NOT per-channel. So
     // op[0]=MIN + op[1]=MAX with In(0)=1V, In(1)=3V yields Out(0)=1V, Out(1)=3V.
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 0, 1);  // op[0]=MIN, op[1]=MAX
 
     clear_bus(s.bus);
@@ -208,7 +185,7 @@ TEST_CASE("calculate C8: both channels read both inputs (asymmetric quirk)", "[c
 }
 
 TEST_CASE("calculate C9: S&H output stays at zero before clock", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 5, 5);  // S&H both channels
 
     clear_bus(s.bus);
@@ -222,7 +199,7 @@ TEST_CASE("calculate C9: S&H output stays at zero before clock", "[calculate]") 
 }
 
 TEST_CASE("calculate C10: S&H captures input on clock edge", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 5, 5);  // S&H both channels
 
     // Step 1: rising edge on Gate(0) plus held CV.
@@ -243,7 +220,7 @@ TEST_CASE("calculate C10: S&H captures input on clock edge", "[calculate]") {
 }
 
 TEST_CASE("calculate C11: Rnd+ outputs in [0, HEMISPHERE_MAX_CV)", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 6, 6);  // Rnd+ both channels
     seed_hem_rng(0xDEADBEEF);
 
@@ -260,7 +237,7 @@ TEST_CASE("calculate C11: Rnd+ outputs in [0, HEMISPHERE_MAX_CV)", "[calculate]"
 }
 
 TEST_CASE("calculate C12: Rnd+ latches to clocked after first Clock(0)", "[calculate]") {
-    auto s = setup_calculate_left();
+    auto s = setup_applet(kAppletCalculate);
     calculate_set_op(s.hi, 6, 6);  // Rnd+ both channels
     seed_hem_rng(0xCAFEBABE);
 
@@ -280,20 +257,20 @@ TEST_CASE("calculate C12: Rnd+ latches to clocked after first Clock(0)", "[calcu
 }
 
 TEST_CASE("brancher B1: Start sets p = 50", "[brancher]") {
-    auto s = setup_brancher_left();
+    auto s = setup_applet(kAppletBrancher);
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE((packed & 0x7F) == 50);
 }
 
 TEST_CASE("brancher B9: serialise round-trip preserves p", "[brancher]") {
-    auto s = setup_brancher_left();
+    auto s = setup_applet(kAppletBrancher);
     get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(73));
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE((packed & 0x7F) == 73);
 }
 
 TEST_CASE("brancher B2: p=100 always routes gate to output 0", "[brancher]") {
-    auto s = setup_brancher_left();
+    auto s = setup_applet(kAppletBrancher);
     get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(100));
     seed_hem_rng(0xDEADBEEF);
 
@@ -308,7 +285,7 @@ TEST_CASE("brancher B2: p=100 always routes gate to output 0", "[brancher]") {
 }
 
 TEST_CASE("brancher B3: p=0 always routes gate to output 1", "[brancher]") {
-    auto s = setup_brancher_left();
+    auto s = setup_applet(kAppletBrancher);
     get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(0));
     seed_hem_rng(0xDEADBEEF);
 
@@ -326,7 +303,7 @@ TEST_CASE("brancher B5: logical clock (no physical gate) emits ClockOut pulse", 
     // gate is not held high across the buffer. Gate(0) returns false because
     // last_high is reset before the next read_gate scan. ClockOut emits a brief
     // pulse (HEMISPHERE_CLOCK_TICKS = 175 ticks).
-    auto s = setup_brancher_left();
+    auto s = setup_applet(kAppletBrancher);
     get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(100));
     seed_hem_rng(0xDEADBEEF);
 
@@ -347,7 +324,7 @@ TEST_CASE("brancher B6: Clock(1) toggles flip-flop choice", "[brancher]") {
     // high (GateOut(choice, flipflopmode)) without further Clock(0). The next
     // Clock(1) re-rolls choice again. With p=100 the roll always selects 0;
     // with p=0 always 1. We exercise both boundaries to observe a toggle.
-    auto s = setup_brancher_left();
+    auto s = setup_applet(kAppletBrancher);
 
     // First Clock(1) at p=100. choice rolls to 0. flipflopmode=true. Output 0
     // stays high after the clock fires.
@@ -381,7 +358,7 @@ TEST_CASE("brancher B7: OnButtonPress flips choice before next gate", "[brancher
     //           across the buffer), so Clock(0) does not fire. The bottom
     //           branch !clocked || flipflopmode still drives GateOut(choice,
     //           Gate(0)=true), which now writes to output 1 (flipped).
-    auto s = setup_brancher_left();
+    auto s = setup_applet(kAppletBrancher);
     get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(100));
     seed_hem_rng(0xDEADBEEF);
 
@@ -407,7 +384,7 @@ TEST_CASE("brancher B8: OnEncoderMove clamps p to [0, 100]", "[brancher]") {
     // Vendor: OnEncoderMove(direction) { p = constrain(p + direction, 0, 100); }
     // Start at p=50 (set by Start()). Push 30 calls of +5 to overshoot 100.
     // Push 30 calls of -5 to undershoot 0. Both bounds clamp.
-    auto s = setup_brancher_left();
+    auto s = setup_applet(kAppletBrancher);
     auto* applet = get_applet(s.hi, LEFT);
 
     for (int i = 0; i < 30; ++i) applet->OnEncoderMove(+5);
@@ -421,7 +398,7 @@ TEST_CASE("brancher B4: p=50 yields ~50/50 routing over 1000 clocks", "[brancher
     // Statistical assertion. Seeded xorshift32 gives reproducible output; 1000
     // rolls at p=50 should fall in [460, 540] for either output, well within
     // statistical tolerance (~3 standard deviations).
-    auto s = setup_brancher_left();
+    auto s = setup_applet(kAppletBrancher);
     get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(50));
     seed_hem_rng(0xDEADBEEF);
 

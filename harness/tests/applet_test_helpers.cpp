@@ -100,6 +100,16 @@ uint64_t pack_slew(int rise, int fall) {
          | ((uint64_t)(fall & 0xFF) << 8);
 }
 
+uint64_t pack_burst(int number, int spacing, int div, int jitter, int accel) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(number   & 0xFF));
+    data |= ((uint64_t)(spacing  & 0xFF)) << 8;
+    data |= ((uint64_t)((div + 8) & 0xFF)) << 16;
+    data |= ((uint64_t)(jitter   & 0xFF)) << 24;
+    data |= ((uint64_t)(accel    & 0xFF)) << 32;
+    return data;
+}
+
 namespace {
 constexpr int kAttenOffMaxLevel = 63;  // mirrors ATTENOFF_MAX_LEVEL in vendor AttenuateOffset.h
 }

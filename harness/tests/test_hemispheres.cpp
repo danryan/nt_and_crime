@@ -10,6 +10,7 @@
 
 using hem_shim::kAppletAttenuateOffset;
 using hem_shim::kAppletBrancher;
+using hem_shim::kAppletBurst;
 using hem_shim::kAppletCalculate;
 using hem_shim::kAppletLogic;
 using hem_shim::kAppletSlew;
@@ -63,6 +64,12 @@ void atten_off_set(hem_shim::HemispheresInstance* hi,
 
 void slew_set(hem_shim::HemispheresInstance* hi, int rise, int fall) {
     get_applet(hi, LEFT)->OnDataReceive(pack_slew(rise, fall));
+}
+
+void burst_set(hem_shim::HemispheresInstance* hi,
+               int number, int spacing, int div, int jitter, int accel) {
+    get_applet(hi, LEFT)->OnDataReceive(
+        pack_burst(number, spacing, div, jitter, accel));
 }
 
 }  // namespace
@@ -761,4 +768,61 @@ TEST_CASE("slew SL5: serialise round-trip preserves rise/fall", "[slew]") {
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE((packed & 0xFF)        == 17);
     REQUIRE(((packed >> 8) & 0xFF) == 83);
+}
+
+TEST_CASE("burst B1: Start defaults number=4, spacing=50, div=1, jitter=0, accel=0", "[burst]") {
+    auto s = setup_applet(kAppletBurst);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int number  = (int)((packed) & 0xFF);
+    int spacing = (int)((packed >> 8) & 0xFF);
+    int div     = (int)((packed >> 16) & 0xFF) - 8;
+    int jitter  = (int)((packed >> 24) & 0xFF);
+    int accel   = (int)((packed >> 32) & 0xFF);
+    REQUIRE(number  == 4);
+    REQUIRE(spacing == 50);
+    REQUIRE(div     == 1);
+    REQUIRE(jitter  == 0);
+    REQUIRE(accel   == 0);
+}
+
+TEST_CASE("burst B2: Clock(1) fires a burst that produces gate pulses on output 0", "[burst]") {
+    // Vendor reality: Burst::Controller() triggers a new burst set on Clock(1)
+    // (the second gate input), not Clock(0). Clock(0) is only used to learn
+    // tempo for the "clocked" spacing mode. After a Clock(1) edge, Burst emits
+    // `number` pulses on output 0 at `spacing` intervals. Run for many steps
+    // after the clock; assert that output 0 went high at least once.
+    auto s = setup_applet(kAppletBurst);
+    burst_set(s.hi, 2, 50, 1, 0, 0);  // 2 pulses, default spacing
+    seed_hem_rng(0xDEADBEEF);
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 1, 0, 8);  // Clock(1) edge fires the burst
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    bool saw_pulse = read_gate_at(s.bus, LEFT, 0, 0, 8);
+    // The burst may fire on a later step; advance many buffers and watch
+    // for the gate output going high.
+    for (int i = 0; i < 100 && !saw_pulse; ++i) {
+        clear_bus(s.bus);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        if (read_gate_at(s.bus, LEFT, 0, 0, 8)) saw_pulse = true;
+    }
+    REQUIRE(saw_pulse);
+}
+
+TEST_CASE("burst B3: serialise round-trip preserves all fields", "[burst]") {
+    auto s = setup_applet(kAppletBurst);
+    burst_set(s.hi, 7, 100, -3, 25, 10);
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int number  = (int)((packed) & 0xFF);
+    int spacing = (int)((packed >> 8) & 0xFF);
+    int div     = (int)((packed >> 16) & 0xFF) - 8;
+    int jitter  = (int)((packed >> 24) & 0xFF);
+    int accel   = (int)((packed >> 32) & 0xFF);
+    REQUIRE(number  == 7);
+    REQUIRE(spacing == 100);
+    REQUIRE(div     == -3);
+    REQUIRE(jitter  == 25);
+    REQUIRE(accel   == 10);
 }

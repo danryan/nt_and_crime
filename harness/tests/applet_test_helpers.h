@@ -89,6 +89,14 @@ uint64_t pack_logic(int op_left, int op_right);
 // Mirrors Slew::OnDataRequest: bits [0,8] = rise (0..HEM_SLEW_MAX_VALUE), [8,8] = fall.
 uint64_t pack_slew(int rise, int fall);
 
+// Mirrors Burst::OnDataRequest packing (40 bits):
+//   bits [0, 8)  = number  (1..HEM_BURST_NUMBER_MAX)
+//   bits [8, 8)  = spacing (HEM_BURST_SPACING_MIN..HEM_BURST_SPACING_MAX, in ms)
+//   bits [16,8)  = div + 8 (biased; div is -HEM_BURST_CLOCKDIV_MAX..HEM_BURST_CLOCKDIV_MAX)
+//   bits [24,8)  = jitter  (0..HEM_BURST_JITTER_MAX)
+//   bits [32,8)  = accel   (-HEM_BURST_ACCEL_MAX..HEM_BURST_ACCEL_MAX, stored 2's-complement in 8 bits)
+uint64_t pack_burst(int number, int spacing, int div, int jitter, int accel);
+
 // Mirrors AttenuateOffset::OnDataRequest packing (36 bits):
 //   bits [0, 9)  = offset[0] + 256   (biased, semitones, range +/- HEMISPHERE_MAX_CV/ATTENOFF_INCREMENTS)
 //   bits [10,19) = offset[1] + 256   (bit 9 is an unused gap)

@@ -113,15 +113,34 @@ build/arm/bus_probe.o: applets/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
 
+build/arm/aeabi_probe.o: applets/aeabi_probe.cpp
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+
 # Hem shim sources (header-only for now; compiled as part of each applet's TU)
 SHIM_INCLUDE := -Ishim/include
 HEM_APPLET_INCLUDE := -Ivendor/O_C-Phazerville/software/src/applets
 
 SHIM_DEPS := $(wildcard shim/include/*.h) $(wildcard shim/include/*/*.h) $(wildcard shim/src/*.cpp)
 
-build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS)
+build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS) | build/arm/libgcc_parts.stamp
 	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o build/arm/Hemispheres.raw.o $<
+	$(ARM_LD) -r --strip-debug build/arm/Hemispheres.raw.o build/arm/libgcc_parts/*.o -o build/arm/Hemispheres.linked.o
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.comment' build/arm/Hemispheres.linked.o $@
+
+# Extract the libgcc helper objects the NT firmware does not provide
+# (__aeabi_ldivmod, __aeabi_uldivmod, primitives, divide-by-zero handler).
+# Firmware confirmed-missing via applets/aeabi_probe.cpp deployment 2026-05-18.
+# Partial-linking these into each plug-in .o resolves the symbols on-device.
+ARM_LD := arm-none-eabi-ld
+LIBGCC_PATH := $(shell $(ARM_CXX) -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -print-libgcc-file-name)
+LIBGCC_MEMBERS := _aeabi_ldivmod.o _aeabi_uldivmod.o _divmoddi4.o _udivmoddi4.o _dvmd_tls.o
+
+build/arm/libgcc_parts.stamp: $(LIBGCC_PATH)
+	mkdir -p build/arm/libgcc_parts
+	cd build/arm/libgcc_parts && arm-none-eabi-ar x $(LIBGCC_PATH) $(LIBGCC_MEMBERS)
+	touch $@
 
 build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/host
@@ -149,7 +168,7 @@ build/host/test_dep_%: harness/tests/test_dep_%.cpp build/host/Hemispheres.host.
 test-deps: $(addprefix build/host/, $(DEP_TESTS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Hemispheres.o
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/Hemispheres.o
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

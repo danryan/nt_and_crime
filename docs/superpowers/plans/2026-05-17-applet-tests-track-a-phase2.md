@@ -865,7 +865,7 @@ git -c commit.gpgsign=false commit -m "feat(test-applets): burst B1-B3 defaults 
 
 Vendor source: `vendor/O_C-Phazerville/software/src/applets/Compare.h`.
 
-Compare is single-knob CV threshold. `level` is in [0, HEM_COMPARE_MAX_VALUE] (probably 256). Threshold is `Proportion(level, HEM_COMPARE_MAX_VALUE, HEMISPHERE_MAX_CV)`. CV2 (`DetentedIn(1)`) modulates the threshold up/down. Output: GateOut(0, 1) if In(0) > mod_cv, else GateOut(1, 1).
+Compare is single-knob CV threshold. `level` is in `[0, HEM_COMPARE_MAX_VALUE]` (vendor value: 255). Threshold is `Proportion(level, HEM_COMPARE_MAX_VALUE, HEMISPHERE_MAX_CV)`. CV2 (`DetentedIn(1)`) modulates the threshold up/down. Output: GateOut(0, 1) if In(0) > mod_cv, else GateOut(1, 1) (the else branch is inclusive of equality).
 
 Bit layout (spec table, 8 bits): `Pack(data, {0,8}, level)`.
 

@@ -213,6 +213,10 @@ uint64_t pack_rnd_walk(int yClkSrc, int yClkDiv, int range,
 uint64_t pack_rungl_book(int threshold) {
     uint64_t data = 0;
     data |= ((uint64_t)(threshold & 0xFFFF));
+uint64_t pack_schmitt(int low, int high) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(low  & 0xFFFF));
+    data |= ((uint64_t)(high & 0xFFFF)) << 16;
     return data;
 }
 

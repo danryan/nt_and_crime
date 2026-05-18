@@ -25,6 +25,7 @@ using hem_shim::kAppletEnvFollow;
 using hem_shim::kAppletPolyDiv;
 using hem_shim::kAppletRndWalk;
 using hem_shim::kAppletRunglBook;
+using hem_shim::kAppletSchmitt;
 using hem_shim::kAppletSlew;
 using hem_shim::kAppletTLNeuron;
 using Catch::Approx;
@@ -136,6 +137,8 @@ void rnd_walk_set(hem_shim::HemispheresInstance* hi,
         pack_rnd_walk(yClkSrc, yClkDiv, range, step, smoothness, cvRange));
 void rungl_book_set(hem_shim::HemispheresInstance* hi, int threshold) {
     get_applet(hi, LEFT)->OnDataReceive(pack_rungl_book(threshold));
+void schmitt_set(hem_shim::HemispheresInstance* hi, int low, int high) {
+    get_applet(hi, LEFT)->OnDataReceive(pack_schmitt(low, high));
 }
 
 }  // namespace
@@ -1918,4 +1921,85 @@ TEST_CASE("rungl_book RB5: Gate(1) freeze rotates register, Out(0) unchanged fro
 
     // Rotation preserves all-ones pattern: Out(0) = 6V.
     REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(6.0f).margin(0.01f));
+TEST_CASE("schmitt SC1: Start defaults match vendor (low=3200, high=3968)", "[schmitt]") {
+    // Vendor Start() sets low=3200 (~2.1V) and high=3968 (~2.6V).
+    // ONE_OCTAVE = 1536 hem units/V; pack layout: low at [0,16), high at [16,16).
+    auto s = setup_applet(kAppletSchmitt);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int low  = (int)((packed)       & 0xFFFF);
+    int high = (int)((packed >> 16) & 0xFFFF);
+    REQUIRE(low  == 3200);
+    REQUIRE(high == 3968);
+}
+
+TEST_CASE("schmitt SC2: serialise round-trip preserves low and high", "[schmitt]") {
+    // Round-trip with low=2000, high=4000. Both are within vendor constrain
+    // range [64, HEMISPHERE_MAX_CV=9216] and satisfy low+64 <= high.
+    auto s = setup_applet(kAppletSchmitt);
+    schmitt_set(s.hi, 2000, 4000);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int low  = (int)((packed)       & 0xFFFF);
+    int high = (int)((packed >> 16) & 0xFFFF);
+    REQUIRE(low  == 2000);
+    REQUIRE(high == 4000);
+}
+
+TEST_CASE("schmitt SC3: In(0) below low threshold keeps Out(0) low", "[schmitt]") {
+    // Default low=3200 (~2.08V), high=3968 (~2.58V).
+    // In(0)=1V -> 1536 hem units, below low=3200. Out(0) stays low (state=0).
+    auto s = setup_applet(kAppletSchmitt);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+}
+
+TEST_CASE("schmitt SC4: In(0) above high threshold drives Out(0) high", "[schmitt]") {
+    // In(0)=3V -> 4608 hem units, above high=3968. Out(0) goes high (state=1).
+    auto s = setup_applet(kAppletSchmitt);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+}
+
+TEST_CASE("schmitt SC5: hysteresis holds Out(0) high when In(0) drops into deadband", "[schmitt]") {
+    // From high state (In=3V), drop In(0) to 2.4V -> 3686 hem units.
+    // 3686 is between low=3200 and high=3968: neither crossing fires.
+    // Vendor logic: state stays 1 because In < high (no set) and In >= low (no clear).
+    auto s = setup_applet(kAppletSchmitt);
+
+    // Drive above high to set state=1.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    // Drop into deadband; hysteresis must hold state=1.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.4f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+}
+
+TEST_CASE("schmitt SC6: Out(0) returns low when In(0) drops below low threshold", "[schmitt]") {
+    // Continuing from high state: drop In(0) to 1V -> 1536 hem units, below low=3200.
+    // Vendor: state[ch] = 0; GateOut goes low.
+    auto s = setup_applet(kAppletSchmitt);
+
+    // Drive above high to set state=1.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    // Drop below low; gate must fall.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
 }

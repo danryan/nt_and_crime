@@ -180,5 +180,11 @@ uint64_t pack_rnd_walk(int yClkSrc, int yClkDiv, int range,
 //   bits [0, 16) = threshold  (ONE_OCTAVE..ONE_OCTAVE*5 = 1536..7680; no bias)
 // Start() default: threshold = ONE_OCTAVE * 2 = 3072.
 uint64_t pack_rungl_book(int threshold);
+// Mirrors Schmitt::OnDataRequest packing (32 bits used):
+//   bits [0, 16)  = low  threshold (vendor int CV units, no bias)
+//   bits [16, 16) = high threshold (vendor int CV units, no bias)
+// Both fields are uint16_t in the vendor source; valid range 64..HEMISPHERE_MAX_CV.
+// Default: low=3200, high=3968.
+uint64_t pack_schmitt(int low, int high);
 
 }  // namespace hem_test

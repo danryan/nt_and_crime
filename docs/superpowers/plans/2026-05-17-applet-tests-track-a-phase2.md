@@ -308,7 +308,7 @@ TEST_CASE("logic L5: NAND, NOR, XNOR invert AND/OR/XOR", "[logic]") {
 }
 
 TEST_CASE("logic L6: CV-controlled mode picks op from CV", "[logic]") {
-    // Vendor Logic.h:25-29: when operation[ch] == 6, the actual op is selected
+    // Vendor Logic.h:62-67: when operation[ch] == 6, the actual op is selected
     // from CV by scaling abs(In(ch)) to [0, 5] and using that as the op index.
     auto s = setup_applet(kAppletLogic);
     logic_set_op(s.hi, 6, 6);  // CV-controlled both channels

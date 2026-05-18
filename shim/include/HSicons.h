@@ -20,3 +20,5 @@ extern const uint8_t CHECK_OFF_ICON[8];
 extern const uint8_t STAIRS_ICON[8];
 extern const uint8_t UP_BTN_ICON[8];
 extern const uint8_t RESET_ICON[8];
+extern const uint8_t LOOP_ICON[8];
+extern const uint8_t X_NOTE_ICON[8];

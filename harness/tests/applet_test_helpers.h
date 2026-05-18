@@ -125,4 +125,8 @@ uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
 // Times are in milliseconds, valid range 0..2000 (clamped by vendor).
 uint64_t pack_gate_delay(int time_left, int time_right);
 
+// Mirrors TLNeuron::OnDataRequest: per-dendrite weight (5 bits, +9 bias) at
+// offsets 0/5/10; threshold (6 bits, +27 bias) at offset 15.
+uint64_t pack_tlneuron(int w0, int w1, int w2, int threshold);
+
 }  // namespace hem_test

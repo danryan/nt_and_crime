@@ -151,4 +151,14 @@ uint64_t pack_gate_delay(int time_left, int time_right) {
          | ((uint64_t)(time_right & 0x7FF) << 11);
 }
 
+uint64_t pack_tlneuron(int w0, int w1, int w2, int threshold) {
+    uint64_t data = 0;
+    data |= ((uint64_t)((w0 + 9) & 0x1F));
+    data |= ((uint64_t)((w1 + 9) & 0x1F)) << 5;
+    data |= ((uint64_t)((w2 + 9) & 0x1F)) << 10;
+    data |= ((uint64_t)((threshold + 27) & 0x3F)) << 15;
+    return data;
+}
+
+
 }  // namespace hem_test

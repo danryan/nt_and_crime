@@ -19,6 +19,7 @@ using hem_shim::kAppletGateDelay;
 using hem_shim::kAppletGatedVCA;
 using hem_shim::kAppletLogic;
 using hem_shim::kAppletSlew;
+using hem_shim::kAppletTLNeuron;
 using Catch::Approx;
 using namespace hem_test;
 
@@ -90,6 +91,10 @@ void clk_to_gate_set(hem_shim::HemispheresInstance* hi,
 
 void gate_delay_set(hem_shim::HemispheresInstance* hi, int time_left, int time_right) {
     get_applet(hi, LEFT)->OnDataReceive(pack_gate_delay(time_left, time_right));
+}
+
+void tlneuron_set(hem_shim::HemispheresInstance* hi, int w0, int w1, int w2, int threshold) {
+    get_applet(hi, LEFT)->OnDataReceive(pack_tlneuron(w0, w1, w2, threshold));
 }
 
 }  // namespace
@@ -1140,4 +1145,100 @@ TEST_CASE("gate_delay GD3: serialise round-trip preserves both times", "[gate_de
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE(((int)(packed & 0x7FF)) == 250);
     REQUIRE(((int)((packed >> 11) & 0x7FF)) == 750);
+}
+
+TEST_CASE("tlneuron TL1: Start defaults match vendor in-class initializers", "[tlneuron]") {
+    // Vendor TLNeuron.h has `dendrite_weight[3] = {5, 5, 0}` and `threshold = 9`
+    // as in-class initializers; Start() only resets `selected`. The placement-new
+    // factory therefore yields these values on first OnDataRequest.
+    auto s = setup_applet(kAppletTLNeuron);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int w0 = (int)((packed) & 0x1F) - 9;
+    int w1 = (int)((packed >> 5) & 0x1F) - 9;
+    int w2 = (int)((packed >> 10) & 0x1F) - 9;
+    int th = (int)((packed >> 15) & 0x3F) - 27;
+    REQUIRE(w0 == 5);
+    REQUIRE(w1 == 5);
+    REQUIRE(w2 == 0);
+    REQUIRE(th == 9);
+}
+
+TEST_CASE("tlneuron TL2: sum > threshold fires axon", "[tlneuron]") {
+    // weights = (5, 5, 5), threshold = 4. With Gate(0) high and Gate(1) low and
+    // In(0) below 2.5V, sum = 5; 5 > 4; output high.
+    auto s = setup_applet(kAppletTLNeuron);
+    tlneuron_set(s.hi, 5, 5, 5, 4);
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);  // both outputs mirror
+}
+
+TEST_CASE("tlneuron TL3: sum below threshold does not fire", "[tlneuron]") {
+    // weights = (5, 5, 5), threshold = 6. Gate(0) high alone gives sum = 5; 5 > 6 false.
+    auto s = setup_applet(kAppletTLNeuron);
+    tlneuron_set(s.hi, 5, 5, 5, 6);
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+}
+
+TEST_CASE("tlneuron TL4: CV dendrite contributes when In(0) above midpoint", "[tlneuron]") {
+    // weights = (5, 0, 5), threshold = 4. Vendor compares against
+    // HEMISPHERE_MAX_INPUT_CV / 2 = 3 * ONE_OCTAVE = 4608 hem-units = 3.0V.
+    // The check is strictly greater than, so the test must straddle that
+    // boundary, not the "2.5V" wording sometimes used in docs.
+    // Gate(0) low + CV > 3.0V: sum = 5; 5 > 4; fire.
+    auto s = setup_applet(kAppletTLNeuron);
+    tlneuron_set(s.hi, 5, 0, 5, 4);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 4.0f, 8);  // above 3.0V midpoint
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    // Now drop CV below threshold; output should go low.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+}
+
+TEST_CASE("tlneuron TL5: negative weight inhibits", "[tlneuron]") {
+    // weights = (5, -5, 0), threshold = 0. Gate(0) alone: sum = 5; fire.
+    // Gate(0) + Gate(1): sum = 5 - 5 = 0; not > 0; no fire.
+    auto s = setup_applet(kAppletTLNeuron);
+    tlneuron_set(s.hi, 5, -5, 0, 0);
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+}
+
+TEST_CASE("tlneuron TL6: serialise round-trip preserves weights and threshold", "[tlneuron]") {
+    auto s = setup_applet(kAppletTLNeuron);
+    tlneuron_set(s.hi, -7, 8, -3, 15);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int w0 = (int)((packed) & 0x1F) - 9;
+    int w1 = (int)((packed >> 5) & 0x1F) - 9;
+    int w2 = (int)((packed >> 10) & 0x1F) - 9;
+    int th = (int)((packed >> 15) & 0x3F) - 27;
+    REQUIRE(w0 == -7);
+    REQUIRE(w1 == 8);
+    REQUIRE(w2 == -3);
+    REQUIRE(th == 15);
 }

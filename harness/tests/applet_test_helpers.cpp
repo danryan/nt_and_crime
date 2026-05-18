@@ -333,4 +333,80 @@ uint64_t pack_trending(int assign_left, int assign_right, int sensitivity) {
 }
 // === END trending ===
 
+// Phase 6 pack helper definitions. Each implementer fills in their slug
+// section with the per-applet pack_<applet> body mirroring vendor
+// OnDataRequest byte-by-byte.
+
+// === BEGIN vector_lfo ===
+// === END vector_lfo ===
+
+// === BEGIN vector_eg ===
+// === END vector_eg ===
+
+// === BEGIN vector_mod ===
+// === END vector_mod ===
+
+// === BEGIN vector_morph ===
+// === END vector_morph ===
+
+// === BEGIN relabi ===
+// === END relabi ===
+
+// === BEGIN lower_renz ===
+// === END lower_renz ===
+
+// === BEGIN combin8 ===
+// === END combin8 ===
+
+// === BEGIN pigeons ===
+// === END pigeons ===
+
+// === BEGIN strum ===
+// === END strum ===
+
+// === BEGIN shredder ===
+// === END shredder ===
+
+// === BEGIN carpeggio ===
+// === END carpeggio ===
+
+// === BEGIN squanch ===
+// === END squanch ===
+
+// === BEGIN chordinator ===
+// === END chordinator ===
+
+// === BEGIN dual_quant ===
+// === END dual_quant ===
+
+// === BEGIN enigma_jr ===
+// === END enigma_jr ===
+
+// === BEGIN offset_quant ===
+// === END offset_quant ===
+
+// === BEGIN multi_scale ===
+// === END multi_scale ===
+
+// === BEGIN scale_duet ===
+// === END scale_duet ===
+
+// === BEGIN ens_osc_key ===
+// === END ens_osc_key ===
+
+// === BEGIN calibr8 ===
+// === END calibr8 ===
+
+// === BEGIN reset_clock ===
+// === END reset_clock ===
+
+// === BEGIN shuffle ===
+// === END shuffle ===
+
+// === BEGIN xfader ===
+// === END xfader ===
+
+// === BEGIN scope ===
+// === END scope ===
+
 }  // namespace hem_test

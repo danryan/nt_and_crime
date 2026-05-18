@@ -2876,3 +2876,19 @@ TEST_CASE("helper H2: step_n_inner_ticks tick-advancement invariant under load (
 // === BEGIN combin8 ===
 // Phase 6 applet test region (unblocked by dep-cv-map).
 // === END combin8 ===
+
+// === BEGIN reset_clock ===
+// Phase 6 Class C applet test region (uses step_n_inner_ticks helper).
+// === END reset_clock ===
+
+// === BEGIN shuffle ===
+// Phase 6 Class C applet test region (uses step_n_inner_ticks helper).
+// === END shuffle ===
+
+// === BEGIN xfader ===
+// Phase 6 Class C applet test region (uses step_n_inner_ticks helper).
+// === END xfader ===
+
+// === BEGIN scope ===
+// Phase 6 Class C applet test region (uses step_n_inner_ticks helper).
+// === END scope ===

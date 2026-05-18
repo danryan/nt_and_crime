@@ -114,8 +114,6 @@ Standard sequence for any non-trivial change:
 5. **Integration** on the feature branch: cherry-pick implementer commits, add registration entries, run `make test-applets` and `make arm`.
 6. **PR** opened by the feature branch. Hardware smoke check happens after PR open since it needs physical access.
 
-Phase 4 kickoff prompt template lives at `~/Downloads/phase4_kickoff_prompt.md`.
-
 ## Markdown discipline
 
 After editing any `.md` file, run `markdownlint <file>` and fix all errors. The repo's `.markdownlint.json` relaxes a small set of rules (long lines, HTML, sibling-only duplicate headings); the rest are enforced.

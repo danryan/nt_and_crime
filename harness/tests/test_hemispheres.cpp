@@ -13,6 +13,7 @@ using hem_shim::kAppletBrancher;
 using hem_shim::kAppletBurst;
 using hem_shim::kAppletButton;
 using hem_shim::kAppletCalculate;
+using hem_shim::kAppletClkToGate;
 using hem_shim::kAppletCompare;
 using hem_shim::kAppletGatedVCA;
 using hem_shim::kAppletLogic;
@@ -77,6 +78,13 @@ void burst_set(hem_shim::HemispheresInstance* hi,
 
 void compare_set(hem_shim::HemispheresInstance* hi, int level) {
     get_applet(hi, LEFT)->OnDataReceive(pack_compare(level));
+}
+
+void clk_to_gate_set(hem_shim::HemispheresInstance* hi,
+                     int width_a, int range_a, int skip_a,
+                     int width_b, int range_b, int skip_b) {
+    get_applet(hi, LEFT)->OnDataReceive(
+        pack_clk_to_gate(width_a, range_a, skip_a, width_b, range_b, skip_b));
 }
 
 }  // namespace
@@ -976,4 +984,98 @@ TEST_CASE("button BT2: physical clock on input 0 produces output 0 trigger", "[b
 TEST_CASE("button BT3: serialise is no-op (returns 0)", "[button]") {
     auto s = setup_applet(kAppletButton);
     REQUIRE(get_applet(s.hi, LEFT)->OnDataRequest() == 0);
+}
+
+TEST_CASE("clk_to_gate CG1: Start defaults width=25/50, range=0/25, skip=0/0", "[clk_to_gate]") {
+    auto s = setup_applet(kAppletClkToGate);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int w0 = (int)((packed) & 0x7F);
+    int r0_abs = (int)((packed >> 8) & 0x7F);
+    int r0_sign = (int)((packed >> 15) & 0x1);
+    int sk0 = (int)((packed >> 16) & 0x7F);
+    int w1 = (int)((packed >> 32) & 0x7F);
+    int r1_abs = (int)((packed >> 40) & 0x7F);
+    int r1_sign = (int)((packed >> 47) & 0x1);
+    int sk1 = (int)((packed >> 48) & 0x7F);
+    REQUIRE(w0 == 25);
+    REQUIRE(r0_abs == 0); REQUIRE(r0_sign == 0);
+    REQUIRE(sk0 == 0);
+    REQUIRE(w1 == 50);
+    REQUIRE(r1_abs == 25); REQUIRE(r1_sign == 0);
+    REQUIRE(sk1 == 0);
+}
+
+TEST_CASE("clk_to_gate CG2: Clock(0) produces a gate output", "[clk_to_gate]") {
+    auto s = setup_applet(kAppletClkToGate);
+    clk_to_gate_set(s.hi, 50, 0, 0,  50, 0, 0);
+    seed_hem_rng(0xDEADBEEF);
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);  // Clock(0) edge
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    bool saw_pulse = read_gate_at(s.bus, LEFT, 0, 0, 8);
+    for (int i = 0; i < 10 && !saw_pulse; ++i) {
+        clear_bus(s.bus);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        if (read_gate_at(s.bus, LEFT, 0, 0, 8)) saw_pulse = true;
+    }
+    REQUIRE(saw_pulse);
+}
+
+TEST_CASE("clk_to_gate CG3: width=100 produces tied gate", "[clk_to_gate]") {
+    // Vendor: width_mod == 100 -> GateOut(ch, 1) (sustained, not ClockOut).
+    auto s = setup_applet(kAppletClkToGate);
+    clk_to_gate_set(s.hi, 100, 0, 0,  50, 0, 0);
+    seed_hem_rng(0xDEADBEEF);
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    // Advance many steps; output should still be high (tied).
+    for (int i = 0; i < 50; ++i) {
+        clear_bus(s.bus);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+    }
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+}
+
+TEST_CASE("clk_to_gate CG4: skip=100 always skips the clock", "[clk_to_gate]") {
+    auto s = setup_applet(kAppletClkToGate);
+    clk_to_gate_set(s.hi, 50, 0, 100,  50, 0, 0);
+    seed_hem_rng(0xDEADBEEF);
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    // Output stays low across many steps (every clock is skipped).
+    for (int i = 0; i < 20; ++i) {
+        REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+        clear_bus(s.bus);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+    }
+}
+
+TEST_CASE("clk_to_gate CG5: serialise round-trip preserves all per-side fields", "[clk_to_gate]") {
+    auto s = setup_applet(kAppletClkToGate);
+    clk_to_gate_set(s.hi, 17, -23, 5,  77, 50, 99);
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int w0 = (int)((packed) & 0x7F);
+    int r0_abs = (int)((packed >> 8) & 0x7F);
+    int r0_sign = (int)((packed >> 15) & 0x1);
+    int sk0 = (int)((packed >> 16) & 0x7F);
+    int w1 = (int)((packed >> 32) & 0x7F);
+    int r1_abs = (int)((packed >> 40) & 0x7F);
+    int r1_sign = (int)((packed >> 47) & 0x1);
+    int sk1 = (int)((packed >> 48) & 0x7F);
+    REQUIRE(w0 == 17);
+    REQUIRE(r0_abs == 23); REQUIRE(r0_sign == 1);  // sign bit set means negative
+    REQUIRE(sk0 == 5);
+    REQUIRE(w1 == 77);
+    REQUIRE(r1_abs == 50); REQUIRE(r1_sign == 0);
+    REQUIRE(sk1 == 99);
 }

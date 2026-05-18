@@ -130,4 +130,20 @@ uint64_t pack_compare(int level) {
     return (uint64_t)(level & 0xFF);
 }
 
+uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
+                          int width_b, int range_b, int skip_b) {
+    auto pack_side = [](int width, int range, int skip) -> uint64_t {
+        uint64_t side = 0;
+        side |= ((uint64_t)(width & 0x7F));
+        side |= ((uint64_t)((range < 0 ? -range : range) & 0x7F)) << 8;
+        side |= ((uint64_t)(range < 0 ? 1 : 0)) << 15;
+        side |= ((uint64_t)(skip & 0x7F)) << 16;
+        return side;
+    };
+    uint64_t data = 0;
+    data |= pack_side(width_a, range_a, skip_a);
+    data |= pack_side(width_b, range_b, skip_b) << 32;
+    return data;
+}
+
 }  // namespace hem_test

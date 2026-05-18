@@ -113,4 +113,12 @@ uint64_t pack_atten_off(int offset_left, int offset_right,
 // HEM_COMPARE_MAX_VALUE is 255 in vendor Compare.h; default level is 128.
 uint64_t pack_compare(int level);
 
+// Mirrors ClkToGate::OnDataRequest: per side i in {0,1}:
+//   width[i] at (i*32+0, 7)
+//   abs(range[i]) at (i*32+8, 7)
+//   range[i] sign at (i*32+15, 1)
+//   skip[i] at (i*32+16, 7)
+uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
+                          int width_b, int range_b, int skip_b);
+
 }  // namespace hem_test

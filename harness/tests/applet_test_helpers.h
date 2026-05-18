@@ -113,6 +113,14 @@ uint64_t pack_atten_off(int offset_left, int offset_right,
 // HEM_COMPARE_MAX_VALUE is 255 in vendor Compare.h; default level is 128.
 uint64_t pack_compare(int level);
 
+// Mirrors ClockDivider::OnDataRequest packing (32 bits):
+//   bits [0, 8)  = div[0] + 32   (biased; positive=divide, negative=multiply, zero=mute)
+//   bits [8, 8)  = div[1] + 32
+//   bits [16, 8) = divmult[1].steps + 32  (second-stage multiplier for ch0)
+//   bits [24, 8) = divmult[3].steps + 32  (second-stage multiplier for ch1)
+// Both div[i] and divmult[1+i*2].steps are biased +32 on pack.
+uint64_t pack_clock_divider(int div0, int div1, int divmult1_steps, int divmult3_steps);
+
 // Mirrors ClkToGate::OnDataRequest: per side i in {0,1}:
 //   width[i] at (i*32+0, 7)
 //   abs(range[i]) at (i*32+8, 7)

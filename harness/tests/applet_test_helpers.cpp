@@ -130,6 +130,15 @@ uint64_t pack_compare(int level) {
     return (uint64_t)(level & 0xFF);
 }
 
+uint64_t pack_clock_divider(int div0, int div1, int divmult1_steps, int divmult3_steps) {
+    uint64_t data = 0;
+    data |= ((uint64_t)((div0          + 32) & 0xFF));
+    data |= ((uint64_t)((div1          + 32) & 0xFF)) << 8;
+    data |= ((uint64_t)((divmult1_steps + 32) & 0xFF)) << 16;
+    data |= ((uint64_t)((divmult3_steps + 32) & 0xFF)) << 24;
+    return data;
+}
+
 uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
                           int width_b, int range_b, int skip_b) {
     auto pack_side = [](int width, int range, int skip) -> uint64_t {

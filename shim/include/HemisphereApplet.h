@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <cmath>
 #include "Arduino.h"
 #include "OC_core.h"
 #include "OC_DAC.h"

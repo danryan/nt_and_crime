@@ -123,24 +123,44 @@ HEM_APPLET_INCLUDE := -Ivendor/O_C-Phazerville/software/src/applets
 
 SHIM_DEPS := $(wildcard shim/include/*.h) $(wildcard shim/include/*/*.h) $(wildcard shim/src/*.cpp)
 
-build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS) | build/arm/libgcc_parts.stamp
+# compiler-rt builtins compiled with -fPIC to match plug-in PIC code model.
+# Toolchain ships no PIC libgcc multilib for v7e-m+dp/hard, so we vendor
+# compiler-rt sources directly. Sources under shim/src/compiler_rt/ are
+# verbatim from llvm-project tag llvmorg-19.1.0.
+ARM_LD := arm-none-eabi-ld
+ARM_CC := arm-none-eabi-gcc
+# compiler-rt files compiled as C (not C++) so symbols are not name-mangled.
+# Strip the C++-only ARM_FLAGS entries (-fno-rtti, -fno-exceptions,
+# -fno-threadsafe-statics) when compiling .c files; gcc accepts the C++ flags
+# silently but it is cleaner to express intent.
+ARM_CFLAGS := -std=c99 -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard \
+              -mthumb -Os -fPIC -Wall -I$(NT_API_INCLUDE)
+
+COMPILER_RT_SRCS := \
+    shim/src/compiler_rt/divdi3.c \
+    shim/src/compiler_rt/udivdi3.c \
+    shim/src/compiler_rt/divmoddi4.c \
+    shim/src/compiler_rt/udivmoddi4.c \
+    shim/src/compiler_rt/arm/aeabi_div0.c \
+    shim/src/compiler_rt/arm/aeabi_ldivmod.S \
+    shim/src/compiler_rt/arm/aeabi_uldivmod.S
+COMPILER_RT_OBJS := \
+    $(patsubst shim/src/compiler_rt/%.c,build/arm/compiler_rt/%.o,$(filter %.c,$(COMPILER_RT_SRCS))) \
+    $(patsubst shim/src/compiler_rt/%.S,build/arm/compiler_rt/%.o,$(filter %.S,$(COMPILER_RT_SRCS)))
+
+build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.c
+	mkdir -p $(@D)
+	$(ARM_CC) $(ARM_CFLAGS) -Ishim/src/compiler_rt -c -o $@ $<
+
+build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.S
+	mkdir -p $(@D)
+	$(ARM_CC) $(ARM_CFLAGS) -Ishim/src/compiler_rt -c -o $@ $<
+
+build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS) $(COMPILER_RT_OBJS)
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o build/arm/Hemispheres.raw.o $<
-	$(ARM_LD) -r --strip-debug build/arm/Hemispheres.raw.o build/arm/libgcc_parts/*.o -o build/arm/Hemispheres.linked.o
-	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.comment' build/arm/Hemispheres.linked.o $@
-
-# Extract the libgcc helper objects the NT firmware does not provide
-# (__aeabi_ldivmod, __aeabi_uldivmod, primitives, divide-by-zero handler).
-# Firmware confirmed-missing via applets/aeabi_probe.cpp deployment 2026-05-18.
-# Partial-linking these into each plug-in .o resolves the symbols on-device.
-ARM_LD := arm-none-eabi-ld
-LIBGCC_PATH := $(shell $(ARM_CXX) -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -print-libgcc-file-name)
-LIBGCC_MEMBERS := _aeabi_ldivmod.o _aeabi_uldivmod.o _divmoddi4.o _udivmoddi4.o _dvmd_tls.o
-
-build/arm/libgcc_parts.stamp: $(LIBGCC_PATH)
-	mkdir -p build/arm/libgcc_parts
-	cd build/arm/libgcc_parts && arm-none-eabi-ar x $(LIBGCC_PATH) $(LIBGCC_MEMBERS)
-	touch $@
+	$(ARM_LD) -r --strip-debug build/arm/Hemispheres.raw.o $(COMPILER_RT_OBJS) -o build/arm/Hemispheres.linked.o
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/Hemispheres.linked.o $@
 
 build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/host

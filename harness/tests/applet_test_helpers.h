@@ -176,5 +176,9 @@ uint64_t pack_poly_div(int div_enabled, int div0_steps, int div1_steps,
 //   bits [29, 2)  = cvRange    (0..3)
 uint64_t pack_rnd_walk(int yClkSrc, int yClkDiv, int range,
                        int step, int smoothness, int cvRange);
+// Mirrors RunglBook::OnDataRequest packing (16 bits):
+//   bits [0, 16) = threshold  (ONE_OCTAVE..ONE_OCTAVE*5 = 1536..7680; no bias)
+// Start() default: threshold = ONE_OCTAVE * 2 = 3072.
+uint64_t pack_rungl_book(int threshold);
 
 }  // namespace hem_test

@@ -24,6 +24,7 @@ using hem_shim::kAppletLogic;
 using hem_shim::kAppletEnvFollow;
 using hem_shim::kAppletPolyDiv;
 using hem_shim::kAppletRndWalk;
+using hem_shim::kAppletRunglBook;
 using hem_shim::kAppletSlew;
 using hem_shim::kAppletTLNeuron;
 using Catch::Approx;
@@ -133,6 +134,8 @@ void rnd_walk_set(hem_shim::HemispheresInstance* hi,
                   int step, int smoothness, int cvRange) {
     get_applet(hi, LEFT)->OnDataReceive(
         pack_rnd_walk(yClkSrc, yClkDiv, range, step, smoothness, cvRange));
+void rungl_book_set(hem_shim::HemispheresInstance* hi, int threshold) {
+    get_applet(hi, LEFT)->OnDataReceive(pack_rungl_book(threshold));
 }
 
 }  // namespace
@@ -1832,4 +1835,87 @@ TEST_CASE("rnd_walk RW4: smoothness reduces step-to-step output delta vs zero sm
     float unsmoothed = measure_max_delta(0);
     float smoothed   = measure_max_delta(200);
     REQUIRE(smoothed < unsmoothed);
+TEST_CASE("rungl_book RB1: Start defaults threshold = ONE_OCTAVE * 2 (3072)", "[rungl_book]") {
+    // Vendor RunglBook.h:34-36: Start() sets threshold = ONE_OCTAVE * 2.
+    // ONE_OCTAVE = 1536 hem units/V. Default threshold = 3072 (2V).
+    // OnDataRequest packs threshold as 16 bits at [0,16), no bias.
+    auto s = setup_applet(kAppletRunglBook);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int threshold = (int)(packed & 0xFFFF);
+    REQUIRE(threshold == 3072);
+}
+
+TEST_CASE("rungl_book RB2: serialise round-trip preserves threshold=5000", "[rungl_book]") {
+    // Vendor RunglBook.h:71-78: OnDataRequest packs threshold at [0,16).
+    // OnDataReceive unpacks without clamping, so 5000 survives the round-trip.
+    auto s = setup_applet(kAppletRunglBook);
+    rungl_book_set(s.hi, 5000);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int threshold = (int)(packed & 0xFFFF);
+    REQUIRE(threshold == 5000);
+}
+
+TEST_CASE("rungl_book RB3: above-threshold In(0) shifts 1s into reg, Out(0) = MAX", "[rungl_book]") {
+    // Vendor RunglBook.h:42-55: on Clock(0) with Gate(1) low:
+    //   b0 = In(0) > threshold_mod ? 1 : 0
+    //   reg = (reg << 1) | b0
+    //   Out(0) = Proportion(reg & 0x07, 0x07, HEMISPHERE_MAX_CV)
+    // Shim 10x: clocked[0] stays true for all 10 inner Controller calls per
+    // step(). One rising edge on Clock(0) shifts reg 10 times. reg starts at 0.
+    // In(0)=4V > threshold(2V): b0=1 each tick. After 8 shifts reg=0xFF;
+    // remaining 2 shifts keep it 0xFF. reg & 0x07 = 7.
+    // Out(0) = Proportion(7, 7, 9216) = 9216 = 6V.
+    auto s = setup_applet(kAppletRunglBook);
+    // threshold left at default (3072 = 2V); In(0) = 4V exceeds it.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 4.0f, 8);
+    set_gate(s.bus, LEFT, 0, 0, 8);  // single-sample rising edge for Clock(0)
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    // reg low 3 bits all 1 -> Out(0) = HEMISPHERE_MAX_CV = 6V.
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(6.0f).margin(0.01f));
+}
+
+TEST_CASE("rungl_book RB4: below-threshold In(0) shifts 0s into reg, Out(0) = 0V", "[rungl_book]") {
+    // Shim 10x: same as RB3 but In(0) = 1V < threshold (2V), so b0=0 each tick.
+    // Starting from reg=0, 10 zero-shifts leave reg=0. Out(0)=Proportion(0,7,9216)=0.
+    auto s = setup_applet(kAppletRunglBook);
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);   // In(0) = 1V < threshold (2V)
+    set_gate(s.bus, LEFT, 0, 0, 8);    // Clock(0) rising edge
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.01f));
+}
+
+TEST_CASE("rungl_book RB5: Gate(1) freeze rotates register, Out(0) unchanged from all-ones", "[rungl_book]") {
+    // Vendor RunglBook.h:43-45: when Gate(1) is high, the shift branch is skipped
+    // and reg rotates left: reg = (reg << 1) | ((reg >> 7) & 0x01).
+    // Rotation is distinct from zero-shifting: if reg=0xFF, zero-shift (10 times)
+    // clears reg to 0 (all bits fall off), but rotation preserves every bit,
+    // so reg stays 0xFF and Out(0) remains 6V.
+    //
+    // Setup: first fill reg with all-ones via one above-threshold step (RB3 math),
+    // then engage Gate(1) and drive Clock(0). Without freeze, 10 zero-shifts would
+    // drive Out(0) to 0V. With freeze, rotation keeps reg=0xFF and Out(0)=6V.
+    auto s = setup_applet(kAppletRunglBook);
+
+    // Step 1: shift 1s into reg with In(0)=4V above threshold.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 4.0f, 8);
+    set_gate(s.bus, LEFT, 0, 0, 8);    // Clock(0)
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    // reg = 0xFF after 10 one-shifts; Out(0) = 6V (verified by RB3).
+
+    // Step 2: Gate(1) freeze + Clock(0) + In(0) below threshold.
+    // Without freeze: 10 zero-shifts -> reg=0 -> Out(0)=0V.
+    // With freeze:    10 rotations of 0xFF -> reg=0xFF -> Out(0)=6V.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);   // below threshold
+    set_gate(s.bus, LEFT, 0, 0, 8);    // Clock(0) rising edge
+    hold_gate(s.bus, LEFT, 1, 8);      // Gate(1) sustained high: freeze mode
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    // Rotation preserves all-ones pattern: Out(0) = 6V.
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(6.0f).margin(0.01f));
 }

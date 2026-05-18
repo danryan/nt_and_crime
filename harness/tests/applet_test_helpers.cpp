@@ -210,6 +210,9 @@ uint64_t pack_rnd_walk(int yClkSrc, int yClkDiv, int range,
     data |= ((uint64_t)(step       & 0xFF)) << 13;
     data |= ((uint64_t)(smoothness & 0xFF)) << 21;
     data |= ((uint64_t)(cvRange    & 0x03)) << 29;
+uint64_t pack_rungl_book(int threshold) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(threshold & 0xFFFF));
     return data;
 }
 

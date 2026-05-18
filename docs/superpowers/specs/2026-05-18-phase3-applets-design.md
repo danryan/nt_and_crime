@@ -8,7 +8,7 @@ Vendor pin: `vendor/O_C-Phazerville` at `7800d929`
 
 ## Context
 
-Phase 1 and Phase 2 ported 13 vendor Hemisphere applets plus the shim-local `Empty` into the disting NT compatibility shim, each with a host-side Catch2 test suite that drives the plug-in's NT API. Phase 3 ports a further 17 category-A applets in parallel under the same harness. No harness change, no new shim helpers.
+Phase 1 and Phase 2 ported 13 vendor Hemisphere applets plus the shim-local `Empty` into the disting NT compatibility shim, each with a host-side Catch2 test suite that drives the plug-in's NT API. Phase 3 ports a further 15 category-A applets in parallel under the same harness. No harness change, no new shim helpers.
 
 The recipe section below is the canonical port pattern, derived from the five primary-reference files. Per-applet entries describe only the deltas from the recipe. The plan document (`docs/superpowers/plans/2026-05-18-phase3-applets-plan.md`) translates the entries into a parallel worklist.
 
@@ -144,16 +144,6 @@ Each entry lists: vendor file, category (always A for Phase 3), bit layout (veri
 - Test concerns: Apply a steady CV on `set_cv(LEFT, 0, 4.0, 8)`, step ~200 samples to let the peak detector saturate, assert `Out(0)` tracks. The +1/-1 speed bias must round-trip through the pack helper.
 - Analogue: Slew (CV-to-CV transformation with per-side params, time-based settling).
 
-### LowerRenz
-
-- Vendor: `vendor/O_C-Phazerville/software/src/applets/LowerRenz.h`.
-- Category: A.
-- `OnDataRequest` (`LowerRenz.h:82-87`): 16 bits. `freq` at `[0,8)`, `rho` at `[8,8)`. Both `uint8_t`.
-- `Start()` (`LowerRenz.h`): `freq = 128; rho = 64`.
-- Observables: Two coupled chaotic CV outputs (Lorenz-style). Output values change every Controller tick.
-- Test concerns: Default-state assert; round-trip with `freq=200, rho=33`. Behavior case asserts that with default params the two outputs are non-constant over 1000 samples (both have moved by more than 0.1V from any single-sample baseline). Do not assert exact values; the system is chaotic.
-- Analogue: Slew (CV-out transformation with two-byte params).
-
 ### PolyDiv
 
 - Vendor: `vendor/O_C-Phazerville/software/src/applets/PolyDiv.h`.
@@ -201,7 +191,8 @@ Each entry lists: vendor file, category (always A for Phase 3), bit layout (veri
 - `OnDataRequest` (`RunglBook.h:71-75`): 16 bits. `threshold` at `[0,16)`. No bias.
 - `Start()` (`RunglBook.h:33`): `threshold = ONE_OCTAVE * 2 = 3072` (= 2V).
 - Observables: 8-bit Rungler shift register on Clock(0). `Out(0)` is the register's high byte; `Out(1)` is a single bit.
-- Test concerns: Seed RNG. Default-state case asserts threshold=3072. Round-trip with threshold=5000. Behavior case: drive Clock(0) 8 times with In(0) above and below threshold, assert `Out(0)` walks across a range of values.
+- Test concerns: Seed RNG. Default-state case asserts threshold=3072. Round-trip with threshold=5000. Behavior cases: drive Clock(0) 8 times with In(0) above and below threshold, assert `Out(0)` walks across a range of values; freeze via Gate(1) and assert register rotates rather than shifts.
+- Test budget: at the Phase 3 ceiling (~50 step() calls total). Each Clock(0) edge needs a set_gate buffer plus a clear_bus buffer, so 8 input clocks = 16 step() calls; three behavior cases plus default plus round-trip lands near the budget. Be sparing if adding cases.
 - Analogue: Slew (single CV-out with one signed time-domain param).
 
 ### Schmitt
@@ -232,6 +223,7 @@ Each entry lists: vendor file, category (always A for Phase 3), bit layout (veri
 - `Start()` (`Stairs.h:78-100`): `steps=1, dir=0, rand=0`. (`steps=1` because the field stores `steps - 1` semantics in some implementations; verify against source.)
 - Observables: Clock(0) steps a CV up, down, or up-down through `n` divisions of `HEMISPHERE_MAX_CV`. `dir` selects direction. `rand=1` enables random stepping.
 - Test concerns: 8-bit pack helper. Behavior case: `steps=4, dir=0 (up)`; drive 4 Clock(0) edges; assert `Out(0)` takes 4 distinct ascending values that span 0 to `HEMISPHERE_MAX_CV * 3/4`. Round-trip with `steps=8, dir=2, rand=1`.
+- 10x clocked-multiplier caveat: one rising edge on Gate(0) makes the shim's `clocked[ch]` flag stay asserted for all `ticks_this_step = numFrames / 3 = 10` inner Controller calls in that buffer. A single set_gate pulse therefore steps `curr_step` 10 times, not once. Adjust step counts in assertions accordingly. Precedent and detailed mechanic in Cumulus CU2 (`harness/tests/test_hemispheres.cpp:1264`); do not re-explain it in the implementer commit.
 - Analogue: Cumulus (stepped CV on clock with multi-field pack).
 
 ### Switch
@@ -263,16 +255,6 @@ Each entry lists: vendor file, category (always A for Phase 3), bit layout (veri
 - Observables: `Out(ch)` emits `voltage[ch] * VOLTAGE_INCREMENTS` continuously, or only when `Gate(ch)` is high if `gate[ch]=1`.
 - Test concerns: Gap-bit guard like Cumulus. Default-state case asserts +6V / -6V on Out(0)/Out(1). Round-trip with `voltage=24/-12, gate=1/0`.
 - Analogue: AttenuateOffset (per-side biased-offset pack helper with gap bits).
-
-### Xfader
-
-- Vendor: `vendor/O_C-Phazerville/software/src/applets/Xfader.h`.
-- Category: A.
-- `OnDataRequest` (`Xfader.h:94-101`): 33 bits. `balance >> 8` at `[0,8)` (top byte of a 16-bit fixed-point), `rate` at `[8,16)`, `center` at `[24,8)`, `center_reset_enable` at `[32,1)`.
-- `Start()` (`Xfader.h:35-41`): `balance = 128<<8 = 32768` (midpoint), `rate=128`, `center=128`, `center_reset_enable=false`.
-- Observables: Crossfade `In(0)` against `In(1)` weighted by `balance/256`; `Out(0) = ((256-balance/256) * In(0) + (balance/256) * In(1)) / 256`. `rate` controls the time constant for balance changes; `center` is the auto-return point.
-- Test concerns: Pack helper writes `balance >> 8`, so the helper takes the 8-bit value (0..255). Default-state case asserts balance=128. Behavior case: set balance=0 via `OnDataReceive`, assert Out(0) = In(0); balance=255, assert Out(0) ~= In(1).
-- Analogue: AttenuateOffset (multi-field per-side CV transform).
 
 ## Spot check
 

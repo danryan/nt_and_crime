@@ -27,3 +27,23 @@ inline auto constrain(T x, U lo, V hi) -> typename std::common_type<T, U, V>::ty
 // randomSeed; precise wall-clock semantics are not required.
 namespace OC { namespace CORE { extern volatile uint32_t ticks; } }
 inline uint32_t micros() { return (uint32_t)OC::CORE::ticks; }
+
+// millis() returns OC::CORE::ticks / 1000. Used by HSClockManager tempo
+// math and other vendor compat headers that track wall-clock-ish deltas.
+inline uint32_t millis() { return (uint32_t)(OC::CORE::ticks / 1000); }
+
+// Arduino elapsedMillis idiom. Construct captures the current millis();
+// implicit-cast to uint32_t returns (millis() - base). Assignment resets
+// the baseline so the value reads as the assigned figure. Used by vendor
+// applets (VectorLFO, Tuner) for tick-delta tracking.
+class elapsedMillis {
+public:
+    elapsedMillis() : base_(millis()) {}
+    elapsedMillis(uint32_t v) : base_(millis() - v) {}
+    operator uint32_t() const { return millis() - base_; }
+    elapsedMillis& operator=(uint32_t v) { base_ = millis() - v; return *this; }
+    elapsedMillis& operator+=(uint32_t v) { base_ -= v; return *this; }
+    elapsedMillis& operator-=(uint32_t v) { base_ += v; return *this; }
+private:
+    uint32_t base_;
+};

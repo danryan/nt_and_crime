@@ -90,4 +90,85 @@ uint64_t pack_brancher(int p) {
     return (uint64_t)(p & 0x7F);
 }
 
+uint64_t pack_logic(int op_left, int op_right) {
+    return ((uint64_t)(op_left  & 0xFF))
+         | ((uint64_t)(op_right & 0xFF) << 8);
+}
+
+uint64_t pack_slew(int rise, int fall) {
+    return ((uint64_t)(rise & 0xFF))
+         | ((uint64_t)(fall & 0xFF) << 8);
+}
+
+uint64_t pack_burst(int number, int spacing, int div, int jitter, int accel) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(number   & 0xFF));
+    data |= ((uint64_t)(spacing  & 0xFF)) << 8;
+    data |= ((uint64_t)((div + 8) & 0xFF)) << 16;
+    data |= ((uint64_t)(jitter   & 0xFF)) << 24;
+    data |= ((uint64_t)(accel    & 0xFF)) << 32;
+    return data;
+}
+
+namespace {
+constexpr int kAttenOffMaxLevel = 63;  // mirrors ATTENOFF_MAX_LEVEL in vendor AttenuateOffset.h
+}
+
+uint64_t pack_atten_off(int offset_left, int offset_right,
+                         int level_left, int level_right,
+                         bool mix) {
+    uint64_t data = 0;
+    data |= ((uint64_t)((offset_left  + 256) & 0x1FF));
+    data |= ((uint64_t)((offset_right + 256) & 0x1FF)) << 10;
+    data |= ((uint64_t)((level_left  + kAttenOffMaxLevel * 2) & 0xFF)) << 19;
+    data |= ((uint64_t)((level_right + kAttenOffMaxLevel * 2) & 0xFF)) << 27;
+    data |= ((uint64_t)(mix ? 1 : 0)) << 35;
+    return data;
+}
+
+uint64_t pack_compare(int level) {
+    return (uint64_t)(level & 0xFF);
+}
+
+uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
+                          int width_b, int range_b, int skip_b) {
+    auto pack_side = [](int width, int range, int skip) -> uint64_t {
+        uint64_t side = 0;
+        side |= ((uint64_t)(width & 0x7F));
+        side |= ((uint64_t)((range < 0 ? -range : range) & 0x7F)) << 8;
+        side |= ((uint64_t)(range < 0 ? 1 : 0)) << 15;
+        side |= ((uint64_t)(skip & 0x7F)) << 16;
+        return side;
+    };
+    uint64_t data = 0;
+    data |= pack_side(width_a, range_a, skip_a);
+    data |= pack_side(width_b, range_b, skip_b) << 32;
+    return data;
+}
+
+uint64_t pack_gate_delay(int time_left, int time_right) {
+    return ((uint64_t)(time_left  & 0x7FF))
+         | ((uint64_t)(time_right & 0x7FF) << 11);
+}
+
+uint64_t pack_tlneuron(int w0, int w1, int w2, int threshold) {
+    uint64_t data = 0;
+    data |= ((uint64_t)((w0 + 9) & 0x1F));
+    data |= ((uint64_t)((w1 + 9) & 0x1F)) << 5;
+    data |= ((uint64_t)((w2 + 9) & 0x1F)) << 10;
+    data |= ((uint64_t)((threshold + 27) & 0x3F)) << 15;
+    return data;
+}
+
+uint64_t pack_cumulus(int accoperator, int b_constant, int outmode_left, int outmode_right) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(accoperator   & 0x07));
+    data |= ((uint64_t)(b_constant    & 0x0F)) << 3;
+    data |= ((uint64_t)(outmode_left  & 0x0F)) << 7;
+    // bits 11..12 left as 0 (vendor gap)
+    data |= ((uint64_t)(outmode_right & 0x0F)) << 13;
+    return data;
+}
+
+
 }  // namespace hem_test

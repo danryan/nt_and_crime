@@ -82,4 +82,61 @@ uint64_t pack_calculate(int op_left, int op_right);
 // Brancher's `choice` field is not serialised by vendor.
 uint64_t pack_brancher(int p);
 
+// Mirrors Logic::OnDataRequest packing: bits [0,8] = op_left, [8,8] = op_right.
+// Ops: 0=AND, 1=OR, 2=XOR, 3=NAND, 4=NOR, 5=XNOR, 6=CV-controlled.
+uint64_t pack_logic(int op_left, int op_right);
+
+// Mirrors Slew::OnDataRequest: bits [0,8] = rise (0..HEM_SLEW_MAX_VALUE), [8,8] = fall.
+uint64_t pack_slew(int rise, int fall);
+
+// Mirrors Burst::OnDataRequest packing (40 bits):
+//   bits [0, 8)  = number  (1..HEM_BURST_NUMBER_MAX)
+//   bits [8, 8)  = spacing (HEM_BURST_SPACING_MIN..HEM_BURST_SPACING_MAX, in ms)
+//   bits [16,8)  = div + 8 (biased; div is -HEM_BURST_CLOCKDIV_MAX..HEM_BURST_CLOCKDIV_MAX)
+//   bits [24,8)  = jitter  (0..HEM_BURST_JITTER_MAX)
+//   bits [32,8)  = accel   (-HEM_BURST_ACCEL_MAX..HEM_BURST_ACCEL_MAX, stored 2's-complement in 8 bits)
+uint64_t pack_burst(int number, int spacing, int div, int jitter, int accel);
+
+// Mirrors AttenuateOffset::OnDataRequest packing (36 bits):
+//   bits [0, 9)  = offset[0] + 256   (biased, semitones, range +/- HEMISPHERE_MAX_CV/ATTENOFF_INCREMENTS)
+//   bits [10,19) = offset[1] + 256   (bit 9 is an unused gap)
+//   bits [19,27) = level[0] + ATTENOFF_MAX_LEVEL*2  (biased, range +/- ATTENOFF_MAX_LEVEL*2)
+//   bits [27,35) = level[1] + ATTENOFF_MAX_LEVEL*2
+//   bit  35      = mix flag
+// ATTENOFF_MAX_LEVEL is 63 in vendor AttenuateOffset.h, so the level bias is 126
+// and the encoded level field is 8 bits.
+uint64_t pack_atten_off(int offset_left, int offset_right,
+                         int level_left, int level_right,
+                         bool mix);
+
+// Mirrors Compare::OnDataRequest packing: bits [0,8] = level in 0..HEM_COMPARE_MAX_VALUE.
+// HEM_COMPARE_MAX_VALUE is 255 in vendor Compare.h; default level is 128.
+uint64_t pack_compare(int level);
+
+// Mirrors ClkToGate::OnDataRequest: per side i in {0,1}:
+//   width[i] at (i*32+0, 7)
+//   abs(range[i]) at (i*32+8, 7)
+//   range[i] sign at (i*32+15, 1)
+//   skip[i] at (i*32+16, 7)
+uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
+                          int width_b, int range_b, int skip_b);
+
+// Mirrors GateDelay::OnDataRequest: bits [0,11] = time[0], [11,11] = time[1].
+// Times are in milliseconds, valid range 0..2000 (clamped by vendor).
+uint64_t pack_gate_delay(int time_left, int time_right);
+
+// Mirrors TLNeuron::OnDataRequest: per-dendrite weight (5 bits, +9 bias) at
+// offsets 0/5/10; threshold (6 bits, +27 bias) at offset 15.
+uint64_t pack_tlneuron(int w0, int w1, int w2, int threshold);
+
+// Mirrors Cumulus::OnDataRequest packing (17 bits used):
+//   bits [0, 3)  = accoperator (ADD=0, SUB=1, MULADD1=2, XOR_ROTL=3, SUB_ROTR=4)
+//   bits [3, 4)  = b_constant  (0..ACC_MAX_B=15)
+//   bits [7, 4)  = outmode[0]  (0..7; vendor constrains to 0..7 on receive)
+//   bits [11, 2) = UNUSED gap (must be 0 on pack)
+//   bits [13, 4) = outmode[1]  (0..7; vendor constrains to 0..7 on receive)
+// IMPORTANT: bits 11..12 are unused in vendor packing; pack_cumulus explicitly
+// zeros them to avoid stale state leaking through preset round-trip.
+uint64_t pack_cumulus(int accoperator, int b_constant, int outmode_left, int outmode_right);
+
 }  // namespace hem_test

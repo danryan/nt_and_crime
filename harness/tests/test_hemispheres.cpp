@@ -402,3 +402,17 @@ TEST_CASE("brancher B7: OnButtonPress flips choice before next gate", "[brancher
     REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
     REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
 }
+
+TEST_CASE("brancher B8: OnEncoderMove clamps p to [0, 100]", "[brancher]") {
+    // Vendor: OnEncoderMove(direction) { p = constrain(p + direction, 0, 100); }
+    // Start at p=50 (set by Start()). Push 30 calls of +5 to overshoot 100.
+    // Push 30 calls of -5 to undershoot 0. Both bounds clamp.
+    auto s = setup_brancher_left();
+    auto* applet = get_applet(s.hi, LEFT);
+
+    for (int i = 0; i < 30; ++i) applet->OnEncoderMove(+5);
+    REQUIRE((applet->OnDataRequest() & 0x7F) == 100);
+
+    for (int i = 0; i < 30; ++i) applet->OnEncoderMove(-5);
+    REQUIRE((applet->OnDataRequest() & 0x7F) == 0);
+}

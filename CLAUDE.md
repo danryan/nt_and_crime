@@ -13,7 +13,7 @@ A compatibility shim that lets unmodified Phazerville Hemisphere applet sources 
 make vendor           # initializes the two pinned submodules
 ```
 
-Required tools: `arm-none-eabi-c++` (for the NT target), `clang++` or `g++` (host), `python3`. Submodules: `vendor/distingNT_API` (Expert Sleepers SDK) and `vendor/O_C-Phazerville` (Hemisphere applet sources, pinned at SHA `7800d929`).
+Required tools: `arm-none-eabi-c++` (for the NT target), `clang++` or `g++` (host), `python3`. `bootstrap.sh` contains OS-specific install hints for macOS and Debian/Ubuntu. Submodules: `vendor/distingNT_API` (Expert Sleepers SDK) and `vendor/O_C-Phazerville` (Hemisphere applet sources, currently pinned at SHA `7800d929`; verify with `git ls-tree HEAD vendor/O_C-Phazerville`).
 
 ## Build and test commands
 
@@ -33,6 +33,27 @@ Required tools: `arm-none-eabi-c++` (for the NT target), `clang++` or `g++` (hos
 To run a single Catch2 test case, pass a tag to the binary directly: `./build/host/test_hemispheres '[cumulus]'` (build first via `make test-applets` or `make build/host/test_hemispheres`).
 
 ## Architecture
+
+```
+vendor/O_C-Phazerville/      vendor/distingNT_API/
+   (Hemisphere applets,         (NT plug-in ABI:
+    vendored unmodified)         _NT_algorithm,
+            │                    _NT_parameter,
+            ▼                    factory entry)
+   shim/include/                       │
+   (HemisphereApplet,                  │
+    HSUtils, HSicons,                  ▼
+    Phzicons, bus I/O)  ──►  applets/Hemispheres.cpp
+                              (NT_HEMISPHERES_PLUGIN
+                               pair-applet host)
+                                       │
+                                       ▼
+                              harness/  or  device
+                              (Catch2,      (deploy via
+                               nt_runtime    USB-MIDI
+                               simulator)    sysex or
+                                             USB disk)
+```
 
 The project has three layers and one applet host.
 
@@ -74,9 +95,7 @@ Applet ports run in phases. Each phase produces three documents that are require
 
 Abort reports for failed phases live under `docs/superpowers/abort-reports/`. The Phase 3 retrospective (`2026-05-18-phase3-attempt-1-retrospective.md`) and the ResetClock spec-mismatch report (`2026-05-18-resetclock-spec-mismatch.md`) are required reading before any Phase 4+ kickoff because they encode the failure modes the framework now guards against.
 
-The plan document inlines a worktree-dispatch checklist (parent agent verifies base branch, spec reachability, submodule init, pre-commit hook installation) and specifies a pre-commit hook content. Implementer subagents work in isolated worktrees branched from the feature branch (NEVER from `main`); the hook rejects commits on the wrong base and commits that stage forbidden-surface shim files.
-
-Phase numbering convention: Phase 1+2 ported 14 applets (the existing baseline). Phase 3 retry ported 10 more. Phase 4 is bounded to 5 Phase-3 deferrals plus 5-8 category-B applets.
+Phase numbering convention: Phase 1+2 ported 14 applets (the existing baseline). Phase 3 retry ported 10 more (merged via squash commit `87596f4`; the underlying 12-commit history is preserved at `refs/archive/phase3-attempt-1/*` archive refs plus the brainstorm/spec/plan/retrospective documents). Phase 4 is bounded to 5 Phase-3 deferrals plus 5-8 category-B applets.
 
 ## Parallel execution
 

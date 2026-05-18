@@ -21,6 +21,7 @@ using hem_shim::kAppletCumulus;
 using hem_shim::kAppletGateDelay;
 using hem_shim::kAppletGatedVCA;
 using hem_shim::kAppletLogic;
+using hem_shim::kAppletEnvFollow;
 using hem_shim::kAppletSlew;
 using hem_shim::kAppletTLNeuron;
 using Catch::Approx;
@@ -116,6 +117,10 @@ void cumulus_set(hem_shim::HemispheresInstance* hi,
 
 void clock_skip_set(hem_shim::HemispheresInstance* hi, int p0, int p1) {
     get_applet(hi, LEFT)->OnDataReceive(pack_clock_skip(p0, p1));
+void env_follow_set(hem_shim::HemispheresInstance* hi,
+                    int gain0, int gain1, int duck0, int duck1, int speed) {
+    get_applet(hi, LEFT)->OnDataReceive(
+        pack_env_follow(gain0, gain1, duck0, duck1, speed));
 }
 
 }  // namespace
@@ -1521,4 +1526,93 @@ TEST_CASE("clock_skip CS4: p=0 always skips gate on Clock(0)", "[clock_skip]") {
         step_n_frames(s.loaded, s.alg, s.bus, 32);
         REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
     }
+// ---------------------------------------------------------------------------
+// EnvFollow tests
+// ---------------------------------------------------------------------------
+// EnvFollow.h Start(): gain[0]=10, gain[1]=10, duck[0]=0, duck[1]=1 (duck[ch]=ch),
+// speed=1 (in-class default), max[ch]=0, countdown=166.
+// OnDataRequest bit layout: gain[0] at [0,5), gain[1] at [5,5),
+// duck[0] at [10,1), duck[1] at [11,1), speed-1 at [12,4).
+// No 10x fire-count risk: continuous CV reading, not gated counters.
+
+TEST_CASE("env_follow EF1: Start defaults gain=10/10, duck=0/1, speed=1", "[env_follow]") {
+    auto s = setup_applet(kAppletEnvFollow);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int gain0 = (int)((packed)       & 0x1F);
+    int gain1 = (int)((packed >> 5)  & 0x1F);
+    int duck0 = (int)((packed >> 10) & 0x01);
+    int duck1 = (int)((packed >> 11) & 0x01);
+    int speed = (int)((packed >> 12) & 0x0F) + 1;  // +1 bias on unpack
+
+    REQUIRE(gain0 == 10);
+    REQUIRE(gain1 == 10);
+    REQUIRE(duck0 == 0);
+    REQUIRE(duck1 == 1);
+    REQUIRE(speed == 1);
+}
+
+TEST_CASE("env_follow EF2: round-trip preserves gain=15/8, duck=1/0, speed=4", "[env_follow]") {
+    // Verifies that the speed bias (-1 on pack, +1 on unpack) survives the
+    // OnDataReceive -> OnDataRequest cycle for a non-default speed value.
+    auto s = setup_applet(kAppletEnvFollow);
+    env_follow_set(s.hi, 15, 8, 1, 0, 4);
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int gain0 = (int)((packed)       & 0x1F);
+    int gain1 = (int)((packed >> 5)  & 0x1F);
+    int duck0 = (int)((packed >> 10) & 0x01);
+    int duck1 = (int)((packed >> 11) & 0x01);
+    int speed = (int)((packed >> 12) & 0x0F) + 1;
+
+    REQUIRE(gain0 == 15);
+    REQUIRE(gain1 == 8);
+    REQUIRE(duck0 == 1);
+    REQUIRE(duck1 == 0);
+    REQUIRE(speed == 4);
+}
+
+TEST_CASE("env_follow EF3: output tracks positive CV input envelope", "[env_follow]") {
+    // EnvFollow Controller() accumulates abs(In(ch)) into max[ch] over
+    // HEM_ENV_FOLLOWER_SAMPLES=166 ticks, then sets target[ch] = max[ch]*gain[ch]
+    // (clamped to HEMISPHERE_MAX_CV=9216 hem units = 6V). signal[ch] then slews
+    // toward target at `speed` units per tick.
+    //
+    // Setup: gain=10, duck[0]=0, speed=16 (max). With 4V input on ch0:
+    //   max[0] settles to 4*1536=6144; target = 6144*10 = 61440, clamped to 9216.
+    // Ticks to first target update: 166 ticks = ceil(166/10) = 17 steps.
+    // Ticks to slew to target after that: 9216/16 = 576 ticks = 58 steps.
+    // Looping 100 steps gives ample margin (100 > 17+58=75).
+    auto s = setup_applet(kAppletEnvFollow);
+    env_follow_set(s.hi, 10, 10, 0, 1, 16);
+
+    for (int i = 0; i < 100; ++i) {
+        clear_bus(s.bus);
+        set_cv(s.bus, LEFT, 0, 4.0f, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+    }
+
+    // Output ch0 should have tracked to ~6V (gain clamps target to HEMISPHERE_MAX_CV).
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(6.0f).margin(0.5f));
+}
+
+TEST_CASE("env_follow EF4: duck mode inverts envelope on ch1", "[env_follow]") {
+    // With duck[1]=1 (default from Start()), the ch1 target is computed as:
+    //   target[1] = HEMISPHERE_MAX_CV - (max[1] * gain[1])
+    // A strong positive input on ch1 pushes target toward 0, making the output
+    // duck (fall) in response to the incoming signal amplitude.
+    //
+    // With 3V input on ch1: max[1]=4608, gain=10 -> pre-duck target = 46080.
+    // After duck: 9216 - 46080 = -36864, clamped to 0 -> output ch1 approaches 0V.
+    // speed=16 used for fast settling (same timing as EF3).
+    auto s = setup_applet(kAppletEnvFollow);
+    env_follow_set(s.hi, 10, 10, 0, 1, 16);  // duck[1]=1 preserved
+
+    for (int i = 0; i < 100; ++i) {
+        clear_bus(s.bus);
+        set_cv(s.bus, LEFT, 1, 3.0f, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+    }
+
+    // Output ch1 should have ducked to ~0V under strong positive input.
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(0.0f).margin(0.5f));
 }

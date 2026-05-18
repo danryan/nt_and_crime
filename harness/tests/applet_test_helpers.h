@@ -150,4 +150,12 @@ uint64_t pack_tlneuron(int w0, int w1, int w2, int threshold);
 // zeros them to avoid stale state leaking through preset round-trip.
 uint64_t pack_cumulus(int accoperator, int b_constant, int outmode_left, int outmode_right);
 
+// Mirrors EnvFollow::OnDataRequest packing (16 bits used):
+//   bits [0, 5)  = gain[0]   (1..31)
+//   bits [5, 5)  = gain[1]   (1..31)
+//   bits [10, 1) = duck[0]   (0 or 1)
+//   bits [11, 1) = duck[1]   (0 or 1)
+//   bits [12, 4) = speed - 1 (biased; caller passes natural speed 1..16)
+uint64_t pack_env_follow(int gain0, int gain1, int duck0, int duck1, int speed);
+
 }  // namespace hem_test

@@ -186,5 +186,15 @@ uint64_t pack_cumulus(int accoperator, int b_constant, int outmode_left, int out
     return data;
 }
 
+uint64_t pack_env_follow(int gain0, int gain1, int duck0, int duck1, int speed) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(gain0        & 0x1F));
+    data |= ((uint64_t)(gain1        & 0x1F)) << 5;
+    data |= ((uint64_t)(duck0        & 0x01)) << 10;
+    data |= ((uint64_t)(duck1        & 0x01)) << 11;
+    data |= ((uint64_t)((speed - 1)  & 0x0F)) << 12;
+    return data;
+}
+
 
 }  // namespace hem_test

@@ -78,6 +78,9 @@ void seed_hem_rng(uint32_t seed);
 // Mirrors Calculate::OnDataRequest packing: bits [0,8] = op_left, [8,8] = op_right.
 uint64_t pack_calculate(int op_left, int op_right);
 
+// Mirrors ClockSkip::OnDataRequest packing: bits [0,7) = p[0], [7,7) = p[1]. No bias.
+uint64_t pack_clock_skip(int p0, int p1);
+
 // Mirrors Brancher::OnDataRequest packing: bits [0,7] = p in 0..100.
 // Brancher's `choice` field is not serialised by vendor.
 uint64_t pack_brancher(int p);

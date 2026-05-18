@@ -15,6 +15,7 @@ using hem_shim::kAppletButton;
 using hem_shim::kAppletCalculate;
 using hem_shim::kAppletClkToGate;
 using hem_shim::kAppletClockDivider;
+using hem_shim::kAppletClockSkip;
 using hem_shim::kAppletCompare;
 using hem_shim::kAppletCumulus;
 using hem_shim::kAppletGateDelay;
@@ -111,6 +112,10 @@ void cumulus_set(hem_shim::HemispheresInstance* hi,
                  int outmode_left, int outmode_right) {
     get_applet(hi, LEFT)->OnDataReceive(
         pack_cumulus(accoperator, b_constant, outmode_left, outmode_right));
+}
+
+void clock_skip_set(hem_shim::HemispheresInstance* hi, int p0, int p1) {
+    get_applet(hi, LEFT)->OnDataReceive(pack_clock_skip(p0, p1));
 }
 
 }  // namespace
@@ -1455,4 +1460,65 @@ TEST_CASE("clock_divider CD5: negative div (multiplier mode) round-trip via stat
     REQUIRE(d1 == -3);
     REQUIRE(m1 == 3);
     REQUIRE(m3 == 2);
+// ---------------------------------------------------------------------------
+// ClockSkip tests
+// Vendor: ClockSkip.h. On Clock(ch), calls random(1,100); passes gate when
+// result <= p[ch]. p[0]=100, p[1]=75 at Start(). Serialised as 14 bits:
+// p[0] at [0,7), p[1] at [7,7), no bias.
+//
+// 10x note: the shim drives Controller() 10 times per step(). clocked[ch]
+// stays asserted across all 10 inner ticks, so a single rising edge causes
+// the if(Clock(ch)) block to execute 10 times per buffer. For p=100 (always
+// pass) and p=0 (always skip) the result is deterministic regardless of
+// attempt count; tests assert gate presence or absence per buffer.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("clock_skip CS1: Start defaults match vendor", "[clock_skip]") {
+    // Vendor Start(): p[0] = 100 - 25*0 = 100, p[1] = 100 - 25*1 = 75.
+    // OnDataRequest: p[0] at bits [0,7), p[1] at bits [7,7).
+    auto s = setup_applet(kAppletClockSkip);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((int)((packed >> 0) & 0x7F) == 100);
+    REQUIRE((int)((packed >> 7) & 0x7F) == 75);
+}
+
+TEST_CASE("clock_skip CS2: serialise round-trip preserves p0 and p1", "[clock_skip]") {
+    // Non-default values within vendor constrain range [0, 100].
+    auto s = setup_applet(kAppletClockSkip);
+    clock_skip_set(s.hi, 37, 73);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((int)((packed >> 0) & 0x7F) == 37);
+    REQUIRE((int)((packed >> 7) & 0x7F) == 73);
+}
+
+TEST_CASE("clock_skip CS3: p=100 always passes gate on Clock(0)", "[clock_skip]") {
+    // Vendor: random(1,100) <= 100 is always true; ClockOut(0) fires every time.
+    // Drive 10 independent clock edges (one per buffer) and assert gate output
+    // is high after each. Each buffer uses set_gate for a single rising edge;
+    // clear_bus before each trial so the previous gate output does not persist.
+    auto s = setup_applet(kAppletClockSkip);
+    clock_skip_set(s.hi, 100, 75);
+    seed_hem_rng(0xDEADBEEF);
+
+    for (int trial = 0; trial < 10; ++trial) {
+        clear_bus(s.bus);
+        set_gate(s.bus, LEFT, 0, 0, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+    }
+}
+
+TEST_CASE("clock_skip CS4: p=0 always skips gate on Clock(0)", "[clock_skip]") {
+    // Vendor: random(1,100) <= 0 is never true; ClockOut(0) never fires.
+    // Drive 10 independent clock edges and assert gate output is low after each.
+    auto s = setup_applet(kAppletClockSkip);
+    clock_skip_set(s.hi, 0, 75);
+    seed_hem_rng(0xDEADBEEF);
+
+    for (int trial = 0; trial < 10; ++trial) {
+        clear_bus(s.bus);
+        set_gate(s.bus, LEFT, 0, 0, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+    }
 }

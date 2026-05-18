@@ -155,6 +155,13 @@ uint64_t pack_clk_to_gate(int width_a, int range_a, int skip_a,
     return data;
 }
 
+uint64_t pack_clock_skip(int p0, int p1) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(p0 & 0x7F));
+    data |= ((uint64_t)(p1 & 0x7F)) << 7;
+    return data;
+}
+
 uint64_t pack_gate_delay(int time_left, int time_right) {
     return ((uint64_t)(time_left  & 0x7FF))
          | ((uint64_t)(time_right & 0x7FF) << 11);

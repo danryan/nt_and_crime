@@ -1347,6 +1347,8 @@ Vendor source: `vendor/O_C-Phazerville/software/src/applets/GateDelay.h`.
 
 GateDelay maintains a 64 * 32-bit circular buffer per channel and reads playback head `time[ch]` ms behind the record head. `Controller()` decrements an `ms_countdown` and only runs the body once per millisecond (every ~16 ticks). Time is per channel in [0, 2000] ms.
 
+Vendor reality: GateDelay records `Gate(ch)` (sustained), NOT `Clock(ch)` (rising edge). The shim's `Gate()` reads gate_high from the LAST frame of the input buffer, so a single-sample pulse via `set_gate` is never seen as Gate()=true. Use `hold_gate` for one buffer to record the gate, then drop and poll for the delayed playback.
+
 Bit layout (spec table, 22 bits): `Pack(data, {0,11}, time[0]); Pack(data, {11,11}, time[1]);`.
 
 Default: `time[ch] = 1000` (1 second).
@@ -1456,7 +1458,9 @@ git -c commit.gpgsign=false commit -m "feat(test-applets): gate_delay GD1-GD3 de
 
 Vendor source: `vendor/O_C-Phazerville/software/src/applets/TLNeuron.h`.
 
-Threshold-logic neuron. Three dendrites: D0=Gate(0), D1=Gate(1), D2=In(0)>2.5V. Each dendrite has a signed weight in [-9, +9]. Threshold in [-27, +36] (range from packed-bit reading, bias is +27 so 6 bits hold 0..63 mapping to -27..+36). Axon (output) fires if `sum > threshold`.
+Threshold-logic neuron. Three dendrites: D0=Gate(0), D1=Gate(1), D2=In(0) > HEMISPHERE_MAX_INPUT_CV/2 (= 3.0V, NOT 2.5V; strict-greater). Each dendrite has a signed weight in [-9, +9]. Threshold in [-27, +36] (range from packed-bit reading, bias is +27 so 6 bits hold 0..63 mapping to -27..+36). Axon (output) fires if `sum > threshold`.
+
+Vendor reality: TLNeuron uses in-class initializers `dendrite_weight[3] = {5, 5, 0}` and `threshold = 9`. `Start()` only resets `selected`, not the weights or threshold. So TL1 default expectations are (5, 5, 0, 9), not all-zero.
 
 Bit layout (spec table, 21 bits):
 - dendrite_weight[0] (0,5) biased +9
@@ -1464,7 +1468,7 @@ Bit layout (spec table, 21 bits):
 - dendrite_weight[2] (10,5) biased +9
 - threshold (15,6) biased +27
 
-Default: weights and threshold start at 0.
+Default: weights = (5, 5, 0), threshold = 9 (vendor in-class initializers; `Start()` only resets `selected`).
 
 - [ ] **Step 1: Re-verify**
 
@@ -1621,6 +1625,8 @@ Vendor source: `vendor/O_C-Phazerville/software/src/applets/Cumulus.h`.
 
 Cumulus is a stochastic byte accumulator. On Clock(0), it applies one of 5 operations (ADD, SUB, MULADD1, XOR_ROTL, SUB_ROTR) to `acc_register` using `b_constant`. On Clock(1), it randomizes `acc_register` to a byte. Each output emits a specific bit of `acc_register`.
 
+Vendor reality: the shim runs `Controller()` 10 times per step (ticks_this_step = numFrames/3 with numFrames=32). Cumulus runs its op on EVERY tick where `Clock(0)` is true, not once per rising edge. So a single `set_gate` pulse triggers 10 ops per step. ADD b=1 yields acc=10 after one step, not 1. SUB b=5 yields acc=-50 wrapped to 0xCE, not 0xFB. Vendor also clamps outmode[0] and outmode[1] to [0, 7] in `OnDataReceive`.
+
 Internal state:
 - `accoperator` (3 bits in serialise): which op
 - `b_constant` (4 bits): operand
@@ -1693,50 +1699,53 @@ TEST_CASE("cumulus CU1: Start defaults accoperator=ADD=0, b_constant=0", "[cumul
 }
 
 TEST_CASE("cumulus CU2: ADD op increases acc_register by b_constant on Clock(0)", "[cumulus]") {
-    // ADD with b=1 and outmode[0]=0 (bit 0). After 1 clock: acc=1; bit 0 = 1. Out(0) high.
+    // Shim runs Controller 10 times per step. ADD with b=1, 10 ticks:
+    //   acc = 0 + 10*1 = 10 = 0b00001010.
+    //   bit 1 of 10 = 1 -> Out(0) high (outmode[0]=bit1).
+    //   bit 0 of 10 = 0 -> Out(1) low  (outmode[1]=bit0).
     auto s = setup_applet(kAppletCumulus);
-    cumulus_set(s.hi, 0, 1, 0, 1);  // ADD, b=1, outmode[0]=bit0, outmode[1]=bit1
+    cumulus_set(s.hi, 0, 1, 1, 0);  // ADD, b=1, outmode[0]=bit1, outmode[1]=bit0
 
     clear_bus(s.bus);
     set_gate(s.bus, LEFT, 0, 0, 8);  // Clock(0)
     step_n_frames(s.loaded, s.alg, s.bus, 32);
 
-    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);   // acc bit 0 = 1
-    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);  // acc bit 1 = 0
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);   // acc bit 1 = 1
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);  // acc bit 0 = 0
 }
 
 TEST_CASE("cumulus CU3: SUB op decreases acc_register", "[cumulus]") {
-    // Set acc to 3 via two ADDs, then switch op to SUB. b=1, outmode[0]=0 (bit 0).
-    // Final acc after ADD,ADD,ADD,SUB starting from 0 with b=1:
-    //   ADD: 0+1=1
-    //   ADD: 1+1=2 (but each clock runs only one op pass on this step due to
-    //                ms_countdown=0 path? need to verify)
-    // For simplicity: just verify SUB produces a different acc than ADD with same input.
+    // 10 SUBs in one step. acc = 0 - 10*5 = -50 wrapped to uint8_t = 206
+    //   = 0xCE = 0b11001110. bit 1 of 0xCE = 1 -> Out(0) high.
     auto s = setup_applet(kAppletCumulus);
-    cumulus_set(s.hi, 1, 5, 1, 1);  // SUB, b=5, outmode[0]=bit1
+    cumulus_set(s.hi, 1, 5, 1, 1);  // SUB, b=5, outmode[0]=bit1, outmode[1]=bit1
 
     clear_bus(s.bus);
     set_gate(s.bus, LEFT, 0, 0, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32);
-    // acc was 0; after SUB by 5: acc = -5 = 0xFB (when wrapped to byte).
-    // bit 1 of 0xFB = 1.
+
     REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
 }
 
 TEST_CASE("cumulus CU4: outmode picks correct bit of acc_register", "[cumulus]") {
+    // 10 ADDs in one step. ADD b=5: acc = 50 = 0b00110010.
+    // bit 1 of 50 = 1, bit 5 of 50 = 1.
     auto s = setup_applet(kAppletCumulus);
-    cumulus_set(s.hi, 0, 5, 0, 2);  // ADD, b=5, outmode[0]=bit0, outmode[1]=bit2
+    cumulus_set(s.hi, 0, 5, 1, 5);  // ADD, b=5, outmode[0]=bit1, outmode[1]=bit5
 
     clear_bus(s.bus);
     set_gate(s.bus, LEFT, 0, 0, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32);
 
-    // acc = 0 + 5 = 5 = 0b101. bit 0 = 1, bit 2 = 1.
     REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
     REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
 }
 
 TEST_CASE("cumulus CU5: serialise round-trip leaves gap bits zeroed", "[cumulus]") {
+    // Vendor OnDataReceive constrains outmode[0] and outmode[1] to 0..7. The pack
+    // helper writes a 4-bit field at [13,4), so outmode_right=11 exercises the
+    // high bit near the gap, but the vendor clamp reduces it to 7 on the
+    // round-trip readback.
     auto s = setup_applet(kAppletCumulus);
     cumulus_set(s.hi, 2, 7, 5, 11);
 
@@ -1751,7 +1760,7 @@ TEST_CASE("cumulus CU5: serialise round-trip leaves gap bits zeroed", "[cumulus]
     REQUIRE(b   == 7);
     REQUIRE(om0 == 5);
     REQUIRE(gap == 0);  // explicit gap-bit check
-    REQUIRE(om1 == 11);
+    REQUIRE(om1 == 7);  // 11 clamped to 7 by vendor constrain(..., 0, 7)
 }
 ```
 
@@ -1898,6 +1907,11 @@ The following mistakes were made during Phase 1 or Phase 2 and caught in review.
 - Adding a TEST_CASE without a tag. The `make test-applets ARGS='[<tag>]'` workflow depends on tags.
 - Packing a serialized field with the wrong width. Re-read the vendor `Pack(...)` call before writing the helper. A field declared as `uint8_t` may still be packed at 4 bits.
 - Skipping gap bits in `pack_<applet>` when the vendor layout has them (Cumulus bits 11..12). Explicitly write `0` into gap bits and assert them in the round-trip test.
+- Using `set_gate` (single-sample pulse) for vendor code that reads `Gate(ch)` (sustained, e.g. GateDelay, AttenuateOffset mix, GatedVCA). The shim's gate read uses the LAST frame of the buffer, so a single-frame pulse reads as low. Use `hold_gate` when you need `Gate(ch)` to return true; reserve `set_gate` for vendor code that reads `Clock(ch)` (rising-edge).
+- Assuming Clock(0) is the burst/op trigger. Burst uses Clock(1) (`btrig = Clock(1)`); Clock(0) is the tap-tempo capture. Always read the vendor `Controller()` to confirm which channel drives the event.
+- Assuming one Controller invocation per step. The shim runs Controller `numFrames/3 = 10` times per `step()`. For applets that mutate state every tick where a condition holds (Cumulus on Clock(0)=true), a single `set_gate` pulse triggers 10 ops, not 1. Multiply expected state changes by 10.
+- Assuming all vendor defaults are zero. Some applets (TLNeuron, ClkToGate, AttenuateOffset, GateDelay, ...) use in-class initializers that survive `Start()` because `Start()` only resets a subset of fields. Always read the `Start()` body line-by-line and compare to the in-class initializer list.
+- Authoring TEST_CASE numerical expectations from a high-level "what the applet means" mental model. Walk through the vendor `Controller()` and `OnDataReceive()` for the exact field constraints (e.g. `constrain(..., 0, 7)` clamps outmode on Cumulus; round-trip readbacks reflect the clamp).
 
 ### File touch list per new applet
 

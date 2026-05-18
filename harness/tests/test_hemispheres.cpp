@@ -1173,7 +1173,8 @@ TEST_CASE("tlneuron TL1: Start defaults match vendor in-class initializers", "[t
 
 TEST_CASE("tlneuron TL2: sum > threshold fires axon", "[tlneuron]") {
     // weights = (5, 5, 5), threshold = 4. With Gate(0) high and Gate(1) low and
-    // In(0) below 2.5V, sum = 5; 5 > 4; output high.
+    // In(0) below 3.0V (= HEMISPHERE_MAX_INPUT_CV / 2 boundary), sum = 5; 5 > 4;
+    // output high.
     auto s = setup_applet(kAppletTLNeuron);
     tlneuron_set(s.hi, 5, 5, 5, 4);
 

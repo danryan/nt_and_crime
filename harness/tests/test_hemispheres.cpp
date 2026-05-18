@@ -12,6 +12,7 @@ using hem_shim::kAppletAttenuateOffset;
 using hem_shim::kAppletBrancher;
 using hem_shim::kAppletBurst;
 using hem_shim::kAppletCalculate;
+using hem_shim::kAppletCompare;
 using hem_shim::kAppletLogic;
 using hem_shim::kAppletSlew;
 using Catch::Approx;
@@ -70,6 +71,10 @@ void burst_set(hem_shim::HemispheresInstance* hi,
                int number, int spacing, int div, int jitter, int accel) {
     get_applet(hi, LEFT)->OnDataReceive(
         pack_burst(number, spacing, div, jitter, accel));
+}
+
+void compare_set(hem_shim::HemispheresInstance* hi, int level) {
+    get_applet(hi, LEFT)->OnDataReceive(pack_compare(level));
 }
 
 }  // namespace
@@ -825,4 +830,45 @@ TEST_CASE("burst B3: serialise round-trip preserves all fields", "[burst]") {
     REQUIRE(div     == -3);
     REQUIRE(jitter  == 25);
     REQUIRE(accel   == 10);
+}
+
+TEST_CASE("compare CM1: Start defaults level=128", "[compare]") {
+    auto s = setup_applet(kAppletCompare);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((packed & 0xFF) == 128);
+}
+
+TEST_CASE("compare CM2: In(0) above threshold drives gate 0 high, gate 1 low", "[compare]") {
+    // Vendor: threshold = Proportion(level, HEM_COMPARE_MAX_VALUE, HEMISPHERE_MAX_CV).
+    // With level=128, MAX=255, HEMISPHERE_MAX_CV=9216, threshold ~= 4625 hem
+    // units (~3.01V). 4V on CV1 with CV2=0 puts In(0) above mod_cv.
+    auto s = setup_applet(kAppletCompare);
+    compare_set(s.hi, 128);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 4.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);
+}
+
+TEST_CASE("compare CM3: In(0) below threshold drives gate 0 low, gate 1 high", "[compare]") {
+    // 2V on CV1 with CV2=0 puts In(0) (~3072) below threshold (~4625).
+    auto s = setup_applet(kAppletCompare);
+    compare_set(s.hi, 128);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
+}
+
+TEST_CASE("compare CM4: serialise round-trip preserves level", "[compare]") {
+    auto s = setup_applet(kAppletCompare);
+    compare_set(s.hi, 200);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((packed & 0xFF) == 200);
 }

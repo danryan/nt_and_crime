@@ -126,4 +126,8 @@ uint64_t pack_atten_off(int offset_left, int offset_right,
     return data;
 }
 
+uint64_t pack_compare(int level) {
+    return (uint64_t)(level & 0xFF);
+}
+
 }  // namespace hem_test

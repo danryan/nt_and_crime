@@ -109,4 +109,8 @@ uint64_t pack_atten_off(int offset_left, int offset_right,
                          int level_left, int level_right,
                          bool mix);
 
+// Mirrors Compare::OnDataRequest packing: bits [0,8] = level in 0..HEM_COMPARE_MAX_VALUE.
+// HEM_COMPARE_MAX_VALUE is 255 in vendor Compare.h; default level is 128.
+uint64_t pack_compare(int level);
+
 }  // namespace hem_test

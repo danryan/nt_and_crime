@@ -416,3 +416,36 @@ TEST_CASE("brancher B8: OnEncoderMove clamps p to [0, 100]", "[brancher]") {
     for (int i = 0; i < 30; ++i) applet->OnEncoderMove(-5);
     REQUIRE((applet->OnDataRequest() & 0x7F) == 0);
 }
+
+TEST_CASE("brancher B4: p=50 yields ~50/50 routing over 1000 clocks", "[brancher]") {
+    // Statistical assertion. Seeded xorshift32 gives reproducible output; 1000
+    // rolls at p=50 should fall in [460, 540] for either output, well within
+    // statistical tolerance (~3 standard deviations).
+    auto s = setup_brancher_left();
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(50));
+    seed_hem_rng(0xDEADBEEF);
+
+    int count_0 = 0, count_1 = 0;
+    for (int trial = 0; trial < 1000; ++trial) {
+        // Sustained high gate produces exactly one Clock(0) rising edge per
+        // buffer transition (rising-edge detection requires prev_high=false at
+        // the start of the buffer).
+        clear_bus(s.bus);
+        hold_gate(s.bus, LEFT, 0, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        bool out0 = read_gate_at(s.bus, LEFT, 0, 0, 8);
+        bool out1 = read_gate_at(s.bus, LEFT, 1, 0, 8);
+        if (out0 && !out1) ++count_0;
+        if (out1 && !out0) ++count_1;
+
+        // Drop the gate so the next iteration sees a fresh rising edge.
+        clear_bus(s.bus);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+    }
+
+    REQUIRE(count_0 >= 460);
+    REQUIRE(count_0 <= 540);
+    REQUIRE(count_1 >= 460);
+    REQUIRE(count_1 <= 540);
+    REQUIRE(count_0 + count_1 >= 950);  // some rolls may land on neither output
+}

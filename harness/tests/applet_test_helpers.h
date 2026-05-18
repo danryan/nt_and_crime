@@ -68,6 +68,14 @@ inline hem_shim::HemispheresInstance* as_instance(_NT_algorithm* alg) {
 // (a multiple of 32).
 int step_n_frames(nt::LoadedPlugin* loaded, _NT_algorithm* alg, float* bus, int n_samples);
 
+// Issues exactly one step() call with the inner-tick budget overridden
+// to N. Gates and CV are written ONCE per step() prologue and held
+// across all N inner ticks (10x clocked-multiplier rule preserved).
+// Used by tick-precise tests that need state evolution independent of
+// the default numFrames/3 = 10-tick budget.
+void step_n_inner_ticks(nt::LoadedPlugin* loaded, _NT_algorithm* alg,
+                        float* bus, int N);
+
 // Vendor int unit conversions. ONE_OCTAVE = 1536 hem units per volt.
 int   volts_to_int(float v);
 float int_to_volts(int hem_units);

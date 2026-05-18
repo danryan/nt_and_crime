@@ -9,6 +9,12 @@
 // vendor applet headers via hemispheres_shim.h).
 extern uint32_t hem_rng_state;
 
+// Inner-tick override-global. Defined in shim/src/globals.cpp and
+// declared extern in shim/include/hemispheres_shim.h. Re-declared here
+// at file scope so the helper TU does not need to pull hemispheres_shim.h
+// (which transitively drags in vendor applet headers).
+namespace hem_shim { extern int inner_ticks_override; }
+
 namespace hem_test {
 
 int bus_index(HemSide side, int channel, HemAxis axis) {
@@ -67,6 +73,13 @@ int step_n_frames(nt::LoadedPlugin* loaded, _NT_algorithm* alg, float* bus, int 
         loaded->factory->step(alg, bus, 8);
     }
     return steps * framesPerStep;
+}
+
+void step_n_inner_ticks(nt::LoadedPlugin* loaded, _NT_algorithm* alg,
+                        float* bus, int N) {
+    ::hem_shim::inner_ticks_override = N;  // file-scope extern declared above
+    loaded->factory->step(alg, bus, 8);
+    // inner_ticks_override consumed-and-cleared inside step()
 }
 
 int volts_to_int(float v) {

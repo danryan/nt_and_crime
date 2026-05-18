@@ -35,6 +35,11 @@ const char* const capital_letters[] = { "A", "B", "C", "D", "E", "F", "G", "H" }
 
 HSClockManager clock_m;
 
+// Time-injection override-global. Consumed-and-cleared inside
+// hemispheres_shim::step(); set by harness helper
+// hem_test::step_n_inner_ticks. Zero means "use default numFrames/3".
+namespace hem_shim { int inner_ticks_override = 0; }
+
 uint32_t hem_rng_state = 0x12345678u;
 
 #include "HSIOFrame.h"

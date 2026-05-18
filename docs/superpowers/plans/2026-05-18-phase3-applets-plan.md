@@ -50,13 +50,17 @@ Files modified in the integration task (Task 16):
 
 Each implementer task follows the same procedure. The narrative below applies to every applet; per-applet details are listed in the worklist below.
 
+**Abort rule:** If at any step the spec entry appears wrong (bit layout mismatches vendor source, defaults differ from what `Start()` sets, behavior assumed in the entry is not what the vendor `Controller()` does), stop and surface the discrepancy to the parent agent. Do not patch the spec from inside the worktree. Spec corrections are a parent-agent decision so all 15 implementers stay in sync.
+
+**Commit-message slug convention:** strict snake_case derived from CamelCase by inserting underscores at every case boundary, no syllable drops. ClockDivider -> `clock_divider`, PolyDiv -> `poly_div`, ProbabilityDivider -> `probability_divider`, ShiftGate -> `shift_gate`, RunglBook -> `rungl_book`. The worklist's commit-message lines below follow this rule.
+
 - [ ] Step 1: Spawn isolated worktree via `superpowers:using-git-worktrees` (the parent agent dispatches this; the implementer arrives in the worktree). Branch name: `claude/phase3-<applet-slug>`.
 - [ ] Step 2: Read the spec entry for this applet at `docs/superpowers/specs/2026-05-18-phase3-applets-design.md`. Read the vendor header named in the entry, in full.
 - [ ] Step 3: If the spec entry says `OnDataRequest` is non-empty, add the `pack_<applet>` declaration in `harness/tests/applet_test_helpers.h` and the implementation in `harness/tests/applet_test_helpers.cpp`, mirroring the bit layout from the spec entry. Apply all field biases and gap-bit guards exactly as the spec entry says.
 - [ ] Step 4: Add TEST_CASEs in `harness/tests/test_hemispheres.cpp` covering at minimum: Start defaults, round-trip, and one case per major Controller branch as listed in the spec entry's "Test concerns" line. Phase 2 averaged 6 cases per applet; target a similar density.
-- [ ] Step 5: Run `make test-applets` from the worktree root. The build will fail because `applet_indices.h` does not yet declare the new enum value. **Hand-edit `applet_indices.h` locally in the worktree** to add `kAppletXxx` immediately before `kAppletCount`. **Do not edit `HemispheresFactory.h`** in the implementer branch; the integration task owns that file. The local `applet_indices.h` edit will collide with Task 16; the integrator resolves by accepting Task 16's reordered enum.
+- [ ] Step 5: Run `make test-applets` from the worktree root. The build will fail because `applet_indices.h` does not yet declare the new enum value. As a **local-only build workaround**, add `kAppletXxx` immediately before `kAppletCount` in `shim/include/applet_indices.h`. **Do not commit this edit.** Stash or revert it before Step 7. Task 16 owns the real edit. **Do not edit `shim/include/HemispheresFactory.h`** in the implementer branch.
 - [ ] Step 6: Run `make test-applets`. Expected: all new cases pass, no regressions in existing cases.
-- [ ] Step 7: Commit. Format: `feat(test-applets): <applet> <case-tag-list> <one-line behavioural summary>`. Example: `feat(test-applets): binary B1-B3 4-bit binary sum + count outputs`.
+- [ ] Step 7: Commit. Format: `feat(test-applets): <applet_slug> <case-tag-list> <one-line behavioural summary>`. Example: `feat(test-applets): binary BN1-BN3 4-bit binary sum + count outputs`. **Before running `git commit`, verify `git diff --cached` shows no changes to `shim/include/applet_indices.h` or `shim/include/HemispheresFactory.h`. If either file is staged, unstage it.**
 
 If the implementer's pack helper produces values that the vendor `OnDataReceive` clamps, the spec's round-trip case will read back the clamped values. That is correct behavior; mirror Cumulus CU5's commentary in the case.
 
@@ -110,7 +114,7 @@ Tasks listed alphabetically by applet name. All tasks are independent and run in
 - Category: A. 40-bit pack helper, four 4-bit weights + 8-bit loop_length + 16-bit seed.
 - Spec entry: [ProbabilityDivider](../specs/2026-05-18-phase3-applets-design.md#probabilitydivider).
 - Analogue: Brancher + Cumulus pack layout.
-- Commit: `feat(test-applets): prob_divider PD1-PD5 weighted clock skip + seeded round-trip`.
+- Commit: `feat(test-applets): probability_divider PD1-PD5 weighted clock skip + seeded round-trip`.
 
 ### Task 7: ResetClock
 
@@ -182,22 +186,23 @@ Tasks listed alphabetically by applet name. All tasks are independent and run in
 - Category: A. 21-bit pack helper, gap-bit guard at bit 9.
 - Spec entry: [Voltage](../specs/2026-05-18-phase3-applets-design.md#voltage).
 - Analogue: AttenuateOffset.
-- Commit: `feat(test-applets): voltage V1-V4 per-side CV + gate gate + gap bit guard`.
+- Commit: `feat(test-applets): voltage V1-V4 per-side CV + gate enable + gap bit guard`.
 
 ## Task 16: Integration
 
 Sequenced. Runs after all 15 implementer tasks have committed on their isolated branches.
 
 - [ ] Step 1: Create or check out the integration branch. Suggested: `dr/phase3-integration` or `claude/phase3-integration`.
-- [ ] Step 2: Cherry-pick or merge all 15 implementer commits in alphabetical order by applet name. Resolve append-region conflicts in `harness/tests/applet_test_helpers.{h,cpp}` and `harness/tests/test_hemispheres.cpp` by concatenating additive content. Resolve `shim/include/applet_indices.h` conflicts by accepting all 15 enum inserts and reordering alphabetically.
-- [ ] Step 3: Edit `shim/include/HemispheresFactory.h`. Insert in alphabetical position for each of the 15 applets:
+- [ ] Step 2: Cherry-pick all 15 implementer commits in alphabetical order by applet name onto the integration branch. Cherry-pick (not merge) keeps the integration branch linear and bisectable by applet. Resolve append-region conflicts in `harness/tests/applet_test_helpers.{h,cpp}` and `harness/tests/test_hemispheres.cpp` by concatenating additive content. There should be no conflicts on `shim/include/applet_indices.h` because implementer branches do not commit edits to it (see implementer Step 5 + Step 7 rules); the integrator writes the enum from scratch in Step 3.
+- [ ] Step 3: Edit `shim/include/applet_indices.h`. Insert all 15 new `kAppletXxx` enum values in alphabetical position before `kAppletCount`. This is the canonical edit; no implementer commit touches this file.
+- [ ] Step 4: Edit `shim/include/HemispheresFactory.h`. Insert in alphabetical position for each of the 15 applets:
   - `#include "<Applet>.h"` in the include block.
   - `"<short_name>"` in `applet_enum_strings()`' `names[]`. Match the existing 14 entries' short-name convention (max 10 chars, the same string the vendor `applet_name()` returns, abbreviated where needed).
   - `cmax(sizeof(<Applet>), ...)` entry in `kMaxAppletSize`. Same for `alignof(<Applet>)` in `kMaxAppletAlign`.
   - `&make_applet<<Applet>>` entry in `applet_factory()`' `table[]`.
-- [ ] Step 4: Confirm `kAppletCount` is consistent across `applet_indices.h` and `HemispheresFactory.h`'s table sizes.
-- [ ] Step 5: Run `make test-applets`. Expected: all 14 prior cases plus the new Phase 3 cases pass. Failures here mean integration ordering is wrong; do not push.
-- [ ] Step 6: Commit. Format: `feat(applets): register 15 phase 3 applets + harness tests`. Include the full applet list in the commit body.
+- [ ] Step 5: Confirm `kAppletCount` is consistent across `applet_indices.h` and `HemispheresFactory.h`'s table sizes.
+- [ ] Step 6: Run `make test-applets`. Expected: all 14 prior cases plus the new Phase 3 cases pass. Failures here mean integration ordering is wrong; do not push.
+- [ ] Step 7: Commit. Format: `feat(applets): register 15 phase 3 applets + harness tests`. Include the full applet list in the commit body.
 
 ## Task 17: Final verification
 
@@ -205,9 +210,12 @@ Sequenced after Task 16.
 
 - [ ] Step 1: Run `make test-applets`. Expected: full host suite passes, no failures.
 - [ ] Step 2: Run `make arm`. Expected: ARM cross-build for the disting NT artefact succeeds with zero warnings.
-- [ ] Step 3: Deploy the resulting plug-in to the disting NT hardware. Smoke-check at least 3 random Phase 3 applets selected in the Hemispheres pair:
+- [ ] Step 3: Deploy the resulting plug-in to the disting NT hardware. Smoke-check 3 Phase 3 applets covering the three most distinctive recipe variations:
+  - One empty-`OnDataRequest` applet (pick Binary or Switch). Confirms the no-pack-helper path.
+  - One gap-bit applet (pick ShiftGate or Voltage). Confirms preset round-trip with explicitly zeroed gap bits.
+  - One RNG-using applet (pick one of ClockSkip, ProbabilityDivider, RndWalk, RunglBook). Confirms the seeded-RNG path.
   - Verify the applet selector lists all 15 new applets by name.
-  - Select each smoke-check applet, exercise the front-panel UI (encoder, button, basic parameter changes), and verify outputs match expectations on an oscilloscope or via an audio probe.
+  - For each smoke-check applet, exercise the front-panel UI (encoder, button, basic parameter changes) and verify outputs match expectations on an oscilloscope or via an audio probe.
 - [ ] Step 4: If hardware smoke-check passes, push the integration branch and open a PR. PR description must include:
   - Summary: 15 category-A Hemisphere applets ported with host-side test coverage.
   - Test plan: `- [ ]` items naming each behaviour group exercised (sum + count detect, hysteresis, per-side divider, gap-bit round-trip, etc.). No generic items like "tests pass".

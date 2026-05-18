@@ -95,4 +95,20 @@ uint64_t pack_logic(int op_left, int op_right) {
          | ((uint64_t)(op_right & 0xFF) << 8);
 }
 
+namespace {
+constexpr int kAttenOffMaxLevel = 63;  // mirrors ATTENOFF_MAX_LEVEL in vendor AttenuateOffset.h
+}
+
+uint64_t pack_atten_off(int offset_left, int offset_right,
+                         int level_left, int level_right,
+                         bool mix) {
+    uint64_t data = 0;
+    data |= ((uint64_t)((offset_left  + 256) & 0x1FF));
+    data |= ((uint64_t)((offset_right + 256) & 0x1FF)) << 10;
+    data |= ((uint64_t)((level_left  + kAttenOffMaxLevel * 2) & 0xFF)) << 19;
+    data |= ((uint64_t)((level_right + kAttenOffMaxLevel * 2) & 0xFF)) << 27;
+    data |= ((uint64_t)(mix ? 1 : 0)) << 35;
+    return data;
+}
+
 }  // namespace hem_test

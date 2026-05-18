@@ -8,6 +8,7 @@
 #include <cstring>
 #include <cmath>
 
+using hem_shim::kAppletAttenuateOffset;
 using hem_shim::kAppletBrancher;
 using hem_shim::kAppletCalculate;
 using hem_shim::kAppletLogic;
@@ -49,6 +50,14 @@ void calculate_set_op(hem_shim::HemispheresInstance* hi, int op_left, int op_rig
 
 void logic_set_op(hem_shim::HemispheresInstance* hi, int op_left, int op_right) {
     get_applet(hi, LEFT)->OnDataReceive(pack_logic(op_left, op_right));
+}
+
+void atten_off_set(hem_shim::HemispheresInstance* hi,
+                   int offset_left, int offset_right,
+                   int level_left, int level_right,
+                   bool mix = false) {
+    get_applet(hi, LEFT)->OnDataReceive(
+        pack_atten_off(offset_left, offset_right, level_left, level_right, mix));
 }
 
 }  // namespace
@@ -556,4 +565,124 @@ TEST_CASE("logic L7: serialise round-trip preserves ops", "[logic]") {
     uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
     REQUIRE((packed & 0xFF)        == 5);
     REQUIRE(((packed >> 8) & 0xFF) == 3);
+}
+
+// AttenuateOffset notes (vendor AttenuateOffset.h):
+//   ATTENOFF_MAX_LEVEL = 63 (NOT 100; the original plan was authored against an
+//   assumed value of 100). All test cases below use the real vendor constants:
+//   unity gain = level 63, level bias in packed data = 126, level constraint
+//   range = [-126, +126]. Signal formula:
+//     out = clamp(Proportion(level, 63, In) + offset * 128, +/- HEMISPHERE_MAX_CV)
+//   where ATTENOFF_INCREMENTS = 128 hem units per semitone (ONE_OCTAVE / 12).
+TEST_CASE("atten_off A1: Start defaults level[0]=level[1]=63, offset=0", "[atten_off]") {
+    auto s = setup_applet(kAppletAttenuateOffset);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int off0 = (int)((packed)       & 0x1FF) - 256;
+    int off1 = (int)((packed >> 10) & 0x1FF) - 256;
+    int lev0 = (int)((packed >> 19) & 0xFF)  - 126;  // ATTENOFF_MAX_LEVEL*2 bias
+    int lev1 = (int)((packed >> 27) & 0xFF)  - 126;
+    bool mix = ((packed >> 35) & 0x1) != 0;
+    REQUIRE(off0 == 0);
+    REQUIRE(off1 == 0);
+    REQUIRE(lev0 == 63);
+    REQUIRE(lev1 == 63);
+    REQUIRE(mix == false);
+}
+
+TEST_CASE("atten_off A2: unity gain passes signal through", "[atten_off]") {
+    auto s = setup_applet(kAppletAttenuateOffset);
+    atten_off_set(s.hi, 0, 0, 63, 63, false);  // level=63 == 100%
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);
+    set_cv(s.bus, LEFT, 1, 3.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.05f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(3.0f).margin(0.05f));
+}
+
+TEST_CASE("atten_off A3: ~50% level halves signal", "[atten_off]") {
+    // Proportion(31, 63, In) = 31 * In / 63 ~= 0.492 * In. Use 4V input so the
+    // rounding error stays under the 0.1V margin.
+    auto s = setup_applet(kAppletAttenuateOffset);
+    atten_off_set(s.hi, 0, 0, 31, 31, false);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 4.0f, 8);
+    set_cv(s.bus, LEFT, 1, 4.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.1f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(2.0f).margin(0.1f));
+}
+
+TEST_CASE("atten_off A4: -100% level inverts signal", "[atten_off]") {
+    auto s = setup_applet(kAppletAttenuateOffset);
+    atten_off_set(s.hi, 0, 0, -63, -63, false);  // -100% gain
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(-2.0f).margin(0.05f));
+}
+
+TEST_CASE("atten_off A5: positive offset shifts signal up", "[atten_off]") {
+    // Offset is in semitones (ATTENOFF_INCREMENTS = ONE_OCTAVE / 12 = 128 hem units).
+    // offset=12 -> +1V shift.
+    auto s = setup_applet(kAppletAttenuateOffset);
+    atten_off_set(s.hi, 12, 0, 63, 63, false);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.05f));
+}
+
+TEST_CASE("atten_off A6: output clamps at HEMISPHERE_MAX_CV", "[atten_off]") {
+    auto s = setup_applet(kAppletAttenuateOffset);
+    // 100% gain, offset +12 semitones (=1V); input 6V; signal 7V before clamp; expected 6V.
+    atten_off_set(s.hi, 12, 0, 63, 63, false);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 6.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(6.0f).margin(0.05f));
+}
+
+TEST_CASE("atten_off A7: mix mode sums Out(0) into Out(1)", "[atten_off]") {
+    auto s = setup_applet(kAppletAttenuateOffset);
+    // Out(0) computes signal_0 = 100% * 1V + 0 = 1V. Out(1) computes signal_1 =
+    // 100% * 2V + 0 = 2V. With mix=true, Out(1) becomes signal_0 + signal_1 = 3V.
+    atten_off_set(s.hi, 0, 0, 63, 63, true);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    set_cv(s.bus, LEFT, 1, 2.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(1.0f).margin(0.05f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(3.0f).margin(0.05f));
+}
+
+TEST_CASE("atten_off A8: serialise round-trip preserves all fields", "[atten_off]") {
+    // Level values must stay inside [-126, +126] or OnDataReceive will clamp.
+    auto s = setup_applet(kAppletAttenuateOffset);
+    atten_off_set(s.hi, -12, 24, -50, 100, true);
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int off0 = (int)((packed)       & 0x1FF) - 256;
+    int off1 = (int)((packed >> 10) & 0x1FF) - 256;
+    int lev0 = (int)((packed >> 19) & 0xFF)  - 126;
+    int lev1 = (int)((packed >> 27) & 0xFF)  - 126;
+    bool mix = ((packed >> 35) & 0x1) != 0;
+
+    REQUIRE(off0 == -12);
+    REQUIRE(off1 == 24);
+    REQUIRE(lev0 == -50);
+    REQUIRE(lev1 == 100);
+    REQUIRE(mix == true);
 }

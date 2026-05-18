@@ -86,4 +86,16 @@ uint64_t pack_brancher(int p);
 // Ops: 0=AND, 1=OR, 2=XOR, 3=NAND, 4=NOR, 5=XNOR, 6=CV-controlled.
 uint64_t pack_logic(int op_left, int op_right);
 
+// Mirrors AttenuateOffset::OnDataRequest packing (36 bits):
+//   bits [0, 9)  = offset[0] + 256   (biased, semitones, range +/- HEMISPHERE_MAX_CV/ATTENOFF_INCREMENTS)
+//   bits [10,19) = offset[1] + 256   (bit 9 is an unused gap)
+//   bits [19,27) = level[0] + ATTENOFF_MAX_LEVEL*2  (biased, range +/- ATTENOFF_MAX_LEVEL*2)
+//   bits [27,35) = level[1] + ATTENOFF_MAX_LEVEL*2
+//   bit  35      = mix flag
+// ATTENOFF_MAX_LEVEL is 63 in vendor AttenuateOffset.h, so the level bias is 126
+// and the encoded level field is 8 bits.
+uint64_t pack_atten_off(int offset_left, int offset_right,
+                         int level_left, int level_right,
+                         bool mix);
+
 }  // namespace hem_test

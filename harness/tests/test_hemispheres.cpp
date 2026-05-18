@@ -22,6 +22,7 @@ using hem_shim::kAppletGateDelay;
 using hem_shim::kAppletGatedVCA;
 using hem_shim::kAppletLogic;
 using hem_shim::kAppletEnvFollow;
+using hem_shim::kAppletPolyDiv;
 using hem_shim::kAppletSlew;
 using hem_shim::kAppletTLNeuron;
 using Catch::Approx;
@@ -121,6 +122,11 @@ void env_follow_set(hem_shim::HemispheresInstance* hi,
                     int gain0, int gain1, int duck0, int duck1, int speed) {
     get_applet(hi, LEFT)->OnDataReceive(
         pack_env_follow(gain0, gain1, duck0, duck1, speed));
+void poly_div_set(hem_shim::HemispheresInstance* hi,
+                  int div_enabled, int div0_steps, int div1_steps,
+                  int div2_steps, int div3_steps) {
+    get_applet(hi, LEFT)->OnDataReceive(
+        pack_poly_div(div_enabled, div0_steps, div1_steps, div2_steps, div3_steps));
 }
 
 }  // namespace
@@ -1391,6 +1397,57 @@ TEST_CASE("clock_divider CD3: Clock(1) triggers Reset, clearing clock_count stat
     clock_divider_set(s.hi, 2, 2, 1, 1);  // div0=2, div1=2, pass-through multiplier stages
 
     // Drive Clock(0) once to advance clock_count inside divmult[0].
+TEST_CASE("poly_div PD1: Start defaults match in-class field initializers", "[poly_div]") {
+    // Vendor PolyDiv.h:51-53 in-class init: divider[4] = {{4,0},{3,0},{2,0},{1,0}}.
+    // Vendor PolyDiv.h:178 in-class init: div_enabled = 0b00100001 (= 0x21).
+    // Start() is empty, so placement-new of the applet leaves in-class values untouched.
+    // OnDataRequest serialises div_enabled at bits [0,8) and each
+    // divider[i].steps at bits [8 + i*6, 6) for i = 0..3.
+    auto s = setup_applet(kAppletPolyDiv);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int div_enabled = (int)(packed & 0xFF);
+    int steps0 = (int)((packed >>  8) & 0x3F);
+    int steps1 = (int)((packed >> 14) & 0x3F);
+    int steps2 = (int)((packed >> 20) & 0x3F);
+    int steps3 = (int)((packed >> 26) & 0x3F);
+    REQUIRE(div_enabled == 0x21);  // bits 0 and 5 set: divider[0]->Out A, divider[1]->Out B
+    REQUIRE(steps0 == 4);
+    REQUIRE(steps1 == 3);
+    REQUIRE(steps2 == 2);
+    REQUIRE(steps3 == 1);
+}
+
+TEST_CASE("poly_div PD2: four-channel serialise round-trip preserves all fields", "[poly_div]") {
+    // pack_poly_div covers all four divider[i].steps fields.
+    // div_enabled=0x0F enables divider[0..3] for Out A only; none for Out B.
+    // steps constrained to 0..MAX_DIV=63; values {2,3,4,5} are all in range.
+    auto s = setup_applet(kAppletPolyDiv);
+    poly_div_set(s.hi, 0x0F, 2, 3, 4, 5);
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int div_enabled = (int)(packed & 0xFF);
+    int steps0 = (int)((packed >>  8) & 0x3F);
+    int steps1 = (int)((packed >> 14) & 0x3F);
+    int steps2 = (int)((packed >> 20) & 0x3F);
+    int steps3 = (int)((packed >> 26) & 0x3F);
+    REQUIRE(div_enabled == 0x0F);
+    REQUIRE(steps0 == 2);
+    REQUIRE(steps1 == 3);
+    REQUIRE(steps2 == 4);
+    REQUIRE(steps3 == 5);
+}
+
+TEST_CASE("poly_div PD3: state-injection, Clock(0) fires Out(0) with divider[0] enabled", "[poly_div]") {
+    // Shim reality: one set_gate buffer sets clocked[0]=true for all 10 inner
+    // Controller ticks. With div_enabled=0x01 (only bit 0 set), only divider[0]
+    // contributes to Out A. divider[0].Poke() returns true on the first poke
+    // after Reset() (clock_count starts at 0, increments to 1, 1==1 -> true).
+    // With steps=4, pokes 1 and 5 of the 10 fire -> ClockOut(0) is called ->
+    // Out(0) reads high at frame 0. Out(1) stays low (div_enabled bit 4-7 = 0,
+    // no divider routes to Out B).
+    auto s = setup_applet(kAppletPolyDiv);
+    poly_div_set(s.hi, 0x01, 4, 0, 0, 0);
+
     clear_bus(s.bus);
     set_gate(s.bus, LEFT, 0, 0, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32);
@@ -1521,6 +1578,19 @@ TEST_CASE("clock_skip CS4: p=0 always skips gate on Clock(0)", "[clock_skip]") {
     seed_hem_rng(0xDEADBEEF);
 
     for (int trial = 0; trial < 10; ++trial) {
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);   // divider[0] fired
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);  // no divider routes to Out B
+}
+
+TEST_CASE("poly_div PD4: div_enabled=0 disables all channels, no output on Clock(0)", "[poly_div]") {
+    // With div_enabled=0 no divider[i] is enabled for any output channel.
+    // The Controller()'s inner loop calls Poke() and sets trig_q[] but the
+    // Enabled() check gates every TrigOut call, so neither Out(0) nor Out(1)
+    // fires regardless of how many clocks arrive.
+    auto s = setup_applet(kAppletPolyDiv);
+    poly_div_set(s.hi, 0x00, 2, 3, 4, 5);
+
+    for (int i = 0; i < 20; ++i) {
         clear_bus(s.bus);
         set_gate(s.bus, LEFT, 0, 0, 8);
         step_n_frames(s.loaded, s.alg, s.bus, 32);
@@ -1615,4 +1685,6 @@ TEST_CASE("env_follow EF4: duck mode inverts envelope on ch1", "[env_follow]") {
 
     // Output ch1 should have ducked to ~0V under strong positive input.
     REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(0.0f).margin(0.5f));
+        REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);
+    }
 }

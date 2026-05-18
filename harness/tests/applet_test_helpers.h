@@ -157,5 +157,15 @@ uint64_t pack_cumulus(int accoperator, int b_constant, int outmode_left, int out
 //   bits [11, 1) = duck[1]   (0 or 1)
 //   bits [12, 4) = speed - 1 (biased; caller passes natural speed 1..16)
 uint64_t pack_env_follow(int gain0, int gain1, int duck0, int duck1, int speed);
+// Mirrors PolyDiv::OnDataRequest (32 bits):
+//   bits [0, 8)  = div_enabled  (8-bit bitmask; bits 0-3 = dividers for Out A,
+//                                bits 4-7 = dividers for Out B)
+//   bits [8, 6)  = divider[0].steps  (6-bit, 0..63)
+//   bits [14,6)  = divider[1].steps
+//   bits [20,6)  = divider[2].steps
+//   bits [26,6)  = divider[3].steps
+// Vendor ForAllChannels iterates i=0..3; all four step fields must be provided.
+uint64_t pack_poly_div(int div_enabled, int div0_steps, int div1_steps,
+                       int div2_steps, int div3_steps);
 
 }  // namespace hem_test

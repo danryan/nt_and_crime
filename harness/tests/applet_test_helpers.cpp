@@ -193,6 +193,14 @@ uint64_t pack_env_follow(int gain0, int gain1, int duck0, int duck1, int speed) 
     data |= ((uint64_t)(duck0        & 0x01)) << 10;
     data |= ((uint64_t)(duck1        & 0x01)) << 11;
     data |= ((uint64_t)((speed - 1)  & 0x0F)) << 12;
+uint64_t pack_poly_div(int div_enabled, int div0_steps, int div1_steps,
+                       int div2_steps, int div3_steps) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(div_enabled & 0xFF));
+    data |= ((uint64_t)(div0_steps  & 0x3F)) <<  8;
+    data |= ((uint64_t)(div1_steps  & 0x3F)) << 14;
+    data |= ((uint64_t)(div2_steps  & 0x3F)) << 20;
+    data |= ((uint64_t)(div3_steps  & 0x3F)) << 26;
     return data;
 }
 

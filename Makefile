@@ -135,6 +135,20 @@ build/host/test_hemispheres: harness/tests/test_hemispheres.cpp harness/tests/ap
 test-applets: build/host/test_hemispheres
 	./build/host/test_hemispheres
 
+# Phase 5 dep tests. Each per-dep Catch2 binary builds against the same
+# harness shim as test_hemispheres but is standalone so a single dep test
+# can run in isolation. test-deps runs all 6.
+DEP_TESTS := test_dep_vec_osc test_dep_lorenz test_dep_tideslite \
+             test_dep_clock_mgr test_dep_quant test_dep_cv_map
+
+build/host/test_dep_%: harness/tests/test_dep_%.cpp build/host/Hemispheres.host.o $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-deps
+test-deps: $(addprefix build/host/, $(DEP_TESTS))
+	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
+
 arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Hemispheres.o
 
 DEVICE ?= /Volumes/NT

@@ -2780,3 +2780,99 @@ TEST_CASE("helper H2: step_n_inner_ticks tick-advancement invariant under load (
     CHECK(HS::frame.clocked[0] == true);
 }
 // === END helper ===
+
+// === BEGIN vector_lfo ===
+// Phase 6 applet test region (unblocked by dep-vec-osc).
+// === END vector_lfo ===
+
+// === BEGIN vector_eg ===
+// Phase 6 applet test region (unblocked by dep-vec-osc).
+// === END vector_eg ===
+
+// === BEGIN vector_mod ===
+// Phase 6 applet test region (unblocked by dep-vec-osc).
+// === END vector_mod ===
+
+// === BEGIN vector_morph ===
+// Phase 6 applet test region (unblocked by dep-vec-osc).
+// === END vector_morph ===
+
+// === BEGIN relabi ===
+// Phase 6 applet test region (unblocked by dep-vec-osc + Relabi bundle).
+// === END relabi ===
+
+// === BEGIN lower_renz ===
+// Phase 6 applet test region (unblocked by dep-lorenz).
+// === END lower_renz ===
+
+// === BEGIN ebb_and_lfo ===
+// Phase 6 applet test region (unblocked by dep-tideslite).
+// === END ebb_and_lfo ===
+
+// === BEGIN wtvco ===
+// Phase 6 applet test region (unblocked by dep-tideslite; audit pending).
+// === END wtvco ===
+
+// === BEGIN metronome ===
+// Phase 6 applet test region (unblocked by dep-clock-mgr).
+// === END metronome ===
+
+// === BEGIN pigeons ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END pigeons ===
+
+// === BEGIN strum ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END strum ===
+
+// === BEGIN shredder ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END shredder ===
+
+// === BEGIN carpeggio ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END carpeggio ===
+
+// === BEGIN squanch ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END squanch ===
+
+// === BEGIN chordinator ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END chordinator ===
+
+// === BEGIN dual_quant ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END dual_quant ===
+
+// === BEGIN enigma_jr ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END enigma_jr ===
+
+// === BEGIN offset_quant ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END offset_quant ===
+
+// === BEGIN multi_scale ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END multi_scale ===
+
+// === BEGIN scale_duet ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END scale_duet ===
+
+// === BEGIN duo_tet ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END duo_tet ===
+
+// === BEGIN ens_osc_key ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END ens_osc_key ===
+
+// === BEGIN calibr8 ===
+// Phase 6 applet test region (unblocked by dep-quant).
+// === END calibr8 ===
+
+// === BEGIN combin8 ===
+// Phase 6 applet test region (unblocked by dep-cv-map).
+// === END combin8 ===

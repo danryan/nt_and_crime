@@ -53,6 +53,11 @@ public:
     int  ViewIn(int ch) const { return HS::frame.inputs[ch + channel_offset()]; }
     int  ViewOut(int ch) const { return HS::frame.ViewOut(ch + channel_offset()); }
     bool Clock(int ch, bool = false) { return HS::frame.clocked[ch + channel_offset()]; }
+    // Mirrors vendor HemisphereApplet.h:147. Reports whether In(ch) changed by
+    // more than HEMISPHERE_CHANGE_THRESHOLD (= 32 hem units, ~1/8 semitone)
+    // since the last step. The shim populates HS::frame.changed_cv in step()
+    // by comparing each input against the previous step's value.
+    bool Changed(int ch) { return HS::frame.changed_cv[ch + channel_offset()]; }
     bool Gate(int ch)      { return trigmap[ch + channel_offset()].Gate(); }
     int  DetentedIn(int ch) {
         int v = In(ch);

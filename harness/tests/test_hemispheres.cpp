@@ -12,6 +12,7 @@ using hem_shim::kAppletAttenuateOffset;
 using hem_shim::kAppletBrancher;
 using hem_shim::kAppletCalculate;
 using hem_shim::kAppletLogic;
+using hem_shim::kAppletSlew;
 using Catch::Approx;
 using namespace hem_test;
 
@@ -58,6 +59,10 @@ void atten_off_set(hem_shim::HemispheresInstance* hi,
                    bool mix = false) {
     get_applet(hi, LEFT)->OnDataReceive(
         pack_atten_off(offset_left, offset_right, level_left, level_right, mix));
+}
+
+void slew_set(hem_shim::HemispheresInstance* hi, int rise, int fall) {
+    get_applet(hi, LEFT)->OnDataReceive(pack_slew(rise, fall));
 }
 
 }  // namespace
@@ -685,4 +690,75 @@ TEST_CASE("atten_off A8: serialise round-trip preserves all fields", "[atten_off
     REQUIRE(lev0 == -50);
     REQUIRE(lev1 == 100);
     REQUIRE(mix == true);
+}
+
+TEST_CASE("slew SL1: Start defaults rise=50, fall=50", "[slew]") {
+    auto s = setup_applet(kAppletSlew);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((packed & 0xFF)        == 50);
+    REQUIRE(((packed >> 8) & 0xFF) == 50);
+}
+
+TEST_CASE("slew SL2: zero rise/fall is instant follower", "[slew]") {
+    auto s = setup_applet(kAppletSlew);
+    slew_set(s.hi, 0, 0);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(3.0f).margin(0.5f));
+}
+
+TEST_CASE("slew SL3: gate defeats slew", "[slew]") {
+    // Vendor Slew.h: if (Gate(ch)) signal[ch] = input. Instant jump.
+    // HEM_SLEW_MAX_VALUE is 200 in vendor, so max-slew uses 200.
+    auto s = setup_applet(kAppletSlew);
+    slew_set(s.hi, 200, 200);  // max slew (slow)
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);
+    hold_gate(s.bus, LEFT, 0, 8);   // defeat
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(3.0f).margin(0.5f));
+}
+
+TEST_CASE("slew SL4: high rise slows attack to target", "[slew]") {
+    // HEM_SLEW_MAX_VALUE is 200 in vendor, so max-slew uses 200.
+    auto s = setup_applet(kAppletSlew);
+    slew_set(s.hi, 200, 200);
+
+    // Single step at the target: output should be far below the input
+    // because slew is at maximum.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 5.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) < 4.5f);
+
+    // After enough steps, output approaches the target.
+    // Vendor formula at HEM_SLEW_MAX_VALUE=200 with segment=200 yields
+    // ~2360 simfloat per tick (constant) toward a 5V target of 125.8M
+    // simfloat. The shim runs ~10 Controller ticks per step()
+    // (ticks_this_step = numFrames / 3 with numFrames = 32). To converge
+    // within 0.5V of 5V (i.e. >= 4.5V = ~113M simfloat) we need
+    // 113M / (10 * 2360) ~= 4800 step()s. 5000 gives a small safety
+    // margin. The plan's hint to bump 200 to 500 was insufficient since
+    // vendor HEM_SLEW_MAX_VALUE is 200 (not the plan-assumed 100), making
+    // true max-slew an order of magnitude slower than the plan modeled.
+    for (int i = 0; i < 5000; ++i) {
+        clear_bus(s.bus);
+        set_cv(s.bus, LEFT, 0, 5.0f, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+    }
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(5.0f).margin(0.5f));
+}
+
+TEST_CASE("slew SL5: serialise round-trip preserves rise/fall", "[slew]") {
+    auto s = setup_applet(kAppletSlew);
+    slew_set(s.hi, 17, 83);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((packed & 0xFF)        == 17);
+    REQUIRE(((packed >> 8) & 0xFF) == 83);
 }

@@ -86,6 +86,9 @@ uint64_t pack_brancher(int p);
 // Ops: 0=AND, 1=OR, 2=XOR, 3=NAND, 4=NOR, 5=XNOR, 6=CV-controlled.
 uint64_t pack_logic(int op_left, int op_right);
 
+// Mirrors Slew::OnDataRequest: bits [0,8] = rise (0..HEM_SLEW_MAX_VALUE), [8,8] = fall.
+uint64_t pack_slew(int rise, int fall);
+
 // Mirrors AttenuateOffset::OnDataRequest packing (36 bits):
 //   bits [0, 9)  = offset[0] + 256   (biased, semitones, range +/- HEMISPHERE_MAX_CV/ATTENOFF_INCREMENTS)
 //   bits [10,19) = offset[1] + 256   (bit 9 is an unused gap)

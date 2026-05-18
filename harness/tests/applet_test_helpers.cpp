@@ -95,6 +95,11 @@ uint64_t pack_logic(int op_left, int op_right) {
          | ((uint64_t)(op_right & 0xFF) << 8);
 }
 
+uint64_t pack_slew(int rise, int fall) {
+    return ((uint64_t)(rise & 0xFF))
+         | ((uint64_t)(fall & 0xFF) << 8);
+}
+
 namespace {
 constexpr int kAttenOffMaxLevel = 63;  // mirrors ATTENOFF_MAX_LEVEL in vendor AttenuateOffset.h
 }

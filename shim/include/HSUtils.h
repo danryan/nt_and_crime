@@ -2,7 +2,15 @@
 #include <cstdint>
 #include <cstddef>
 #include "OC_gpio.h"
+
+// Vendor braids_quantizer.h (pulled in via quant/OC_scales.h) contains a
+// tautological NULL check on a stack-allocated array. The compiler warning is
+// correct but the vendor source is upstream-frozen. Suppress at the include
+// site so make arm stays warning-clean.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waddress"
 #include "quant/OC_scales.h"
+#pragma GCC diagnostic pop
 
 #define ONE_OCTAVE (12 << 7)                                    // 1536 hem units per V
 #define HEMISPHERE_MAX_INPUT_CV (6 * ONE_OCTAVE)                // 9216 (T4.1)

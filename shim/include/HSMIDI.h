@@ -237,33 +237,10 @@ using SysExData = _SysExData;
 using UnpackedData = _SysExData;
 using PackedData = _SysExData;
 
-// MIDIQuantizer is shared with dep-quant. Declared here so HSClockManager.h
-// compiles; dep-quant owns the canonical definition in quant/MIDIQuantizer.h.
-// This definition is included verbatim from vendor HSMIDI.h:385-411.
-class MIDIQuantizer {
-public:
-    static uint8_t NoteNumber(int cv, int transpose = 0,
-                              uint8_t bias = OC::DAC::kOctaveZero) {
-        if (cv > 0) cv += 32;
-        if (cv < 0) cv -= 32;
-        int octave = cv / (12 << 7);
-        int semitone = (cv % (12 << 7)) / 128;
-        int midi_note_number = (octave * 12) + semitone + transpose + (12 * bias);
-        if (midi_note_number > 127) midi_note_number = 127;
-        if (midi_note_number < 0) midi_note_number = 0;
-        return static_cast<uint8_t>(midi_note_number);
-    }
-
-    static int CV(uint8_t midi_note_number, int transpose = 0,
-                  uint8_t bias = OC::DAC::kOctaveZero) {
-        int octave = midi_note_number / 12;
-        int semitone = midi_note_number % 12;
-        int cv = (octave * (12 << 7))
-          + (semitone * 128)
-          + (transpose * 128)
-          - (bias * (12 << 7));
-        return cv;
-    }
-};
+// MIDIQuantizer canonical definition lives in quant/MIDIQuantizer.h
+// (dep-quant owns it). Layer 2 integration deduplicates by including
+// the canonical definition here so HSClockManager.h continues to compile
+// against the single class without ODR conflict.
+#include "quant/MIDIQuantizer.h"
 
 #endif /* HSMIDI_H */

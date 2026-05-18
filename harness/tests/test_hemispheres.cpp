@@ -15,6 +15,7 @@ using hem_shim::kAppletButton;
 using hem_shim::kAppletCalculate;
 using hem_shim::kAppletClkToGate;
 using hem_shim::kAppletCompare;
+using hem_shim::kAppletCumulus;
 using hem_shim::kAppletGateDelay;
 using hem_shim::kAppletGatedVCA;
 using hem_shim::kAppletLogic;
@@ -95,6 +96,13 @@ void gate_delay_set(hem_shim::HemispheresInstance* hi, int time_left, int time_r
 
 void tlneuron_set(hem_shim::HemispheresInstance* hi, int w0, int w1, int w2, int threshold) {
     get_applet(hi, LEFT)->OnDataReceive(pack_tlneuron(w0, w1, w2, threshold));
+}
+
+void cumulus_set(hem_shim::HemispheresInstance* hi,
+                 int accoperator, int b_constant,
+                 int outmode_left, int outmode_right) {
+    get_applet(hi, LEFT)->OnDataReceive(
+        pack_cumulus(accoperator, b_constant, outmode_left, outmode_right));
 }
 
 }  // namespace
@@ -1241,4 +1249,82 @@ TEST_CASE("tlneuron TL6: serialise round-trip preserves weights and threshold", 
     REQUIRE(w1 == 8);
     REQUIRE(w2 == -3);
     REQUIRE(th == 15);
+}
+
+TEST_CASE("cumulus CU1: Start defaults accoperator=ADD=0, b_constant=0", "[cumulus]") {
+    auto s = setup_applet(kAppletCumulus);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int op  = (int)((packed) & 0x07);
+    int b   = (int)((packed >> 3) & 0x0F);
+    REQUIRE(op == 0);  // ADD
+    REQUIRE(b  == 0);
+}
+
+TEST_CASE("cumulus CU2: ADD op increases acc_register by b_constant on Clock(0)", "[cumulus]") {
+    // Shim reality: clocked[ch] is set once per step from the rising-edge scan
+    // and remains true for all ticks_this_step (= numFrames/3 = 10) inner
+    // Controller calls. So one set_gate pulse triggers ADD ten times.
+    // ADD with b=1, 10 ticks: acc = 0 + 10*1 = 10 = 0b00001010.
+    //   bit 1 of 10 = 1 -> Out(0) high (outmode[0]=bit1).
+    //   bit 0 of 10 = 0 -> Out(1) low  (outmode[1]=bit0).
+    auto s = setup_applet(kAppletCumulus);
+    cumulus_set(s.hi, 0, 1, 1, 0);  // ADD, b=1, outmode[0]=bit1, outmode[1]=bit0
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);  // Clock(0)
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);   // acc bit 1 = 1
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);  // acc bit 0 = 0
+}
+
+TEST_CASE("cumulus CU3: SUB op decreases acc_register", "[cumulus]") {
+    // Shim reality: 10 SUBs in one step. acc starts at 0.
+    // acc = 0 - 10*5 = -50 wrapped to uint8_t = 206 = 0xCE = 0b11001110.
+    // bit 1 of 0xCE = 1 -> Out(0) high (outmode[0]=bit1).
+    auto s = setup_applet(kAppletCumulus);
+    cumulus_set(s.hi, 1, 5, 1, 1);  // SUB, b=5, outmode[0]=bit1, outmode[1]=bit1
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+}
+
+TEST_CASE("cumulus CU4: outmode picks correct bit of acc_register", "[cumulus]") {
+    // Shim reality: 10 ADDs in one step. ADD b=5: acc = 50 = 0b00110010.
+    // bit 1 of 50 = 1, bit 5 of 50 = 1. Pick those for outmodes.
+    auto s = setup_applet(kAppletCumulus);
+    cumulus_set(s.hi, 0, 5, 1, 5);  // ADD, b=5, outmode[0]=bit1, outmode[1]=bit5
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
+}
+
+TEST_CASE("cumulus CU5: serialise round-trip leaves gap bits zeroed", "[cumulus]") {
+    // Vendor OnDataReceive constrains outmode[0] and outmode[1] to 0..7. The
+    // pack helper writes a 4-bit field at [13,4), so a value of 11 (binary
+    // 1011) exercises the high bit of outmode[1] while bits 11..12 must stay
+    // zero. After round-trip the vendor clamp reduces 11 to 7, so the post-
+    // round-trip outmode[1] reads as 7. The gap-bit assertion is unaffected.
+    auto s = setup_applet(kAppletCumulus);
+    cumulus_set(s.hi, 2, 7, 5, 11);
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int op  = (int)((packed) & 0x07);
+    int b   = (int)((packed >> 3) & 0x0F);
+    int om0 = (int)((packed >> 7) & 0x0F);
+    int gap = (int)((packed >> 11) & 0x03);
+    int om1 = (int)((packed >> 13) & 0x0F);
+
+    REQUIRE(op  == 2);
+    REQUIRE(b   == 7);
+    REQUIRE(om0 == 5);
+    REQUIRE(gap == 0);  // explicit gap-bit check
+    REQUIRE(om1 == 7);  // 11 clamped to 7 by vendor constrain(..., 0, 7)
 }

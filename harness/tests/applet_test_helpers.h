@@ -129,4 +129,14 @@ uint64_t pack_gate_delay(int time_left, int time_right);
 // offsets 0/5/10; threshold (6 bits, +27 bias) at offset 15.
 uint64_t pack_tlneuron(int w0, int w1, int w2, int threshold);
 
+// Mirrors Cumulus::OnDataRequest packing (17 bits used):
+//   bits [0, 3)  = accoperator (ADD=0, SUB=1, MULADD1=2, XOR_ROTL=3, SUB_ROTR=4)
+//   bits [3, 4)  = b_constant  (0..ACC_MAX_B=15)
+//   bits [7, 4)  = outmode[0]  (0..7; vendor constrains to 0..7 on receive)
+//   bits [11, 2) = UNUSED gap (must be 0 on pack)
+//   bits [13, 4) = outmode[1]  (0..7; vendor constrains to 0..7 on receive)
+// IMPORTANT: bits 11..12 are unused in vendor packing; pack_cumulus explicitly
+// zeros them to avoid stale state leaking through preset round-trip.
+uint64_t pack_cumulus(int accoperator, int b_constant, int outmode_left, int outmode_right);
+
 }  // namespace hem_test

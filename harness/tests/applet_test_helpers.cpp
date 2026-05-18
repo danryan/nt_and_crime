@@ -160,5 +160,15 @@ uint64_t pack_tlneuron(int w0, int w1, int w2, int threshold) {
     return data;
 }
 
+uint64_t pack_cumulus(int accoperator, int b_constant, int outmode_left, int outmode_right) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(accoperator   & 0x07));
+    data |= ((uint64_t)(b_constant    & 0x0F)) << 3;
+    data |= ((uint64_t)(outmode_left  & 0x0F)) << 7;
+    // bits 11..12 left as 0 (vendor gap)
+    data |= ((uint64_t)(outmode_right & 0x0F)) << 13;
+    return data;
+}
+
 
 }  // namespace hem_test

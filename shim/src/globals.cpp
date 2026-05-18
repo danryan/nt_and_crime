@@ -54,3 +54,13 @@ void HS::IOFrame::ClockOut(DAC_CHANNEL ch, int pulselength) {
 #include "CVInputMap.h"
 CVInputMap cvmap[4] = {CVInputMap(0), CVInputMap(1), CVInputMap(2), CVInputMap(3)};
 DigitalInputMap trigmap[4] = {DigitalInputMap(0), DigitalInputMap(1), DigitalInputMap(2), DigitalInputMap(3)};
+
+// Vendor SegmentDisplay::digit is declared `static constexpr uint8_t digit[10]`
+// inside the class body but never defined out-of-class. Under C++11/14 (our
+// arm build is -std=c++11) the array is odr-used by SegmentDisplay::Print()
+// at SegmentDisplay.h:130 and requires a definition. NT firmware reports the
+// missing symbol (_ZN14SegmentDisplay5digitE) at on-device link time even
+// though `make arm` succeeds at .o build time. Provide the definition here.
+#include "hem_graphics.h"
+#include "../../vendor/O_C-Phazerville/software/src/SegmentDisplay.h"
+constexpr uint8_t SegmentDisplay::digit[10];

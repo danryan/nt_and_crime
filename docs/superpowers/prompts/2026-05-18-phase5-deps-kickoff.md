@@ -2,13 +2,13 @@
 
 Phase 4 shipped 7 Hemisphere applet ports on `main` at squash commit `c68d6bc`. The original Phase 5 kickoff at `docs/superpowers/prompts/2026-05-18-phase5-kickoff.md` was superseded by this prompt after a preflight audit found the cat-C applet inventory at the current shim surface is exhausted. Only 4 cat-C applets (ResetClock, Shuffle, Xfader, Scope) fit without pulling deferred vendor-class dependencies, below the abort budget's 5-applet floor.
 
-Two vendor subsystems gate roughly two-thirds of the remaining unported applet inventory: the VectorOscillator stack (Vector* family + Relabi + drum synths) and the Quantizer subsystem (every quantizer-touching applet, ~14 of the unported headers). Five smaller deps each gate 1-2 applets. The pivot ships all seven deps in parallel as Phase 5, then Phase 6 completes the applet inventory in one fan-out.
+Two vendor subsystems gate roughly two-thirds of the remaining unported applet inventory: the VectorOscillator stack (Vector* family + Relabi + drum synths) and the Quantizer subsystem (every quantizer-touching applet, ~14 of the unported headers). Four smaller deps each gate 1-2 applets. The pivot ships six dep ports (after bundling VectorOscillator with RelabiManager into a single implementer) as Phase 5, with a possible Quantizer split decided in preflight from LoC count. Phase 6 then completes the applet inventory in one fan-out.
 
 This is a vendor-shim port phase, not an applet port phase. No applet ports land in Phase 5 except the existing 31 which must not regress.
 
 ## Phase 5 scope
 
-Ship seven vendor-dependency ports plus the time-injection harness helper plus shared Layer 0 macro infrastructure. Total target: 7 dep ports + 1 helper + macro shim. Each dep ports its vendor source files verbatim into a new shim subdirectory (or alongside existing shim headers) with a minimal wrapper plus an isolated unit test.
+Ship six dep ports (after bundling VectorOscillator + RelabiManager) plus the time-injection harness helper plus shared Layer 0 macro infrastructure. The Quantizer dep may split into two implementer tasks per the preflight LoC threshold, bringing the Layer 1+1.5 implementer count to 6 or 7. Each dep ports its vendor source files verbatim into a new shim subdirectory (or alongside existing shim headers) with a minimal wrapper plus an isolated unit test.
 
 The bounded scope is deliberate. Phase 4 inlined Layer 1+2 as a parent-agent workflow. Phase 5 returns to the parallel implementer pattern because dep ports are genuinely independent (different vendor paths, different shim files, different math surfaces) and the wallclock target benefits from real parallelism.
 
@@ -16,7 +16,7 @@ The bounded scope is deliberate. Phase 4 inlined Layer 1+2 as a parent-agent wor
 
 These two rules are repeated because the Phase 3 attempt 1 retrospective traces the entire failure to violating them:
 
-1. PARALLELIZE INDEPENDENT WORK. Default to parallel. Each of the seven deps is genuinely independent. The plan must explicitly declare which tasks are independent and dispatch them in a single parallel batch (multiple `Agent` tool calls in one message). End-to-end wallclock target is roughly the time of the slowest single dep plus integration.
+1. PARALLELIZE INDEPENDENT WORK. Default to parallel. The 5 Layer 1 deps + Layer 1.5 quantizer (mono or split) are genuinely independent at the file-surface level. The plan must explicitly declare which tasks are independent and dispatch them in a single parallel batch (multiple `Agent` tool calls in one message). End-to-end wallclock target is roughly the time of the slowest single dep plus Layer 0a+0b prep plus integration. Layer 0b (clock_m step() hook) is sequenced after Layer 0a (helper) because both touch the inner-tick loop.
 
 2. EVERY IMPLEMENTER WORKTREE BRANCHES FROM `dr/phase5-deps-plan`, NOT FROM `main`. The parent agent must specify the base branch explicitly: `git worktree add <path> -b <implementer-branch> dr/phase5-deps-plan`. Never rely on the default.
 
@@ -30,16 +30,18 @@ These two rules are repeated because the Phase 3 attempt 1 retrospective traces 
 
 The agent runs through the following phases without pausing for user review except at the preflight checkpoint:
 
-1. Audit + verification (read primary references, verify rule prerequisites, audit each dep's vendor file surface, design Layer 0 macro shim).
+1. Audit + verification (read primary references, verify rule prerequisites, audit each dep's vendor file surface, design Layer 0 macro shim, complete Layer 0 shared-surface audit, count Quantizer LoC for split decision).
 2. Preflight checkpoint (post a one-paragraph preflight report, proceed unless an abort condition fired during audit).
 3. Phase 5 brainstorm.
 4. Phase 5 spec.
 5. Phase 5 plan.
-6. Layer 0: shared macro shim + Arduino.h additions + time-injection helper + helper unit test.
-7. Layer 1: dep implementer subagents in parallel.
-8. Layer 2: integration on feature branch.
-9. Layer 3: final verification (full regression: every existing applet test still passes, `make arm` clean, hardware smoke check on 3 existing applets).
-10. PR open with Load-bearing decisions section.
+6. Layer 0a (parent, sequential): util_macros.h, Arduino.h extensions, time-injection helper + helper unit test (both invariants), section markers in `test_hemispheres.cpp`, per-dep test skeletons, pre-commit hook update, `HemisphereApplet` base-class edits if scoped to parent per preflight decision.
+7. Layer 0b (parent, sequential, depends on Layer 0a): ClockManager step() prologue hook in `hemispheres_shim.h`. The inner-tick loop already advances `OC::CORE::ticks`; Layer 0b adds `clock_m.advance_one_tick()` (or equivalent) alongside, preserving the time-injection helper's override semantics. Sequenced after Layer 0a because both touch the same loop.
+8. Layer 1 (parallel implementer subagents): 5 independent deps dispatched in a single message — dep-vec-osc (bundled with relabi-mgr), dep-lorenz, dep-tideslite, dep-clock-mgr-impl (vendor source port; the step() integration is already in Layer 0b), dep-cv-map.
+9. Layer 1.5 (parallel implementer subagent(s), depends on Layer 0a base-class edits if any): dep-quant. Monolithic single implementer if preflight LoC <1500. Split into dep-quant-braids + dep-quant-hs if 1500-2250, dispatched in parallel with each other. Can run concurrently with Layer 1 if the brainstorm confirms no shared file outside the quant area; otherwise sequenced after Layer 1.
+10. Layer 2: integration on feature branch.
+11. Layer 3: final verification (full regression: every existing applet test still passes, `make arm` clean, hardware smoke check on 3 existing applets).
+12. PR open with Load-bearing decisions section.
 
 ## Branch context
 
@@ -64,6 +66,8 @@ Phase 4 plan's pre-commit hook is the template. Update branch-name patterns to a
 
 Reject commits on `main`, on any branch not derived from `dr/phase5-deps-plan`, and any `phase5-dep/*` commit that stages a file outside the dep's allowed surface. The allowed surface is per-dep (each implementer prompt names its files); the hook enforces a coarse rule: a `phase5-dep/<slug>` branch may only touch `shim/include/<slug-area>/`, `shim/src/<slug-area>/`, and `harness/tests/test_<slug>.cpp`.
 
+Hard-reject rule on `phase5-dep/*` branches (operational enforcement of the "no applet ports in Phase 5" invariant): reject any commit that stages `shim/include/applet_indices.h`, `shim/include/HemispheresFactory.h`, or `shim/include/PhzIcons.h`. These three files are owned by the integration step in Layer 2 on the feature branch; dep implementers must never touch them. The hook makes this physical, not just instructional.
+
 ## Required skills + rules
 
 - `superpowers:using-git-worktrees`. Step zero.
@@ -73,35 +77,26 @@ Reject commits on `main`, on any branch not derived from `dr/phase5-deps-plan`, 
 
 Load + honor `~/.claude/rules/parallel-execution.md`. Inline the worktree-dispatch checklist into the plan so it is auditable without the personal rules file.
 
-## The seven deps
+## The deps (6 implementer tasks after bundling, possibly 7 after quant split)
 
-Each dep is one Layer 1 implementer subagent. Vendor source paths are absolute under `vendor/O_C-Phazerville/software/src/`. Shim destinations are illustrative; the brainstorm + spec finalize them.
+Each dep is one Layer 1 or Layer 1.5 implementer subagent. Vendor source paths are absolute under `vendor/O_C-Phazerville/software/src/`. Shim destinations are illustrative; the brainstorm + spec finalize them.
 
-### dep-vec-osc: VectorOscillator + WaveformManager
+### dep-vec-osc: VectorOscillator + WaveformManager + RelabiManager (bundled)
 
 Vendor source:
 
 - `vector_osc/HSVectorOscillator.h` + `HSVectorOscillator.cpp`.
 - `vector_osc/WaveformManager.h` + `WaveformManager.cpp`.
+- `HSRelabiManager.h` + any inline `.cpp` body.
 - Any vendor headers transitively pulled (segment table data, waveform definitions).
 
-Surface vendor applets touch: factory (`WaveformManager::VectorOscillatorFromWaveform`, `GetNextWaveform`), instance methods (`SetFrequency(centihertz)`, `SetPhaseIncrement(uint32)`, `SetScale`, `Offset`, `Reset()`, `Reset(phase)`, `Sustain`, `Cycle`, `Start`, `Release`, `Next()`, `TotalTime`, `GetSegment`, `SegmentCount`, `GetPhase`).
+Surface vendor applets touch: VectorOscillator factory (`WaveformManager::VectorOscillatorFromWaveform`, `GetNextWaveform`), instance methods (`SetFrequency(centihertz)`, `SetPhaseIncrement(uint32)`, `SetScale`, `Offset`, `Reset()`, `Reset(phase)`, `Sustain`, `Cycle`, `Start`, `Release`, `Next()`, `TotalTime`, `GetSegment`, `SegmentCount`, `GetPhase`). RelabiManager cross-hemisphere bus (`Register(hem)`, `Unload(hem)`, `IsLinked()`, `WriteValues/ReadValues`, `WriteGates/ReadGates`).
 
-Unlocks: VectorLFO, VectorEG, VectorMod, VectorMorph, Relabi (with dep-relabi-mgr), plus drum/synth applets pending Phase 6 audit.
+Bundling decision (load-bearing, recorded here not deferred to brainstorm): RelabiManager is 100 LoC, serves no purpose without VectorOscillator (Relabi needs both), and splitting them into two implementers risks cross-dep symbol collisions in Layer 2 at the cost of restarting. Ship them as one implementer task with one allowed-surface boundary covering both files.
 
-LoC budget ceiling: 500 LoC vendored + 100 LoC shim wrapper. Surface for descope if either ceiling exceeds by >50%.
+Unlocks: VectorLFO, VectorEG, VectorMod, VectorMorph, Relabi, plus drum/synth applets pending Phase 6 audit.
 
-### dep-relabi-mgr: RelabiManager
-
-Vendor source:
-
-- `HSRelabiManager.h` + any inline `.cpp` body.
-
-Surface: cross-hemisphere bus (`Register(hem)`, `Unload(hem)`, `IsLinked()`, `WriteValues/ReadValues`, `WriteGates/ReadGates`).
-
-Unlocks: Relabi (with dep-vec-osc).
-
-LoC budget: 100 LoC. Small, may merge with dep-vec-osc implementer if the brainstorm decides bundling is cleaner.
+LoC budget ceiling: 500 LoC vendored (VectorOsc) + 100 LoC vendored (RelabiManager) + 100 LoC shim wrapper. Surface for descope if any ceiling exceeds by >50%.
 
 ### dep-lorenz: LorenzGeneratorManager + streams_lorenz_generator
 
@@ -167,7 +162,13 @@ Cross-cutting concern: some quantizer methods are exposed on the `HemisphereAppl
 
 Unlocks: 8+ applets (Pigeons, Strum, Shredder, Carpeggio, Squanch, Chordinator, DualQuant, EnigmaJr, OffsetQuant, MultiScale, ScaleDuet, DuoTET, EnsOscKey, Calibr8).
 
-LoC budget ceiling: 1500 LoC vendored + 200 LoC shim glue. If the implementer estimates exceed this by >50%, the brainstorm must consider splitting dep-quant into Phase 5a (everything else) + Phase 5b (quantizer alone). Decide in the brainstorm; do not split mid-Layer-1.
+LoC-driven split decision (preflight-evidence-driven, not deferred to brainstorm). Preflight audit reports total Quantizer vendor LoC (sum of `braids_quantizer.{h,cc}` + `braids_quantizer_scales.h` + `OC_scales.{h,cc}` + `MIDIQuantizer.h` + any transitively pulled vendor headers). The threshold for the split decision is applied in preflight:
+
+- Under 1500 LoC vendored: ship monolithic as a single dep-quant implementer.
+- 1500-2250 LoC vendored: split into dep-quant-braids (braids_quantizer + scales) and dep-quant-hs (HS::Quant pool + MIDIQuantizer + OC::Scales glue). Two implementers, dispatched in parallel with the rest of Layer 1.
+- Over 2250 LoC vendored: halt and surface; the quantizer subsystem may need its own phase (Phase 5b carved out, with the other six deps shipping as Phase 5a).
+
+This converts a mid-brainstorm wrestle into a preflight-evidence-driven decision. The agent does not wrestle with "is this LoC enough to split" during the brainstorm; preflight gives the answer.
 
 ### dep-cv-map: CVInputMap
 
@@ -198,16 +199,21 @@ Both (a) and (b) must be green before Phase 5 considers Layer 0 done. Phase 6 th
 
 The helper lands as part of Layer 0, before any dep implementer dispatch.
 
-## Layer 0 shared shim infrastructure (parent agent)
+## Layer 0 shared shim infrastructure (parent agent, two sub-layers)
 
-Lands before Layer 1 dispatch. The shared additions are referenced by multiple deps and must exist before any implementer reads them.
+Layer 0a (sequential, lands before Layer 0b):
 
-1. `shim/include/util/util_macros.h`: `SCALE8_16`, `USAT16`, and any other shared vendor math macros pulled by Lorenz, VectorOsc, or Quantizer.
+1. `shim/include/util/util_macros.h`: `SCALE8_16`, `USAT16`, and any other shared vendor math macros pulled by Lorenz, VectorOsc, or Quantizer. Preflight surface audit confirmed no collision.
 2. `shim/include/Arduino.h` extensions: free-function `millis()` paralleling existing `micros()`. `elapsedMillis` class (Arduino idiom for tick-delta tracking; used by VectorLFO, Tuner, others). Both back onto `OC::CORE::ticks`.
-3. Time-injection helper + Cumulus probe test.
+3. Time-injection helper + both unit tests (Cumulus equivalence + Empty+held-gate tick-advancement invariant).
 4. Section markers in `harness/tests/test_hemispheres.cpp` (per-dep regions reserved for Phase 6 applet tests; Phase 5 itself adds no applet tests, only the helper probe and per-dep isolated unit tests).
 5. `harness/tests/test_dep_<slug>.cpp` skeleton files for each dep (one Catch2 file per dep, included in the existing host test build via Makefile additions).
-6. Pre-commit hook update accepting `phase5-dep/*` branches.
+6. Pre-commit hook update accepting `phase5-dep/*` branches plus the hard-reject rule on `applet_indices.h`/`HemispheresFactory.h`/`PhzIcons.h`.
+7. `HemisphereApplet` base-class edits for dep-quant if preflight scoped the base-class touch to parent (alternative: dep-quant's allowed surface explicitly includes the base header; preflight decides).
+
+Layer 0b (sequential, lands after Layer 0a):
+
+1. ClockManager step() prologue hook in `shim/include/hemispheres_shim.h`. The existing inner-tick loop already advances `OC::CORE::ticks` and decrements `frame.clock_countdown[]`; Layer 0b adds the clock_m tick-advance call alongside, preserving the time-injection helper's override semantics. Layer 0b is sequenced after Layer 0a because both touch the same loop; combining them in one commit would conflate the helper's correctness proof with the clock_m hook's correctness proof.
 
 ## Operational dep-port boundary
 
@@ -215,12 +221,19 @@ The brainstorm MUST define the dep-port boundary with concrete predicates. Draft
 
 1. Vendor unmodified rule: dep ports vendor source files verbatim. If the vendor header does not compile against the shim, the SHIM ADAPTS, not the vendor. Same rule as applet ports.
 2. Isolated unit test required: each dep ships at least one Catch2 test exercising a known-input/known-output vendor invariant (e.g., VectorOscillator at fixed waveform + phase increment produces known sample sequence; ClockManager at BPM=120 fires Tock(0) every N ticks; Quantizer chromatic scale round-trips on input pitches).
-3. Byte-parity expectation: any numerical dep (VectorOsc, Lorenz, tideslite, Quantizer) must produce identical output bytes on host (`clang++` x86) and ARM (`arm-none-eabi-c++`) for the same input. The Layer 1 unit test captures expected bytes; CI runs only the host side, but a hardware smoke check in Layer 3 verifies an existing applet still works.
+3. Output-parity expectation, two classes. Integer-only deps must produce byte-identical output on host (`clang++` x86) and ARM (`arm-none-eabi-c++`) for the same input; the Layer 1 unit test pins expected bytes. Float-using deps must produce output within a documented tolerance (typically 1 LSB of the final integer-converted output, since vendor applets quantize floats to int16/int32 at the bus boundary anyway); the Layer 1 unit test states the tolerance explicitly. Floating-point determinism between x86 clang and arm-none-eabi-c++ is not guaranteed in general (rounding-mode divergence, denormal handling, libm vs newlib vs arm math intrinsics), so demanding bit-identity on float math will fire abort on legitimate correct code.
+
+   Per-dep classification:
+   - Integer-only (byte-identical required): Lorenz integer math (`SCALE8_16`/`USAT16` paths), Quantizer scale lookups (pitch->scale-index is int), CVInputMap.
+   - Float-using (documented tolerance): VectorOscillator (phase math), tideslite (sample synthesis), parts of Quantizer pitch math (centihertz/millihertz scaling).
+   - Mixed (state which class per method): ClockManager (tempo math is float, tick advancement is int).
+
+   CI runs only the host side. Hardware smoke check in Layer 3 verifies an existing applet still works end-to-end; that is the practical bit-parity test, not the unit test.
 4. No applet ports: Phase 5 adds no new entry to `applet_indices.h`, `HemispheresFactory.h`, `PhzIcons.h`. The existing 31 applets must continue compiling and passing.
 
 ## Phase 5 in-scope candidates (audit confirms which fit)
 
-The 7 deps named above. The audit re-reads each vendor file end-to-end to confirm fit. Each dep audit produces:
+The 6 deps named above (possibly 7 after quant split). The audit re-reads each vendor file end-to-end to confirm fit. Each dep audit produces:
 
 - Vendor file list with line counts.
 - External vendor dependencies (which deps depend on which other deps).
@@ -277,9 +290,16 @@ After audit, post a preflight report with:
 - Already-ported applet count (read from factory table; baseline 31 real applets + Empty).
 - Phase 4 shim additions reverified.
 - Layer 0 design choice (macro shim path + Arduino.h extensions + helper API).
-- Per-dep audit: each of the 7 deps gets a one-line status (fits cleanly / needs N additional vendor headers / would require X LoC adjustment).
+- Layer 0 shared-surface audit. List every symbol added to each shared file with a one-line collision check against existing shim symbols:
+  - `shim/include/util/util_macros.h`: every macro added (`SCALE8_16`, `USAT16`, etc.). For each, grep the existing shim tree to confirm no collision. Lorenz, VectorOsc, and Quantizer all reference these; a collision blocks all three deps.
+  - `shim/include/Arduino.h`: `millis()`, `elapsedMillis` class. Confirm no shadowing of existing free functions or types.
+  - `shim/include/HemisphereApplet.h`: any base-class touches required by dep-quant (the `Quantize()` member redirect to real quantizer pool). Decide here whether Layer 0a does this edit (parent-only) OR dep-quant's allowed surface explicitly includes the base header. State the decision; do not defer to plan.
+  - `shim/include/hemispheres_shim.h`: time-injection helper override-global + dep-clock-mgr's step() prologue hook. State the merged shape of the inner-tick loop after both land.
+- Per-dep audit. Each of the 6 deps (after vec-osc/relabi-mgr bundling) gets a one-line status: fits cleanly / needs N additional vendor headers / would require X LoC adjustment. Plus the quantizer LoC count that drives the split decision (monolithic / split / halt).
 - Test baseline: 155 cases / 1803 assertions at `45e12f4`.
 - Confirm `make test-applets` + `make arm` pass on `dr/phase5-deps-plan` at branch creation.
+
+If any collision surfaces in the shared-surface audit, the brainstorm restructures the Layer 0 deliverable before any Layer 0 work starts. Cheap to catch in preflight, expensive to discover mid-Layer-0.
 
 ## Brainstorm requirements
 
@@ -303,9 +323,15 @@ After audit, post a preflight report with:
 - Start with Dependency declaration citing `~/.claude/rules/parallel-execution.md`.
 - Worktree-dispatch checklist invocation as first step.
 - Pre-commit hook with `phase5-dep/*` patterns + `dr/phase5-deps-plan` accept-list.
-- DAG structure: Layer 0 (parent, sequential) / Layer 1 (7 dep implementers, parallel by default) / Layer 2 integration / Layer 3 verification.
-- Each Layer 1 implementer task block names: worktree path, branch name, base branch (`dr/phase5-deps-plan`), allowed surface (paths under the dep's area), forbidden surface (everything else, especially other deps' areas and `applet_indices.h` / `HemispheresFactory.h`), vendor source list, required Layer 0 reads, test invariant to satisfy, abort triggers.
-- HemisphereApplet base class touches are sequenced into Layer 0 (parent edits) OR explicitly allowed in dep-quant's surface; document the choice.
+- DAG structure (six layers, reflects real dependency graph):
+  - Layer 0a (parent, sequential): macros, Arduino extensions, time-injection helper + both unit tests, section markers + dep test skeletons, hook update, base-class edits if scoped here.
+  - Layer 0b (parent, sequential, after Layer 0a): ClockManager step() prologue hook. Sequenced because both Layer 0a's helper and Layer 0b's hook touch the inner-tick loop.
+  - Layer 1 (parallel): 5 independent dep implementers — dep-vec-osc (bundled), dep-lorenz, dep-tideslite, dep-clock-mgr-impl, dep-cv-map. Dispatched in one message.
+  - Layer 1.5 (parallel, 1 or 2 implementers per preflight split decision): dep-quant monolithic OR dep-quant-braids + dep-quant-hs. May run concurrently with Layer 1 if brainstorm confirms no shared-file outside quant area.
+  - Layer 2: integration on `dr/phase5-deps-plan`.
+  - Layer 3: verification.
+- Each Layer 1/1.5 implementer task block names: worktree path, branch name, base branch (`dr/phase5-deps-plan`), allowed surface (paths under the dep's area), forbidden surface (everything else, especially other deps' areas and the hook-blocked `applet_indices.h` / `HemispheresFactory.h` / `PhzIcons.h`), vendor source list, required Layer 0a/0b reads, test invariant to satisfy (and float-tolerance class if applicable), abort triggers.
+- HemisphereApplet base class touches are sequenced into Layer 0a (parent edits) OR explicitly allowed in dep-quant's surface; the choice is recorded in preflight, the plan inherits it.
 - Plan length under 600 lines (deps are bigger than applets; budget relaxed from the original 500).
 - Spec coverage check table at the end.
 
@@ -356,13 +382,20 @@ During planning:
 - HemisphereApplet base class shared-surface conflict cannot be cleanly sequenced into Layer 0.
 - Plan exceeds 600 lines.
 
-During Layer 0:
+During Layer 0a:
 
 - Helper unit test (a) equivalence with Cumulus fails.
 - Helper unit test (b) tick-advancement invariant fails (any of: `OC::CORE::ticks` delta off, `clocked[]` not held, `clock_countdown[]` decrement count off).
 - Helper breaks any existing test in `make test-applets`.
 - `make arm` fails or produces warnings.
-- Any macro added to `util_macros.h` collides with an existing shim symbol.
+- Any macro added to `util_macros.h` collides with an existing shim symbol despite preflight audit (means audit missed something; halt and re-audit).
+- Pre-commit hook fails to reject a test commit that stages `applet_indices.h` / `HemispheresFactory.h` / `PhzIcons.h` on a `phase5-dep/*` branch.
+
+During Layer 0b:
+
+- ClockManager step() hook breaks any existing test in `make test-applets`.
+- ClockManager step() hook causes time-injection helper's tick-advancement invariant test from Layer 0a to fail when re-run (means the hook interfered with the helper's override semantics; halt and fix the interaction).
+- `make arm` fails or warns.
 
 During Layer 1:
 
@@ -386,7 +419,7 @@ During Layer 3:
 End-of-run message:
 
 1. Documents produced (paths).
-2. Phase 5 scope: 7 dep ports landed, Layer 0 additions, baseline regression status.
+2. Phase 5 scope: 6 dep ports landed (7 if quantizer split), Layer 0a+0b additions, baseline regression status.
 3. Layer 0 additions landed with commit SHAs.
 4. Layer 1 result: success count, abort count with reasons, wall-clock.
 5. Layer 2 integration: pass/fail.
@@ -401,7 +434,7 @@ If an abort fired, post the abort report instead.
 - Three documents exist at declared paths.
 - Time-injection helper landed in Layer 0 with BOTH unit tests green: (a) Cumulus equivalence at N=10, (b) tick-advancement invariant at N=1000 against Empty + held gate.
 - Layer 0 macro shim + Arduino.h extensions landed and used by at least 2 deps.
-- All 7 deps shipped with isolated unit tests green.
+- All 6 deps shipped with isolated unit tests green (7 if Quantizer split).
 - Quantizer split decision documented as a load-bearing call in the spec + PR description.
 - `make test-applets` passes with no regressions against the Phase 5 branch creation baseline (155 cases / 1803 assertions).
 - `make arm` clean, zero warnings.
@@ -419,12 +452,12 @@ If an abort fired, post the abort report instead.
 3. Read the primary references (especially `shim/include/hemispheres_shim.h` for the time-injection design and `shim/include/HemisphereApplet.h` for the dep-quant shared-surface concern).
 4. Read Phase 4 brainstorm/spec/plan + the ResetClock abort report.
 5. Verify `~/.claude/rules/parallel-execution.md` worktree-dispatch checklist is present.
-6. Audit each of the 7 deps' vendor file surface. State LoC, dep-on-dep relationships, test invariant proposal.
+6. Audit each of the 6 deps' vendor file surface (vec-osc+relabi-mgr bundled). State LoC, dep-on-dep relationships, test invariant proposal. Sum Quantizer LoC to drive the split decision.
 7. Design the Layer 0 shared shim (macros, Arduino additions, helper API). Decide quantizer split.
 8. Post preflight report. Proceed to brainstorm.
 9. Write brainstorm, spec, plan.
-10. Execute Layer 0 (macros + Arduino + helper + section markers + per-dep test skeletons + hook update).
-11. Execute Layer 1 (7 dep implementers, parallel dispatch).
+10. Execute Layer 0a (macros + Arduino + helper + section markers + per-dep test skeletons + hook update + optional base-class edits) then Layer 0b (clock_m step() prologue hook).
+11. Execute Layer 1 (5 dep implementers parallel dispatch) + Layer 1.5 (dep-quant mono or split, parallel with Layer 1 if no shared-file outside quant area).
 12. Execute Layer 2 (integration).
 13. Execute Layer 3 (verification).
 14. Open PR.

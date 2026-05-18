@@ -595,7 +595,7 @@ git -c commit.gpgsign=false commit -m "feat(test-applets): atten_off A1-A8 level
 
 Vendor source: `vendor/O_C-Phazerville/software/src/applets/Slew.h`.
 
-Slew is a per-channel rate-limited follower. `rise` and `fall` are in [0, HEM_SLEW_MAX_VALUE] (HEM_SLEW_MAX_VALUE is a vendor constant; look it up). Internal state is `simfloat signal[2]` updated each Controller iteration. `Gate(ch)` high defeats slew: signal jumps immediately to In(ch).
+Slew is a per-channel rate-limited follower. `rise` and `fall` are in `[0, HEM_SLEW_MAX_VALUE]` (vendor `HEM_SLEW_MAX_VALUE = 200`, `HEM_SLEW_MAX_TICKS = 64000`). Internal state is `simfloat signal[2]` updated each Controller iteration. `Gate(ch)` high defeats slew: signal jumps immediately to In(ch).
 
 Bit layout (spec table, 16 bits): `Pack(data, {0,8}, rise); Pack(data, {8,8}, fall);`.
 
@@ -609,7 +609,7 @@ Slew tests are time-sensitive. Use multi-step scenarios; signal evolves over man
 grep -n 'HEM_SLEW_MAX_VALUE\|HEM_SLEW_MAX_TICKS\|simfloat' vendor/O_C-Phazerville/software/src/applets/Slew.h shim/include/HSUtils.h shim/include/HemisphereApplet.h
 ```
 
-Note the constants. `HEM_SLEW_MAX_VALUE` is likely 100 (matching the encoder UI range).
+Vendor reality: `HEM_SLEW_MAX_VALUE = 200` and `HEM_SLEW_MAX_TICKS = 64000`. Max-slew calls use `rise=fall=200`, not 100. The convergence loop in SL4 needs ~5000 `step()` calls to reach within 0.5V of a 5V target at max slew (the previous figure of 200 was based on the incorrect `MAX_VALUE = 100` assumption).
 
 - [ ] **Step 2: Add `pack_slew` declaration**
 
@@ -657,9 +657,9 @@ TEST_CASE("slew SL2: zero rise/fall is instant follower", "[slew]") {
 }
 
 TEST_CASE("slew SL3: gate defeats slew", "[slew]") {
-    // Vendor Slew.h:35: if (Gate(ch)) signal[ch] = input. Instant jump.
+    // Vendor Slew.h: if (Gate(ch)) signal[ch] = input. Instant jump.
     auto s = setup_applet(kAppletSlew);
-    slew_set(s.hi, 100, 100);  // max slew (slow)
+    slew_set(s.hi, 200, 200);  // HEM_SLEW_MAX_VALUE = max slew (slowest)
 
     clear_bus(s.bus);
     set_cv(s.bus, LEFT, 0, 3.0f, 8);
@@ -671,7 +671,7 @@ TEST_CASE("slew SL3: gate defeats slew", "[slew]") {
 
 TEST_CASE("slew SL4: high rise slows attack to target", "[slew]") {
     auto s = setup_applet(kAppletSlew);
-    slew_set(s.hi, 100, 100);
+    slew_set(s.hi, 200, 200);  // HEM_SLEW_MAX_VALUE
 
     // Single step at the target: output should be far below the input
     // because slew is at maximum.
@@ -681,8 +681,12 @@ TEST_CASE("slew SL4: high rise slows attack to target", "[slew]") {
 
     REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) < 4.5f);
 
-    // After enough steps, output approaches the target.
-    for (int i = 0; i < 200; ++i) {
+    // After enough steps, output approaches the target. At max slew the vendor
+    // formula yields ~2360 simfloat delta per Controller tick. The shim runs
+    // 10 Controller ticks per step() (numFrames/3, numFrames=32), so ~4800
+    // step() calls are needed to bring a 5V (125.8M simfloat) target within
+    // 0.5V. Use 5000 for a small safety margin.
+    for (int i = 0; i < 5000; ++i) {
         clear_bus(s.bus);
         set_cv(s.bus, LEFT, 0, 5.0f, 8);
         step_n_frames(s.loaded, s.alg, s.bus, 32);
@@ -707,7 +711,7 @@ TEST_CASE("slew SL5: serialise round-trip preserves rise/fall", "[slew]") {
 
 Expected: 5 cases pass.
 
-Slew is timing-sensitive. If SL4's "200 steps" isn't enough, increase to 500. If margins fail, adjust to the next coarser tier (1.0V) only after confirming the slew formula matches vendor.
+Slew is timing-sensitive. SL4 uses 5000 step() calls at max slew (HEM_SLEW_MAX_VALUE = 200). If margins still fail, adjust to the next coarser tier (1.0V) only after confirming the slew formula matches vendor.
 
 - [ ] **Step 7: Commit**
 

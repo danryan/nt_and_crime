@@ -341,3 +341,29 @@ TEST_CASE("brancher B5: logical clock (no physical gate) emits ClockOut pulse", 
     REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
     REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);
 }
+
+TEST_CASE("brancher B6: Clock(1) toggles flip-flop choice", "[brancher]") {
+    // Vendor: Clock(1) sets flipflopmode=true and re-rolls choice. Output stays
+    // high (GateOut(choice, flipflopmode)) without further Clock(0). The next
+    // Clock(1) re-rolls choice again. With p=100 the roll always selects 0;
+    // with p=0 always 1. We exercise both boundaries to observe a toggle.
+    auto s = setup_brancher_left();
+
+    // First Clock(1) at p=100. choice rolls to 0. flipflopmode=true. Output 0
+    // stays high after the clock fires.
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(100));
+    seed_hem_rng(0xDEADBEEF);
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 1, 0, 8);  // Clock(1) edge: single-sample on channel B
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+
+    // Second Clock(1) at p=0. choice rolls to 1. flipflopmode still true (re-set
+    // each Clock(1)). Output 1 goes high; output 0 goes low.
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_brancher(0));
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 1, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+}

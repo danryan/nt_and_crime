@@ -28,15 +28,24 @@
 #include "Stairs.h"
 #include "Switch.h"
 #include "Voltage.h"
+// Phase 4 additions
+#include "ADEG.h"
+#include "ADSREG.h"
+#include "Binary.h"
+#include "GameOfLife.h"
+#include "ProbabilityDivider.h"
+#include "ShiftGate.h"
+#include "Trending.h"
 
 namespace hem_shim {
 
 inline const char* const* applet_enum_strings() {
     static const char* const names[kAppletCount] = {
-        "Empty", "AttenOff", "Brancher", "Burst", "Button2", "Calculate", "Clk2Gate",
-        "Clk Div", "Clk Skip", "Compare", "Cumulus", "EnvFollow", "GateDelay", "Gated VCA",
-        "Logic", "PolyDiv", "RndWalk", "RunglBook", "SchmittTr", "Slew",
-        "Stairs", "Switch", "TLNeuron", "Voltage"
+        "Empty", "AD EG", "ADSR EG", "AttenOff", "BinaryCtr", "Brancher", "Burst",
+        "Button2", "Calculate", "Clk2Gate", "Clk Div", "Clk Skip", "Compare", "Cumulus",
+        "EnvFollow", "GameOfLife", "GateDelay", "Gated VCA", "Logic", "PolyDiv",
+        "ProbDiv", "RndWalk", "RunglBook", "SchmittTr", "ShiftGate", "Slew",
+        "Stairs", "Switch", "TLNeuron", "Trending", "Voltage"
     };
     return names;
 }
@@ -80,7 +89,14 @@ constexpr size_t kMaxAppletSize =
     cmax(sizeof(Stairs),
     cmax(sizeof(Switch),
     cmax(sizeof(Voltage),
-         sizeof(Burst))))))))))))))))))))))));
+    cmax(sizeof(ADEG),
+    cmax(sizeof(ADSREG),
+    cmax(sizeof(Binary),
+    cmax(sizeof(GameOfLife),
+    cmax(sizeof(ProbabilityDivider),
+    cmax(sizeof(ShiftGate),
+    cmax(sizeof(Trending),
+         sizeof(Burst)))))))))))))))))))))))))))))));
 
 constexpr size_t kMaxAppletAlign =
     cmax(alignof(Empty),
@@ -106,7 +122,14 @@ constexpr size_t kMaxAppletAlign =
     cmax(alignof(Stairs),
     cmax(alignof(Switch),
     cmax(alignof(Voltage),
-         alignof(Burst))))))))))))))))))))))));
+    cmax(alignof(ADEG),
+    cmax(alignof(ADSREG),
+    cmax(alignof(Binary),
+    cmax(alignof(GameOfLife),
+    cmax(alignof(ProbabilityDivider),
+    cmax(alignof(ShiftGate),
+    cmax(alignof(Trending),
+         alignof(Burst)))))))))))))))))))))))))))))));
 
 template <class T>
 inline HemisphereApplet* make_applet(void* sram) {
@@ -118,7 +141,10 @@ using AppletFactory = HemisphereApplet* (*)(void*);
 inline AppletFactory applet_factory(AppletIndex idx) {
     static const AppletFactory table[kAppletCount] = {
         &make_applet<Empty>,
+        &make_applet<ADEG>,
+        &make_applet<ADSREG>,
         &make_applet<AttenuateOffset>,
+        &make_applet<Binary>,
         &make_applet<Brancher>,
         &make_applet<Burst>,
         &make_applet<Button>,
@@ -129,17 +155,21 @@ inline AppletFactory applet_factory(AppletIndex idx) {
         &make_applet<Compare>,
         &make_applet<Cumulus>,
         &make_applet<EnvFollow>,
+        &make_applet<GameOfLife>,
         &make_applet<GateDelay>,
         &make_applet<GatedVCA>,
         &make_applet<Logic>,
         &make_applet<PolyDiv>,
+        &make_applet<ProbabilityDivider>,
         &make_applet<RndWalk>,
         &make_applet<RunglBook>,
         &make_applet<Schmitt>,
+        &make_applet<ShiftGate>,
         &make_applet<Slew>,
         &make_applet<Stairs>,
         &make_applet<Switch>,
         &make_applet<TLNeuron>,
+        &make_applet<Trending>,
         &make_applet<Voltage>,
     };
     return table[idx];

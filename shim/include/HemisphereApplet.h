@@ -75,10 +75,11 @@ public:
         return constrain((int)prop, 0, max_pixels);
     }
 
-    int Proportion(int numerator, int max_n, int max_p) const {
-        if (max_n == 0) return 0;
-        return (int)((long)numerator * max_p / max_n);
-    }
+    // Proportion lives as a free function in util/util_math.h so that vendor
+    // applets with nested structs (ADSREG's MiniADSR) can call it without
+    // unqualified lookup binding to a non-static member. Methods that
+    // previously called Proportion(...) as a member still resolve to the
+    // free function via unqualified lookup in the enclosing namespace scope.
 
     // Bipolar CV modulation of a parameter. Mirrors upstream signature; shim
     // path uses Proportion only (no SemitoneIn quantizer for small ranges).

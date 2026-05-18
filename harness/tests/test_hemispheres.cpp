@@ -11,6 +11,7 @@
 using hem_shim::kAppletAttenuateOffset;
 using hem_shim::kAppletBrancher;
 using hem_shim::kAppletBurst;
+using hem_shim::kAppletButton;
 using hem_shim::kAppletCalculate;
 using hem_shim::kAppletCompare;
 using hem_shim::kAppletGatedVCA;
@@ -938,5 +939,41 @@ TEST_CASE("gated_vca GV5: half amplitude halves signal", "[gated_vca]") {
 
 TEST_CASE("gated_vca GV6: serialise is no-op (returns 0)", "[gated_vca]") {
     auto s = setup_applet(kAppletGatedVCA);
+    REQUIRE(get_applet(s.hi, LEFT)->OnDataRequest() == 0);
+}
+
+TEST_CASE("button BT1: Start leaves outputs low", "[button]") {
+    auto s = setup_applet(kAppletButton);
+
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);
+}
+
+TEST_CASE("button BT2: physical clock on input 0 produces output 0 trigger", "[button]") {
+    // Vendor Controller: Clock(ch, 1) reads digital input directly. Use set_gate
+    // for a single-sample rising edge; subsequent buffer fires Controller's
+    // PressButton(0) which sets trigger_out[0] = 1; next Controller pass emits
+    // ClockOut on output 0.
+    auto s = setup_applet(kAppletButton);
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);  // physical Clock on channel 0
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    bool saw_pulse = read_gate_at(s.bus, LEFT, 0, 0, 8);
+    // The trigger may not fire on the same step; advance more if needed.
+    for (int i = 0; i < 10 && !saw_pulse; ++i) {
+        clear_bus(s.bus);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        if (read_gate_at(s.bus, LEFT, 0, 0, 8)) saw_pulse = true;
+    }
+    REQUIRE(saw_pulse);
+}
+
+TEST_CASE("button BT3: serialise is no-op (returns 0)", "[button]") {
+    auto s = setup_applet(kAppletButton);
     REQUIRE(get_applet(s.hi, LEFT)->OnDataRequest() == 0);
 }

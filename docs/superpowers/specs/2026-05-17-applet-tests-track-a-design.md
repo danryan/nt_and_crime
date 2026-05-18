@@ -18,7 +18,7 @@ This spec is Phase 1 only: pilot on one Tier 1 applet (Calculate) and one Tier 2
 ## Decisions
 
 - Scope: pilot on Calculate (Tier 1, CV math) and Brancher (Tier 2, gate routing + RNG). One per tier, picked to exercise the broadest mechanic surface (CV in / CV out math with mode select, gate edge detection with seeded RNG).
-- Depth: spec-driven from vendor source. Each TEST_CASE derives from a documented behavior line in the vendor applet header. ~22 cases for Phase 1.
+- Depth: spec-driven from vendor source. Each TEST_CASE derives from a documented behavior line in the vendor applet header. 23 cases for Phase 1 (1 smoke + 13 Calculate + 9 Brancher).
 - Test seam: cast `_NT_algorithm*` to `HemispheresInstance*` (fields already public), reach `instance->left` / `instance->right`, call `OnDataReceive(packed_state)` to inject internal applet state in one call. No customUi loop. No vendor changes. No port to NT-native params.
 - Layout: single combined Catch2 binary `build/host/test_hemispheres`. Cases grouped by `[applet-name]` tags.
 - Makefile: new `make test-applets`, chained into the existing `make test` after YAML scenarios.
@@ -62,10 +62,9 @@ test-applets: build/host/test_hemispheres
 2. hem_rng_state = 0xDEADBEEF              // deterministic RNG per test
 3. auto loaded = nt::load_plugin()         // resolves Hemispheres factory
 4. _NT_algorithm* alg = loaded->algorithm
-5. alg->v[kHemSelLeft]  = kAppletBrancher  // pick applet
-6. loaded->factory->parameterChanged(alg, kHemSelLeft)
-7. auto* hi = reinterpret_cast<HemispheresInstance*>(alg);
-8. hi->left->OnDataReceive(pack_brancher(p=75, choice=0))   // inject state
+5. select_applet(alg, LEFT, kAppletBrancher)  // pick applet; swap happens inside next step()
+6. auto* hi = as_instance(alg);
+7. hi->left->OnDataReceive(pack_brancher(p=75, choice=0))   // inject state
 ```
 
 `HemispheresInstance::left` / `right` are already public members (see `shim/include/hemispheres_shim.h`). The cast is safe within the test harness because `HemispheresInstance` derives from `_NT_algorithm`.
@@ -95,14 +94,16 @@ enum HemAxis  { GATE_IN, CV_IN, OUT };
 Bus access. Tests never need to know the `kHemGateInA..D` / `kHemCvInA..D` / `kHemCvOutA..D` layout.
 
 - `int bus_index(HemSide side, int channel, HemAxis axis)`: returns 1..16. Example: `(LEFT, 0, GATE_IN)` returns 1.
-- `void set_gate(float* bus, HemSide side, int channel, int frame_offset, int numFramesBy4)`: single-sample pulse on that side and channel's gate input bus.
+- `void set_gate(float* bus, HemSide side, int channel, int frame_offset, int numFramesBy4)`: single-sample pulse (6.0V) at `frame_offset` on that side and channel's gate input bus. Used for "logical clock" scenarios where the rising edge fires but `Gate(side)` reads false.
+- `void hold_gate(float* bus, HemSide side, int channel, int numFramesBy4)`: writes 6.0V across all frames of the input gate bus for (side, channel). Used when tests need both a rising edge AND a held high (Gate(side) reads true) within the same step. Contrast with `set_gate`, which writes a single-sample pulse.
 - `void set_cv(float* bus, HemSide side, int channel, float volts, int numFramesBy4)`: flat CV across all frames on that side and channel's CV input bus.
 - `bool read_gate_at(float* bus, HemSide side, int channel, int frame_offset, int numFramesBy4)`: sample the output bus at a specific frame, return true if above gate threshold.
 - `float read_cv_at(float* bus, HemSide side, int channel, int frame_offset, int numFramesBy4)`: sample the output bus at a specific frame.
+- `void clear_bus(float* bus)`: zeros the full bus buffer (`num_buses() * bus_frame_count()` floats). Tests call this between scenarios to reset. Defined as a local helper inside `test_hemispheres.cpp` rather than in `applet_test_helpers.{h,cpp}`, because it depends only on `nt::num_buses()` / `nt::bus_frame_count()` and has no side or channel awareness.
 
 Applet lifecycle.
 
-- `void select_applet(loaded, alg, HemSide side, AppletIndex idx)`: one-liner replacement for the `v[]=...; parameterChanged(...)` pair.
+- `void select_applet(_NT_algorithm* alg, HemSide side, AppletIndex idx)`: writes the selector parameter for the given side. The next `step()` triggers the applet swap lazily inside the shim via `maybe_swap()`. Hemispheres has no `parameterChanged` callback; selector changes propagate inside `step()`.
 - `HemisphereApplet* get_applet(HemispheresInstance*, HemSide side)`: typed accessor; returns `hi->left` or `hi->right`.
 - `HemispheresInstance* as_instance(_NT_algorithm*)`: typed cast.
 
@@ -195,8 +196,8 @@ Notes.
 
 ### TDD order
 
-1. Build pipeline + smoke case S1. Confirms link, parameterChanged, draw all work.
-2. Helper module skeleton: `step_n_frames`, `volts_to_int`, `set_bus_constant`, `pulse_gate`.
+1. Build pipeline + smoke case S1. Confirms link, applet selection via `select_applet`, draw all work.
+2. Helper module skeleton: `step_n_frames`, `volts_to_int`, `set_cv`, `set_gate`.
 3. Calculate C2-C8 (deterministic combinatorial math). One case at a time; each red, then green.
 4. Calculate C9 (S&H pre-clock), C10 (S&H post-clock).
 5. Calculate C11 (Rnd unipolar range), C12 (Rnd clocked latch).
@@ -207,6 +208,15 @@ Notes.
 10. Brancher B4 (statistical fairness, 1000 rolls). Last because it depends on all prior gate/clock infrastructure.
 
 Each case lands as its own commit (`feat: test brancher B2 p=100 deterministic`).
+
+### Phase 2 prep notes
+
+Items flagged during Phase 1 final review that Phase 2 should address as it begins:
+
+- Multi-side fixtures: Phase 1 tests only LEFT side. ClkToGate, Cumulus, GatedVCA, and others have per-side state that benefits from a `setup_<applet>_right()` symmetric fixture to verify state isolation between sides. `select_applet` and `get_applet` already take a `HemSide` parameter; the only delta is the convenience factory.
+- Modulate semantics: Several Phase 2 applets (AttenuateOffset, Brancher's `p_mod`, Cumulus, TLNeuron) use vendor `Modulate(value, ch, min, max)` to modulate an internal value via CV input. Before writing Phase 2 tests that exercise CV modulation, read `shim/include/HemisphereApplet.h` to understand the conversion path: CV input volts to shim int (times 1536), additive on the modulated value, clamped to [min, max], back to int for the operation. Phase 1 never exercises this path.
+- Bit-layout table re-verification: The "Per-applet OnDataRequest bit layouts" table above was extracted from vendor headers at planning time. Phase 1 verified the Brancher and Calculate rows by writing matching `pack_*` helpers. Before writing each new Phase 2 `pack_<applet>(...)`, re-extract the actual `OnDataRequest` body from the current vendor header and confirm the table row matches. Cheap insurance against vendor drift between phases.
+- Cumulus 2-bit gap: Cumulus' `OnDataRequest` leaves bits 11..12 unused between `outmode[0]` and `outmode[1]`. The `pack_cumulus(...)` helper must explicitly zero those bits (not rely on caller defaults) to avoid stale state leaking through round-trip. This warning belongs as a docstring on the eventual `pack_cumulus` declaration once Phase 2 reaches that applet.
 
 ## Test scenarios
 
@@ -224,7 +234,7 @@ Each case lands as its own commit (`feat: test brancher B2 p=100 deterministic`)
 | B8 | p encoder clamp | call `OnEncoderMove(+5)` 30 times from p=50 | `OnDataRequest` returns p clamped to 100 |
 | B9 | Serialise round-trip | call `OnDataReceive(pack(p=73))`, then `OnDataRequest` | returned packed value unpacks to p=73 |
 
-### Calculate (tag `[calculate]`, 12 cases)
+### Calculate (tag `[calculate]`, 13 cases)
 
 | # | Behavior | Setup | Assertion |
 |---|---|---|---|
@@ -248,7 +258,7 @@ Each case lands as its own commit (`feat: test brancher B2 p=100 deterministic`)
 |---|---|---|---|
 | S1 | Loads, steps, draws | select Brancher left, Calculate right, 10 steps, call draw() | no crash; all output bus values finite |
 
-Total: 22 cases.
+Total: 23 cases.
 
 ## Verification
 
@@ -260,9 +270,9 @@ git submodule update --init --recursive
 make arm                    # baseline: ARM build still clean
 make test                   # YAML scenarios + applet tests pass
 make test-applets           # explicit applet test run
-./build/host/test_hemispheres                # all 22 cases
+./build/host/test_hemispheres                # all 23 cases
 ./build/host/test_hemispheres "[brancher]"   # 9 cases
-./build/host/test_hemispheres "[calculate]"  # 12 cases
+./build/host/test_hemispheres "[calculate]"  # 13 cases
 ./build/host/test_hemispheres "[smoke]"      # 1 case
 ```
 
@@ -270,8 +280,10 @@ Expected:
 
 ```
 ===============================================================================
-All tests passed (22 assertions in 22 test cases)
+All tests passed (827 assertions in 23 test cases)
 ```
+
+Assertion distribution: smoke contributes the bulk (~516 assertions, one REQUIRE per bus per frame for finiteness); Calculate ~263; Brancher ~48. The total ~827 number can drift if the smoke loop count or finiteness sweep granularity changes, but the case count (23) is the stable signal.
 
 ### Regression coverage
 

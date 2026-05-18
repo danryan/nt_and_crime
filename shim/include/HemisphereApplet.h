@@ -53,6 +53,11 @@ public:
     int  ViewIn(int ch) const { return HS::frame.inputs[ch + channel_offset()]; }
     int  ViewOut(int ch) const { return HS::frame.ViewOut(ch + channel_offset()); }
     bool Clock(int ch, bool = false) { return HS::frame.clocked[ch + channel_offset()]; }
+    // Mirrors vendor HemisphereApplet.h:147. Reports whether In(ch) changed by
+    // more than HEMISPHERE_CHANGE_THRESHOLD (= 32 hem units, ~1/8 semitone)
+    // since the last step. The shim populates HS::frame.changed_cv in step()
+    // by comparing each input against the previous step's value.
+    bool Changed(int ch) { return HS::frame.changed_cv[ch + channel_offset()]; }
     bool Gate(int ch)      { return trigmap[ch + channel_offset()].Gate(); }
     int  DetentedIn(int ch) {
         int v = In(ch);
@@ -70,10 +75,11 @@ public:
         return constrain((int)prop, 0, max_pixels);
     }
 
-    int Proportion(int numerator, int max_n, int max_p) const {
-        if (max_n == 0) return 0;
-        return (int)((long)numerator * max_p / max_n);
-    }
+    // Proportion lives as a free function in util/util_math.h so that vendor
+    // applets with nested structs (ADSREG's MiniADSR) can call it without
+    // unqualified lookup binding to a non-static member. Methods that
+    // previously called Proportion(...) as a member still resolve to the
+    // free function via unqualified lookup in the enclosing namespace scope.
 
     // Bipolar CV modulation of a parameter. Mirrors upstream signature; shim
     // path uses Proportion only (no SemitoneIn quantizer for small ranges).
@@ -178,6 +184,17 @@ public:
         gfxCursor(x, y, w, 9);
     }
 
+    // Mirrors vendor HemisphereApplet.h:541-548. Draws a horizontal slider
+    // track of length `len` with a 2x8 thumb at `Proportion(value, max_val,
+    // len-1)`. View-only; never affects Out().
+    void DrawSlider(uint8_t x, uint8_t y, uint8_t len, uint8_t value, uint8_t max_val, bool is_cursor) {
+        uint8_t p = is_cursor ? 1 : 3;
+        uint8_t w = (uint8_t)Proportion(value, max_val, len - 1);
+        gfxDottedLine(x, y + 4, x + len, y + 4, p);
+        gfxRect(x + w, y, 2, 8);
+        if (EditMode() && is_cursor) gfxInvert(x - 1, y, len + 3, 8);
+    }
+
     // Mirrors upstream HemisphereApplet::ClockCycleTicks. Returns the recorded
     // cycle ticks for the given channel. Shim has no clock multiplier.
     uint32_t ClockCycleTicks(int ch) {
@@ -219,3 +236,11 @@ inline int hem_shim_random(int min_inclusive, int max_exclusive) {
 }
 inline int hem_shim_random(int max_exclusive) { return hem_shim_random(0, max_exclusive); }
 #define random(...) hem_shim_random(__VA_ARGS__)
+
+// Arduino-style randomSeed. Vendor applets (ProbabilityDivider) call
+// randomSeed(micros()) before generating new loop content; the shim
+// re-seeds the xorshift32 RNG. A zero seed is replaced because xorshift
+// stalls at 0.
+inline void randomSeed(uint32_t seed) {
+    hem_rng_state = seed ? seed : 0xDEADBEEFu;
+}

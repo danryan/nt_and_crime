@@ -144,6 +144,19 @@ struct HemispheresShim {
         copy_bus_to_frame(kHemCvInC, &HS::frame.inputs[2], busFrames, numFrames, v);
         copy_bus_to_frame(kHemCvInD, &HS::frame.inputs[3], busFrames, numFrames, v);
 
+        // Vendor HSIOFrame.cpp:292 update of changed_cv: an input flips its
+        // "changed" flag when it moves more than HEMISPHERE_CHANGE_THRESHOLD
+        // (= 32 hem units, ~1/8 semitone) since the last step. last_cv tracks
+        // the previous step's input per channel; static here so it survives
+        // across step() calls but stays file-scoped.
+        static int last_cv[4] = { 0, 0, 0, 0 };
+        for (int i = 0; i < 4; ++i) {
+            int delta = HS::frame.inputs[i] - last_cv[i];
+            if (delta < 0) delta = -delta;
+            HS::frame.changed_cv[i] = (delta > 32);
+            if (HS::frame.changed_cv[i]) last_cv[i] = HS::frame.inputs[i];
+        }
+
         { auto g = read_gate(kHemGateInA, busFrames, numFrames, v, prev_gate(0));
           HS::frame.clocked[0] = g.rising; HS::frame.gate_high[0] = g.high; }
         { auto g = read_gate(kHemGateInB, busFrames, numFrames, v, prev_gate(1));

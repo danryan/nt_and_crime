@@ -250,5 +250,74 @@ uint64_t pack_voltage(int voltage0, int voltage1, int gate0, int gate1) {
     return data;
 }
 
+// === BEGIN adeg ===
+uint64_t pack_adeg(int attack, int decay) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(attack & 0xFF));         // [0,8)
+    data |= ((uint64_t)(decay  & 0xFF)) << 8;    // [8,8)
+    return data;
+}
+// === END adeg ===
+
+// === BEGIN adsreg ===
+uint64_t pack_adsreg(int a0, int d0, int s0, int r0,
+                     int a1, int d1, int s1, int r1) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(a0 & 0xFF))       <<  0;
+    data |= ((uint64_t)(d0 & 0xFF))       <<  8;
+    data |= ((uint64_t)(s0 & 0xFF))       << 16;
+    data |= ((uint64_t)(r0 & 0xFF))       << 24;
+    data |= ((uint64_t)(a1 & 0xFF))       << 32;
+    data |= ((uint64_t)(d1 & 0xFF))       << 40;
+    data |= ((uint64_t)(s1 & 0xFF))       << 48;
+    data |= ((uint64_t)(r1 & 0xFF))       << 56;
+    return data;
+}
+// === END adsreg ===
+
+// === BEGIN game_of_life ===
+uint64_t pack_game_of_life(int weight) {
+    return (uint64_t)(weight & 0x3F);
+}
+// === END game_of_life ===
+
+// === BEGIN prob_div ===
+uint64_t pack_prob_div(int weight_1, int weight_2, int weight_4, int weight_8,
+                       int loop_length, int seed) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(weight_1   & 0x0F));            // [0,4)
+    data |= ((uint64_t)(weight_2   & 0x0F)) << 4;       // [4,4)
+    data |= ((uint64_t)(weight_4   & 0x0F)) << 8;       // [8,4)
+    data |= ((uint64_t)(weight_8   & 0x0F)) << 12;      // [12,4)
+    data |= ((uint64_t)(loop_length & 0xFF)) << 16;     // [16,8)
+    data |= ((uint64_t)(seed       & 0xFFFF)) << 24;    // [24,16)
+    return data;
+}
+// === END prob_div ===
+
+// === BEGIN shift_gate ===
+uint64_t pack_shift_gate(int length_left, int length_right,
+                         int trigger_left, int trigger_right,
+                         int reg_left) {
+    uint64_t data = 0;
+    data |= ((uint64_t)((length_left  - 1) & 0x0F));         // [0,4)
+    data |= ((uint64_t)((length_right - 1) & 0x0F)) << 4;    // [4,4)
+    data |= ((uint64_t)(trigger_left  & 0x01)) << 8;         // [8,1)
+    data |= ((uint64_t)(trigger_right & 0x01)) << 9;         // [9,1)
+    // bits 10..15 left as 0 (vendor gap; reg[0] starts at bit 16)
+    data |= ((uint64_t)(reg_left & 0xFFFF)) << 16;           // [16,16)
+    return data;
+}
+// === END shift_gate ===
+
+// === BEGIN trending ===
+uint64_t pack_trending(int assign_left, int assign_right, int sensitivity) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(assign_left  & 0x0F));        // [0,4)
+    data |= ((uint64_t)(assign_right & 0x0F)) << 4;   // [4,4)
+    data |= ((uint64_t)(sensitivity  & 0xFF)) << 8;   // [8,8)
+    return data;
+}
+// === END trending ===
 
 }  // namespace hem_test

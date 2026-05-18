@@ -12,7 +12,10 @@ namespace hem_shim {
 
 enum AppletIndex : uint8_t {
     kAppletEmpty = 0,           // sentinel: always index 0 (default selector)
+    kAppletADEG,
+    kAppletADSREG,
     kAppletAttenuateOffset,
+    kAppletBinary,
     kAppletBrancher,
     kAppletBurst,
     kAppletButton,
@@ -23,17 +26,21 @@ enum AppletIndex : uint8_t {
     kAppletCompare,
     kAppletCumulus,
     kAppletEnvFollow,
+    kAppletGameOfLife,
     kAppletGateDelay,
     kAppletGatedVCA,
     kAppletLogic,
     kAppletPolyDiv,
+    kAppletProbabilityDivider,
     kAppletRndWalk,
     kAppletRunglBook,
     kAppletSchmitt,
+    kAppletShiftGate,
     kAppletSlew,
     kAppletStairs,
     kAppletSwitch,
     kAppletTLNeuron,
+    kAppletTrending,
     kAppletVoltage,
     kAppletCount
 };

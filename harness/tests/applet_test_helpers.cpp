@@ -217,6 +217,11 @@ uint64_t pack_schmitt(int low, int high) {
     uint64_t data = 0;
     data |= ((uint64_t)(low  & 0xFFFF));
     data |= ((uint64_t)(high & 0xFFFF)) << 16;
+uint64_t pack_stairs(int steps, int dir, int rand) {
+    uint64_t data = 0;
+    data |= ((uint64_t)(steps & 0x1F));
+    data |= ((uint64_t)(dir   & 0x03)) << 5;
+    data |= ((uint64_t)(rand  & 0x01)) << 7;
     return data;
 }
 

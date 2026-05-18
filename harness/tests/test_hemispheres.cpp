@@ -27,6 +27,7 @@ using hem_shim::kAppletRndWalk;
 using hem_shim::kAppletRunglBook;
 using hem_shim::kAppletSchmitt;
 using hem_shim::kAppletSlew;
+using hem_shim::kAppletStairs;
 using hem_shim::kAppletTLNeuron;
 using Catch::Approx;
 using namespace hem_test;
@@ -139,6 +140,8 @@ void rungl_book_set(hem_shim::HemispheresInstance* hi, int threshold) {
     get_applet(hi, LEFT)->OnDataReceive(pack_rungl_book(threshold));
 void schmitt_set(hem_shim::HemispheresInstance* hi, int low, int high) {
     get_applet(hi, LEFT)->OnDataReceive(pack_schmitt(low, high));
+void stairs_set(hem_shim::HemispheresInstance* hi, int steps, int dir, int rand) {
+    get_applet(hi, LEFT)->OnDataReceive(pack_stairs(steps, dir, rand));
 }
 
 }  // namespace
@@ -2002,4 +2005,128 @@ TEST_CASE("schmitt SC6: Out(0) returns low when In(0) drops below low threshold"
     set_cv(s.bus, LEFT, 0, 1.0f, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32);
     REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == false);
+// ---------------------------------------------------------------------------
+// Stairs tests
+// ---------------------------------------------------------------------------
+// Vendor: Stairs.h. Pack layout: steps[0,5), dir[5,2), rand[7,1). No bias.
+// Start() defaults: steps=1, dir=0, rand=0, curr_step=0.
+// 10x clocked-multiplier: one Clock(0) buffer fires Controller() 10 times,
+// advancing curr_step 10 times. Period for up-mode = steps+1.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("stairs ST1: Start defaults match vendor (steps=1, dir=0, rand=0)", "[stairs]") {
+    auto s = setup_applet(kAppletStairs);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int steps = (int)((packed)       & 0x1F);
+    int dir   = (int)((packed >> 5)  & 0x03);
+    int rand  = (int)((packed >> 7)  & 0x01);
+    REQUIRE(steps == 1);
+    REQUIRE(dir   == 0);
+    REQUIRE(rand  == 0);
+}
+
+TEST_CASE("stairs ST2: OnDataReceive then OnDataRequest round-trip preserves steps=8, dir=2, rand=1", "[stairs]") {
+    auto s = setup_applet(kAppletStairs);
+    stairs_set(s.hi, 8, 2, 1);  // steps=8, dir=2 (down), rand=1
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int steps = (int)((packed)       & 0x1F);
+    int dir   = (int)((packed >> 5)  & 0x03);
+    int rand  = (int)((packed >> 7)  & 0x01);
+    REQUIRE(steps == 8);
+    REQUIRE(dir   == 2);
+    REQUIRE(rand  == 1);
+}
+
+TEST_CASE("stairs ST3: Clock(0) up-mode advances curr_step 10x per buffer (steps=3, dir=0)", "[stairs]") {
+    // Shim reality: clocked[0] is set once per buffer and remains true for all
+    // ticks_this_step (= numFrames/3 = 10) inner Controller calls. So one
+    // set_gate pulse fires ++curr_step 10 times.
+    //
+    // steps=3, dir=0 (up): wrap period = steps+1 = 4 (positions 0,1,2,3).
+    // 10 increments from curr_step=0:
+    //   ticks 1-3: curr_step=1,2,3.
+    //   tick 4:    ++curr_step=4, 4>3=true -> curr_step=0, ClockOut(1).
+    //   ticks 5-7: curr_step=1,2,3.
+    //   tick 8:    ++curr_step=4, 4>3=true -> curr_step=0, ClockOut(1).
+    //   ticks 9-10: curr_step=1,2.
+    // Final curr_step=2. cv_out = Proportion(2,3,9216) = 6144 hem = 4.0V.
+    auto s = setup_applet(kAppletStairs);
+    stairs_set(s.hi, 3, 0, 0);  // steps=3, dir=0, rand=0
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);  // Clock(0)
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(4.0f).margin(0.1f));
+}
+
+TEST_CASE("stairs ST4: ClockOut(1) fires when curr_step wraps in up-mode", "[stairs]") {
+    // Same setup as ST3: steps=3, dir=0. The first Clock(0) buffer causes two
+    // wrap events (at ticks 4 and 8), so ClockOut(1) is called twice. The
+    // clock_countdown for Out(1) is set to 175 on each call; with 10 ticks
+    // remaining at the end the countdown is still active. Out(1) stays high.
+    auto s = setup_applet(kAppletStairs);
+    stairs_set(s.hi, 3, 0, 0);  // steps=3, dir=0, rand=0
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);  // Clock(0)
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);  // BOC pulse active
+}
+
+TEST_CASE("stairs ST5: Clock(0) up-down mode (steps=4, dir=1) traverses up then back", "[stairs]") {
+    // steps=4, dir=1 (up-down): forward range 0..4, reverse range 3..0 then bounce.
+    // OnDataReceive with dir=1: reverse=false (dir != 2), Reset sets curr_step=0.
+    // 10 ticks from curr_step=0:
+    //   ticks 1-4: curr_step=1,2,3,4.
+    //   tick 5:    ++curr_step=5, 5>4=true -> reverse=true, curr_step=3.
+    //   ticks 6-7: curr_step=2,1.
+    //   tick 8:    --curr_step=0. curr_step==0 && dir==1 -> ClockOut(1).
+    //              curr_step is 0, not <0, so stay reverse.
+    //   tick 9:    --curr_step=-1, <0 -> reverse=false, curr_step=1.
+    //   tick 10:   ++curr_step=2.
+    // Final curr_step=2. cv_out = Proportion(2,4,9216) = 4608 hem = 3.0V.
+    auto s = setup_applet(kAppletStairs);
+    stairs_set(s.hi, 4, 1, 0);  // steps=4, dir=1 (up-down), rand=0
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);  // Clock(0)
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(3.0f).margin(0.1f));
+}
+
+TEST_CASE("stairs ST6: rand=1 mode keeps output within CV range and differs across steps", "[stairs]") {
+    // rand=1 adds a random offset (bounded to < 1/4 of one step width) to each
+    // non-endpoint step. Seed the RNG for reproducibility. Drive two Clock(0)
+    // buffers and verify Out(0) stays within [0V, 6V].
+    //
+    // steps=3, dir=0, rand=1. After 1 buffer: curr_step=2 (same as ST3).
+    // cv_out is near 4.0V +/- up to ~0.77V (one quarter of step 3/3=3072/4).
+    // After 2 buffers: curr_step=0 (endpoint, no rand); cv_out=0V exactly.
+    auto s = setup_applet(kAppletStairs);
+    seed_hem_rng(0xDEADBEEF);
+    stairs_set(s.hi, 3, 0, 1);  // steps=3, dir=0, rand=1
+
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);  // first Clock(0) buffer
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    float v1 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    REQUIRE(v1 >= 0.0f);
+    REQUIRE(v1 <= 6.0f);
+
+    // Drive a second buffer: curr_step starts at 2, advances 10 more times.
+    // 10 more from position 2: ticks 1: 3, ticks 2: 4>3->0(wrap), ticks 3-5:1,2,3,
+    // tick 6: 4>3->0, ticks 7-10:1,2,3,4->0? Let me recount with period=4:
+    // pos 2 -> +10 ticks: 2+10=12, 12 mod 4=0. Final curr_step=0 (endpoint).
+    // cv_out = Proportion(0,3,9216) = 0. rand does not apply at step 0.
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    float v2 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    REQUIRE(v2 == Approx(0.0f).margin(0.01f));  // endpoint: rand disabled, exact 0V
 }

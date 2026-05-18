@@ -186,5 +186,11 @@ uint64_t pack_rungl_book(int threshold);
 // Both fields are uint16_t in the vendor source; valid range 64..HEMISPHERE_MAX_CV.
 // Default: low=3200, high=3968.
 uint64_t pack_schmitt(int low, int high);
+// Mirrors Stairs::OnDataRequest packing (8 bits):
+//   bits [0, 5)  = steps  (0..31; default 1)
+//   bits [5, 2)  = dir    (0=up, 1=up-down, 2=down; default 0)
+//   bits [7, 1)  = rand   (0=off, 1=on; default 0)
+// No bias fields. All fields stored without offset.
+uint64_t pack_stairs(int steps, int dir, int rand);
 
 }  // namespace hem_test

@@ -181,6 +181,7 @@ struct HemispheresShim {
         }
         for (int i = 0; i < ticks_this_step; ++i) {
             OC::CORE::ticks += 1;
+            clock_m.advance_one_tick();  // Layer 0b: dep-clock-mgr drives this
             for (int ch = 0; ch < 4; ++ch) {
                 if (HS::frame.clock_countdown[ch] > 0) {
                     if (--HS::frame.clock_countdown[ch] == 0)

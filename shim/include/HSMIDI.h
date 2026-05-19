@@ -58,7 +58,7 @@ struct _UsbMidiStub {
     void send_now() {}
     void sendSysEx(uint32_t, const uint8_t*) {}
 
-    // Phase 6 EnigmaJr / EnigmaOutput stubs. No-op on the NT plug-in build
+    // EnigmaJr / EnigmaOutput stubs. No-op on the NT plug-in build
     // (no USB MIDI to the disting NT) and on host tests.
     void sendNoteOn(int /*note*/, int /*velocity*/, int /*channel*/) {}
     void sendNoteOff(int /*note*/, int /*velocity*/, int /*channel*/) {}
@@ -246,10 +246,9 @@ using SysExData = _SysExData;
 using UnpackedData = _SysExData;
 using PackedData = _SysExData;
 
-// MIDIQuantizer canonical definition lives in quant/MIDIQuantizer.h
-// (dep-quant owns it). Layer 2 integration deduplicates by including
-// the canonical definition here so HSClockManager.h continues to compile
-// against the single class without ODR conflict.
+// MIDIQuantizer canonical definition lives in quant/MIDIQuantizer.h.
+// Include it here so HSClockManager.h compiles against the single class
+// without ODR conflict.
 #include "quant/MIDIQuantizer.h"
 
 #endif /* HSMIDI_H */

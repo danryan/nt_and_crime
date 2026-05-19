@@ -78,7 +78,7 @@ def main() -> int:
     diff_script = Path("harness/scripts/diff_outputs.py")
     if not diff_script.exists():
         print(
-            "warn: diff_outputs.py missing (Task 14); skipping diff",
+            "warn: diff_outputs.py missing; skipping diff",
             file=sys.stderr,
         )
         return 0

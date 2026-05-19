@@ -3,7 +3,7 @@
 // integer comparisons. Float methods (GetTempoFloat()) are tested with a
 // tolerance check. Per-method parity annotations are inline below.
 //
-// dep-clock-mgr invariant tests (Phase 5 Layer 1).
+// dep-clock-mgr invariant tests.
 // Exercises the full HS::ClockManager port including the advance_one_tick()
 // shim wrapper. The global extern clock_m (type HSClockManager, IS-A
 // HS::ClockManager) is used directly so the test validates the same object

@@ -11,7 +11,7 @@
 //   1. Preserves backward compat: CVInputMap(int ch) constructor, In() returns
 //      frame.inputs[ch] at default attenuversion=60 (Atten(60)=1000=100%).
 //   2. Adopts vendor field layout (source, attenuversion) so vendor surface
-//      methods (ChangeSource, Pack, Unpack) work for Phase 6 applets.
+//      methods (ChangeSource, Pack, Unpack) work for the applets that need them.
 //   3. source = ch + 1 convention (vendor: 0=unmapped, 1..4=ADC 0..3).
 //   4. bjorklund.h and clkdivmult.h are included here so all CVInputMap
 //      consumers transitively get Euclidean and clock-div utilities.
@@ -25,8 +25,8 @@
 // clkdivmult.h is NOT included here: vendor applets include it via relative
 // path (../util/clkdivmult.h from their applet directory), which resolves to
 // the vendor copy. Including our shim copy here would cause redefinition errors
-// when both files reach the same translation unit. Phase 6 applets or test
-// code that need ClkDivMult should include "util/clkdivmult.h" explicitly.
+// when both files reach the same translation unit. Applets or test code that
+// need ClkDivMult should include "util/clkdivmult.h" explicitly.
 
 // Number of ADC input channels provided by the shim (T4.1 layout).
 static constexpr int CVMAP_ADC_LAST = 4; // ADC_CHANNEL_LAST from OC_ADC.h

@@ -1,4 +1,4 @@
-// dep-quant test suite (Phase 5 Layer 1.5).
+// dep-quant test suite.
 //
 // Output-parity class: integer-only for braids::Quantizer scale lookups and
 // round-trips; float-tolerance (1 LSB) is not needed here because the

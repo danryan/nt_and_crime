@@ -22,7 +22,7 @@ extern const uint8_t UP_BTN_ICON[8];
 extern const uint8_t RESET_ICON[8];
 extern const uint8_t LOOP_ICON[8];
 extern const uint8_t X_NOTE_ICON[8];
-// Phase 6 additions. Mirrors vendor HSicons.h.
+// Mirrors vendor HSicons.h.
 extern const uint8_t LEFT_ICON[8];
 extern const uint8_t WAVEFORM_ICON[8];
 extern const uint8_t NOTE_ICON[8];

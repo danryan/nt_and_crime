@@ -1,8 +1,8 @@
 /* Partial-link script that collapses gcc's split .text._ZNxxx /
- * .data._ZNxxx etc into single sections. NT firmware caps the per-plugin
- * section count; with ~25 vendor applet classes Phase 6 produced 1793
- * sections (Phase 5 baseline was 976). Merging into ~6 sections keeps
- * the firmware section walker within budget.
+ * .data._ZNxxx etc into single sections. C++ COMDAT for inline class
+ * methods emits one .text.<mangled> section per method, which can produce
+ * thousands of sections per plug-in; merging into ~6 sections keeps the
+ * firmware section walker within budget.
  */
 SECTIONS
 {

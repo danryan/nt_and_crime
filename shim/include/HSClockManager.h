@@ -373,7 +373,7 @@ public:
     // -----------------------------------------------------------------------
     // Shim addition (not in vendor source):
     // advance_one_tick() is called by hemispheres_shim::step() once per inner
-    // tick immediately after OC::CORE::ticks is incremented (Layer 0b hook).
+    // tick immediately after OC::CORE::ticks is incremented.
     // When the clock is running, SyncTrig(false) advances all tock[] counters
     // against the updated tick count with no external clock pulse.
     // When not running, this is a no-op: SyncTrig early-returns harmlessly
@@ -393,8 +393,8 @@ public:
 // when 'using namespace HS' is in scope. The shim suppresses that declaration
 // and instead uses the type alias below so that both the vendor's namespace-HS
 // reference pattern and the shim's global-scope singleton work unambiguously.
-// Applets that use HS::clock_m (Phase 6 targets) will find ::clock_m via
-// the using-declaration added to namespace HS in the shim additions section.
+// Applets that use HS::clock_m will find ::clock_m via the using-declaration
+// added to namespace HS in the shim additions section.
 // -----------------------------------------------------------------------
 
 }

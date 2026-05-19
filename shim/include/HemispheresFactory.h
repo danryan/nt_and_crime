@@ -6,14 +6,14 @@
 #include "HemisphereApplet.h"
 #include "PackingUtils.h"
 
-// Pre-include Phase 5 dep prereqs. These define DMAMEM (no-op on host and
+// Pre-include vendor-dep prereqs. These define DMAMEM (no-op on host and
 // NT), InterpLinear16 (used by vendor HSVectorOscillator.h), and ensure
 // shim's util_math.h is in scope before vendor headers pull their own
 // util_math.h via relative include. Shim util_math.h pre-defines the
 // vendor traditional include guard UTIL_MATH_H_ so vendor's body
 // becomes a no-op once shim's is in scope.
 #include "vector_osc/vec_osc_prereqs.h"
-// Pre-include shim copies of Phase 5 dep headers that carry traditional
+// Pre-include shim copies of vendor-dep headers that carry traditional
 // include guards (HS_VECTOR_OSCILLATOR, WAVEFORM_MANAGER_H,
 // STREAMS_LORENZ_GENERATOR_H_). When a vendor applet later does a relative
 // `../<dep>.h` include, the guard is already defined so vendor's copy of
@@ -61,7 +61,6 @@
 #include "Stairs.h"
 #include "Switch.h"
 #include "Voltage.h"
-// Phase 4 additions
 #include "ADEG.h"
 #include "ADSREG.h"
 #include "Binary.h"
@@ -69,15 +68,15 @@
 #include "ProbabilityDivider.h"
 #include "ShiftGate.h"
 #include "Trending.h"
-// Phase 6 plug-in variant selector. Set via Makefile per .o:
+// Plug-in variant selector. Set via Makefile per .o:
 //   HEMI_VARIANT=0  host build, full 56-applet factory (default; tests need it)
-//   HEMI_VARIANT=1  ARM Hemispheres.o primary: drops the 5 largest Phase 6
-//                   applets (Relabi, Shredder, EnsOscKey, VectorLFO, Strum)
-//                   to fit under the ~82KB per-plugin .text budget the NT
-//                   firmware enforces. Empirically: 20 of 25 Phase 6 applets
-//                   plus all 31 P5 applets = 81566 bytes .text on hardware.
-//   HEMI_VARIANT=2  ARM Hemispheres2.o secondary: registers ONLY the 5 dropped
-//                   applets so they remain reachable on hardware.
+//   HEMI_VARIANT=1  ARM Hemispheres.o primary: 51 applets, dropping the 5
+//                   largest (Relabi, Shredder, EnsOscKey, VectorLFO, Strum)
+//                   so the build fits under the ~82KB per-plugin .text
+//                   budget the NT firmware enforces. Measured: 81566 bytes
+//                   .text on hardware.
+//   HEMI_VARIANT=2  ARM Hemispheres2.o secondary: registers ONLY the 5
+//                   dropped applets so they remain reachable on hardware.
 //
 // Each ARM variant must fit under the .text cap independently; the cap is
 // per-.o, not per-host. View Info on the NT screen reports "Not enough
@@ -88,7 +87,7 @@
 #define HEMI_IN_PRIMARY   (HEMI_VARIANT == 0 || HEMI_VARIANT == 1)
 #define HEMI_IN_SECONDARY (HEMI_VARIANT == 0 || HEMI_VARIANT == 2)
 
-// Phase 6 additions: Class A (vendor-dep)
+// Applets backed by VectorOscillator / Lorenz / Relabi managers.
 #if HEMI_IN_SECONDARY
 #include "VectorLFO.h"
 #endif
@@ -104,7 +103,7 @@
 #include "LowerRenz.h"
 #include "Combin8.h"
 #endif
-// Phase 6 additions: Class B (quantizer)
+// Applets using the braids quantizer.
 #if HEMI_IN_PRIMARY
 #include "Pigeons.h"
 #endif
@@ -127,12 +126,12 @@
 #endif
 #if HEMI_IN_PRIMARY
 #include "Calibr8.h"
-// Phase 6 additions: Class C (helper-using)
+// Applets using shared host helpers (step_n_inner_ticks, etc.).
 #include "ResetClock.h"
 #include "Shuffle.h"
 #include "Xfader.h"
 #include "Scope.h"
-// Phase 6 additions: Class D (clock-mgr)
+// Applets driven by HS::clock_m.
 #include "Metronome.h"
 #endif
 
@@ -253,7 +252,6 @@ constexpr size_t kMaxAppletSize =
     cmax(sizeof(ShiftGate),
     cmax(sizeof(Trending),
     cmax(sizeof(Burst),
-    // Phase 6 additions
     cmax(sizeof(VectorLFO),
     cmax(sizeof(VectorEG),
     cmax(sizeof(VectorMod),
@@ -316,7 +314,6 @@ constexpr size_t kMaxAppletAlign =
     cmax(alignof(ShiftGate),
     cmax(alignof(Trending),
     cmax(alignof(Burst),
-    // Phase 6 additions
     cmax(alignof(VectorLFO),
     cmax(alignof(VectorEG),
     cmax(alignof(VectorMod),

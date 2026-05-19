@@ -8,14 +8,14 @@
 using byte = uint8_t;
 
 // POSIX-ish `uint` shorthand. ARM-EABI newlib does not declare it; Xfader
-// applet relies on it. Define unconditionally so all Phase 6 applet
-// translation units see it.
+// applet relies on it. Define unconditionally so all applet translation
+// units see it.
 using uint = unsigned int;
 
 // Teensy-style placement attributes. No-op on host and NT plug-in builds.
-// Phase 6 promotes DMAMEM here from vec_osc_prereqs.h so any applet pulling
-// Teensy headers (e.g. enigma/TuringMachine.h via EnigmaJr) sees the macro
-// as soon as Arduino.h is in scope.
+// DMAMEM is defined here (and also in vec_osc_prereqs.h) so any applet
+// pulling Teensy headers (e.g. enigma/TuringMachine.h via EnigmaJr) sees
+// the macro as soon as Arduino.h is in scope.
 #ifndef DMAMEM
 #define DMAMEM
 #endif

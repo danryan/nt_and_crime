@@ -2,7 +2,7 @@
 // PhaseExtractor; integer outputs for ProcessSample, pinned on host and
 // asserted byte-identical).
 //
-// dep-tideslite: tideslite + PhaseExtractor invariant tests (Phase 5).
+// dep-tideslite: tideslite + PhaseExtractor invariant tests.
 //
 // Build note: tideslite.cpp defines WarpPhase / ShapePhase / ProcessSample as
 // non-inline free functions. The dep test binary does not link tideslite.cpp

@@ -288,69 +288,274 @@ uint64_t pack_vector_lfo(int waveform_a, int waveform_b, int pitch_a, int pitch_
 // === END vector_lfo ===
 
 // === BEGIN vector_eg ===
+// Mirrors VectorEG::OnDataRequest packing (33 bits used):
+//   bits [0,6)  = waveform_number[0]  (0..63; default HS::EG1=48)
+//   bits [6,6)  = waveform_number[1]  (0..63; default HS::EG2=49)
+//   bits [12,10) = freq[0]            (MIN_FREQ=1..MAX_FREQ=2000; default 50)
+//   bits [22,10) = freq[1]            (MIN_FREQ=1..MAX_FREQ=2000; default 50)
+//   bits [32,1)  = modshape           (0=freq mod; 1=shape mod; default 0)
+// No bias on any field.
+uint64_t pack_vector_eg(int waveform0, int waveform1,
+                        int freq0, int freq1, int modshape);
 // === END vector_eg ===
 
 // === BEGIN vector_mod ===
+// Mirrors VectorMod::OnDataRequest packing:
+//   bits [0,6)   = waveform_number[0]
+//   bits [6,6)   = waveform_number[1]
+//   bits [12,10) = freq[0] & 0x3FF
+//   bits [22,10) = freq[1] & 0x3FF
+uint64_t pack_vector_mod(int wf0, int wf1, int freq0, int freq1);
 // === END vector_mod ===
 
 // === BEGIN vector_morph ===
+// Mirrors VectorMorph::OnDataRequest packing (31 bits used):
+//   bits [0,6)   = waveform_number[0]  (no bias; library waveforms: Triangle=32, Sine=35, Morph1=57)
+//   bits [6,6)   = waveform_number[1]
+//   bits [12,9)  = phase[0]            (no bias; 0..355, 5-degree increments)
+//   bits [21,9)  = phase[1]
+//   bits [30,1)  = linked
+uint64_t pack_vector_morph(int waveform0, int waveform1, int phase0, int phase1, int linked);
 // === END vector_morph ===
 
 // === BEGIN relabi ===
+// Mirrors Relabi::OnDataRequest packing (63 bits used):
+//   bits [0,6)    = freqKnob[0]    (0..63, no bias)
+//   bits [6,6)    = freqKnob[1]    (0..63, no bias)
+//   bits [12,6)   = freqKnob[2]    (0..63, no bias)
+//   bits [18,3)   = xmodKnob[0]    (0..7, no bias)
+//   bits [21,3)   = xmodKnob[1]    (0..7, no bias)
+//   bits [24,3)   = xmodKnob[2]    (0..7, no bias)
+//   bits [27,3)   = phaseKnob[0]   (0..7, no bias)
+//   bits [30,3)   = phaseKnob[1]   (0..7, no bias)
+//   bits [33,3)   = phaseKnob[2]   (0..7, no bias)
+//   bits [36,3)   = threshKnob[0]  (0..6, no bias)
+//   bits [39,3)   = threshKnob[1]  (0..6, no bias)
+//   bits [42,3)   = threshKnob[2]  (0..6, no bias)
+//   bits [45,3)   = freqKnobMul    (0..7, no bias)
+//   bits [48,3)   = freqKnobDiv    (0..7, no bias)
+//   bits [51,3)   = outputAssign[0] (0..7, no bias)
+//   bits [54,3)   = outputAssign[1] (0..7, no bias)
+//   bits [57,3)   = outputAssign[2] (0..7, no bias)
+//   bits [60,3)   = outputAssign[3] (0..7, no bias)
+uint64_t pack_relabi(
+    int freq0, int freq1, int freq2,
+    int xmod0, int xmod1, int xmod2,
+    int phase0, int phase1, int phase2,
+    int thresh0, int thresh1, int thresh2,
+    int freq_mul, int freq_div,
+    int out0, int out1, int out2, int out3);
 // === END relabi ===
 
 // === BEGIN lower_renz ===
+// freq: 0-255 (bits 0-7), rho: 0-127 (bits 8-15)
+uint64_t pack_lower_renz(int freq, int rho);
 // === END lower_renz ===
 
 // === BEGIN combin8 ===
+// pack_combin8: encodes 4 CVInputMap values (sources[0][0..1], sources[1][0..1]).
+// Each CVInputMap packs as 16 bits: low byte = source (0..4), high byte = attenuversion
+// (-127..+127, bias 60 = 100% passthrough). Layout:
+//   bits [0,16)  = sources[0][0] (source in [0,8), attenuversion in [8,8))
+//   bits [16,16) = sources[0][1]
+//   bits [32,16) = sources[1][0]
+//   bits [48,16) = sources[1][1]
+// source: 0=unmapped, 1..4=ADC A..D. attenuversion: signed int8_t stored as uint8_t.
+uint64_t pack_combin8(int src00, int att00,
+                      int src01, int att01,
+                      int src10, int att10,
+                      int src11, int att11);
 // === END combin8 ===
 
 // === BEGIN pigeons ===
+// Mirrors Pigeons::OnDataRequest packing (48 bits used; gap at bits 40-43):
+//   bits [0,6)   = pigeons[0].val[0]       (0..63)
+//   bits [6,6)   = pigeons[0].val[1]       (0..63)
+//   bits [12,6)  = pigeons[0].mod - 1      (stored as 0..63; vendor bias +1 on receive)
+//   bits [18,6)  = pigeons[1].val[0]       (0..63)
+//   bits [24,6)  = pigeons[1].val[1]       (0..63)
+//   bits [30,6)  = pigeons[1].mod - 1      (stored as 0..63)
+//   bits [36,4)  = qselect[0]              (0..15, quantizer channel index)
+//   bits [40,4)  = gap (zeros)
+//   bits [44,4)  = qselect[1]              (0..15)
+// All fields stored without additional bias except mod (stored as mod-1).
+uint64_t pack_pigeons(int val0_0, int val0_1, int mod0,
+                      int val1_0, int val1_1, int mod1,
+                      int qsel0, int qsel1);
 // === END pigeons ===
 
 // === BEGIN strum ===
+// Mirrors Strum::OnDataRequest packing (63 bits used):
+//   bits  [0,  4) = qselect  (0..QUANT_CHANNEL_COUNT-1)
+//   bits  [4,  8) = gap      (bits 4..11 unused; zero explicitly)
+//   bits [12,  9) = spacing  (HEM_BURST_SPACING_MIN=8..HEM_BURST_SPACING_MAX=500)
+//   bits [21,  4) = length   (1..MAX_CHORD_LENGTH=6)
+//   bits [25,  6) = intervals[0] - MIN_INTERVAL  (bias +12)
+//   bits [31,  6) = intervals[1] - MIN_INTERVAL
+//   bits [37,  6) = intervals[2] - MIN_INTERVAL
+//   bits [43,  6) = intervals[3] - MIN_INTERVAL
+//   bits [49,  6) = intervals[4] - MIN_INTERVAL
+//   bits [55,  6) = intervals[5] - MIN_INTERVAL
+//   bits [61,  1) = stepmode
+//   bits [62,  1) = qmod
+// intervals[] bias: stored = vendor_value - (-12) = vendor_value + 12.
+uint64_t pack_strum(int qselect, int spacing, int length,
+                    int iv0, int iv1, int iv2, int iv3, int iv4, int iv5,
+                    int stepmode, int qmod);
 // === END strum ===
 
 // === BEGIN shredder ===
+// Mirrors Shredder::OnDataRequest packing (64 bits):
+//   bits [0, 4)  = range[0]          (0..5, no bias)
+//   bit  [4, 1)  = bipolar[0]        (bool)
+//   bit  [5, 1)  = shred_on_reset[0] (bool)
+//   bits 6..7    = unused gap (zero)
+//   bits [8, 4)  = range[1]
+//   bit  [12,1)  = bipolar[1]
+//   bit  [13,1)  = shred_on_reset[1]
+//   bits 14..15  = unused gap (zero)
+//   bits [16,8)  = quant_channels    (0=both, 1=ch0 only, 2=ch1 only)
+//   bits [24,8)  = scale index       (OC::Scales index; SCALE_SEMI=5)
+//   bits [32,16) = seed[0]           (16-bit PRNG seed)
+//   bits [48,16) = seed[1]
+uint64_t pack_shredder(int range0, int bipolar0, int shred_on_reset0,
+                       int range1, int bipolar1, int shred_on_reset1,
+                       int quant_channels, int scale,
+                       int seed0, int seed1);
 // === END shredder ===
 
 // === BEGIN carpeggio ===
+// Mirrors Carpeggio::OnDataRequest packing (16 bits):
+//   bits [0,8)  = sel_chord (0..Nr_of_arp_chords-1 = 0..54; no bias)
+//   bits [8,8)  = transpose + 24 (biased +24; range -24..24 stored as 0..48)
+// sequence[] and step are runtime-only; not serialised.
+uint64_t pack_carpeggio(int sel_chord, int transpose);
 // === END carpeggio ===
 
 // === BEGIN squanch ===
+// Mirrors Squanch::OnDataRequest packing (40 bits used):
+//   bits [0,  8) = GetScale(0)       (0..255; scale index, no bias)
+//   bits [8,  8) = shift[0] + 48     (biased; shift is -48..48)
+//   bits [16, 8) = shift[1] + 48     (biased; shift is -48..48)
+//   bits [24, 4) = GetRootNote(0)    (0..11; root note, no bias)
+//   bits [28, 6) = note_wrap[0]      (0..60; no bias)
+//   bits [34, 6) = note_wrap[1]      (0..60; no bias)
+// Defaults after Start(): scale=0, shift[0]=0, shift[1]=0, root=0, wrap=0.
+uint64_t pack_squanch(int scale, int shift0, int shift1,
+                      int root, int note_wrap0, int note_wrap1);
 // === END squanch ===
 
 // === BEGIN chordinator ===
+// Mirrors Chordinator::OnDataRequest packing (28 bits used):
+//   bits [0,  8) = GetScale(0)      (OC scale index, no bias)
+//   bits [8,  4) = GetRootNote(0)   (0..11, no bias)
+//   bits [12,16) = chord_mask       (uint16 bitmask, no bias)
+uint64_t pack_chordinator(int scale, int root_note, int chord_mask);
 // === END chordinator ===
 
 // === BEGIN dual_quant ===
+// Mirrors DualQuant::OnDataRequest packing:
+//   bits [0,8)  = GetScale(0)   (OC::Scales index; SCALE_SEMI=5 is Chromatic default)
+//   bits [8,8)  = GetScale(1)
+//   bits [16,4) = GetRootNote(0) (0..11, no bias)
+//   bits [20,4) = GetRootNote(1)
+uint64_t pack_dual_quant(int scale0, int scale1, int root0, int root1);
 // === END dual_quant ===
 
 // === BEGIN enigma_jr ===
+// Mirrors EnigmaJr::OnDataRequest packing (31 bits used):
+//   bits [0,7)  = p         (0..100; mutation probability)
+//   bits [7,4)  = type0     (0..8; EnigmaOutputType for output[0])
+//   bits [11,4) = type1     (0..8; EnigmaOutputType for output[1])
+//   bits [15,16) = tm_index (0..39; TuringMachine bank index)
+// No bias on any field.
+uint64_t pack_enigma_jr(int p, int type0, int type1, int tm_index);
 // === END enigma_jr ===
 
 // === BEGIN offset_quant ===
+// Mirrors OffsetQuant::OnDataRequest packing (30 bits):
+//   bits [0,  3) = range_mode[0]   (0=FULL, 1=0V-2V, 2=1V-3V, 3=2V-4V, 4=3V-5V)
+//   bits [3,  3) = range_mode[1]   (same enum, no bias)
+//   bits [6,  8) = GetScale(0)     (global quant channel 0 scale index, no bias)
+//   bits [14, 8) = GetScale(1)     (global quant channel 1 scale index, no bias)
+//   bits [22, 4) = GetRootNote(0)  (0..11, no bias)
+//   bits [26, 4) = GetRootNote(1)  (0..11, no bias)
+// Defaults after Start(): range_mode[ch]=1(RANGE_0_2), scale[ch]=5(SCALE_SEMI), root[ch]=0.
+uint64_t pack_offset_quant(int range0, int range1, int scale0, int scale1,
+                            int root0, int root1);
 // === END offset_quant ===
 
 // === BEGIN multi_scale ===
+// Mirrors MultiScale::OnDataRequest packing (48 bits, four 12-bit scale masks):
+//   bits [ 0,12) = scale_mask[0]  (default 0x0001)
+//   bits [12,12) = scale_mask[1]  (default 0x0001)
+//   bits [24,12) = scale_mask[2]  (default 0x0001)
+//   bits [36,12) = scale_mask[3]  (default 0x0001)
+// No bias on any field. Each mask is a 12-bit chromatic bitmask (1 bit per note).
+uint64_t pack_multi_scale(int mask0, int mask1, int mask2, int mask3);
 // === END multi_scale ===
 
 // === BEGIN scale_duet ===
+// Mirrors ScaleDuet::OnDataRequest packing:
+//   mask0 at bits [0,12), mask1 at bits [12,12).
+//   Both values are 12-bit chromatic scale bitmasks (no bias).
+uint64_t pack_scale_duet(int mask0, int mask1);
 // === END scale_duet ===
 
 // === BEGIN ens_osc_key ===
+// Mirrors EnsOscKey::OnDataRequest packing (32 bits used):
+//   bits [0,8)  = scale        (5..11; no bias)
+//   bits [8,4)  = octave+5     (stored with +5 bias; range -5..5 -> 0..10)
+//   bits [12,4) = voltage_maj  (1..10; no bias)
+//   bits [16,4) = voltage_min  (1..10; no bias)
+//   bits [20,4) = voltage_dim  (1..10; no bias)
+//   bits [24,4) = voltage_no_match (1..10; no bias)
+//   bits [28,4) = root         (0..11; no bias)
+// Parameters: scale, octave (un-biased; bias applied inside helper), voltage_maj,
+//             voltage_min, voltage_dim, voltage_no_match, root.
+uint64_t pack_ens_osc_key(int scale, int octave, int voltage_maj,
+                           int voltage_min, int voltage_dim,
+                           int voltage_no_match, int root);
 // === END ens_osc_key ===
 
 // === BEGIN calibr8 ===
+// Mirrors Calibr8::OnDataRequest packing (50 bits used):
+//   bits [0,  10) = scale_factor[0] + 500   (biased; range -500..500)
+//   bits [10, 10) = scale_factor[1] + 500
+//   bits [20,  8) = offset[0] + 100          (biased; range -100..100)
+//   bits [28,  8) = offset[1] + 100
+//   bits [36,  7) = transpose[0] + 36        (biased; range -36..60)
+//   bits [43,  7) = transpose[1] + 36
+uint64_t pack_calibr8(int scale0, int scale1,
+                      int offset0, int offset1,
+                      int transpose0, int transpose1);
 // === END calibr8 ===
 
 // === BEGIN reset_clock ===
+// Mirrors ResetClock::OnDataRequest packing (17 bits used):
+//   bits [0, 5)  = length - 1  (vendor bias: stores length-1, receive adds 1 back)
+//   bits [5, 5)  = offset       (no bias; 0..length-1, constrained by vendor)
+//   bits [10, 7) = spacing      (no bias; RC_MIN_SPACING..100)
+// position, pending_clocks, offset_mod, ticks_since_clock are runtime-only fields
+// not serialised by vendor OnDataRequest.
+uint64_t pack_reset_clock(int length, int offset, int spacing);
 // === END reset_clock ===
 
 // === BEGIN shuffle ===
+// Mirrors Shuffle::OnDataRequest packing (14 bits used):
+//   bits [0, 7) = delay[0] (even-clock delay, 0..99, no bias)
+//   bits [7, 7) = delay[1] (odd-clock delay,  0..99, no bias)
+uint64_t pack_shuffle(int delay0, int delay1);
 // === END shuffle ===
 
 // === BEGIN xfader ===
+// Mirrors Xfader::OnDataRequest packing (33 bits used):
+//   bits [0,8)   = balance >> 8  (uint8, crossfade position 0..255; default 128)
+//   bits [8,16)  = rate          (uint16, fade rate 0..65535; default 128)
+//   bits [24,8)  = center        (uint8, center reset target 0..255; default 128)
+//   bit  32      = center_reset_enable (bool; default false)
+// No bias on any field. Pack uses uint8_t cast for balance and center fields.
+uint64_t pack_xfader(int balance, int rate, int center, int center_reset_enable);
 // === END xfader ===
 
 // === BEGIN scope ===

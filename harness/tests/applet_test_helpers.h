@@ -278,6 +278,13 @@ uint64_t pack_trending(int assign_left, int assign_right, int sensitivity);
 // section with the per-applet pack_<applet> signature and bit-layout doc.
 
 // === BEGIN vector_lfo ===
+// VectorLFO OnDataRequest bit layout:
+//   [0,6)   = waveform_number[0]
+//   [6,6)   = waveform_number[1]
+//   [12,16) = pitch[0]  (int16_t, no bias)
+//   [28,16) = pitch[1]  (int16_t, no bias)
+//   [44,1)  = modshape
+uint64_t pack_vector_lfo(int waveform_a, int waveform_b, int pitch_a, int pitch_b, bool modshape);
 // === END vector_lfo ===
 
 // === BEGIN vector_eg ===

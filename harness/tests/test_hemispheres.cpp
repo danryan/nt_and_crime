@@ -39,6 +39,8 @@ using hem_shim::kAppletGameOfLife;
 using hem_shim::kAppletProbabilityDivider;
 using hem_shim::kAppletShiftGate;
 using hem_shim::kAppletTrending;
+// Phase 6
+using hem_shim::kAppletVectorLFO;
 using Catch::Approx;
 using namespace hem_test;
 
@@ -2782,7 +2784,66 @@ TEST_CASE("helper H2: step_n_inner_ticks tick-advancement invariant under load (
 // === END helper ===
 
 // === BEGIN vector_lfo ===
-// Phase 6 applet test region (unblocked by dep-vec-osc).
+// VectorLFO bit layout (OnDataRequest):
+//   [0,6)   = waveform_number[0]
+//   [6,6)   = waveform_number[1]
+//   [12,16) = pitch[0]  (int16_t raw, no bias)
+//   [28,16) = pitch[1]  (int16_t raw, no bias)
+//   [44,1)  = modshape
+
+TEST_CASE("VL1: Start() defaults: waveform 0 both channels, pitch 0, modshape false", "[vector_lfo]") {
+    auto s = setup_applet(kAppletVectorLFO);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x3F) == 0);  // waveform_number[0]
+    REQUIRE((int)((data >>  6) & 0x3F) == 0);  // waveform_number[1]
+    REQUIRE((int16_t)((data >> 12) & 0xFFFF) == 0);  // pitch[0]
+    REQUIRE((int16_t)((data >> 28) & 0xFFFF) == 0);  // pitch[1]
+    REQUIRE((int)((data >> 44) & 0x1) == 0);   // modshape
+}
+
+TEST_CASE("VL2: round-trip preserves waveform numbers and pitch", "[vector_lfo]") {
+    auto s = setup_applet(kAppletVectorLFO);
+    auto* left = get_applet(s.hi, LEFT);
+    // waveform 3 and 5, pitch +1000 and -500
+    left->OnDataReceive(pack_vector_lfo(3, 5, 1000, -500, false));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x3F) == 3);
+    REQUIRE((int)((data >>  6) & 0x3F) == 5);
+    REQUIRE((int16_t)((data >> 12) & 0xFFFF) == 1000);
+    REQUIRE((int16_t)((data >> 28) & 0xFFFF) == (int16_t)-500);
+}
+
+TEST_CASE("VL3: round-trip preserves modshape flag", "[vector_lfo]") {
+    auto s = setup_applet(kAppletVectorLFO);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_vector_lfo(0, 0, 0, 0, true));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 44) & 0x1) == 1);
+}
+
+TEST_CASE("VL4: Controller produces bounded output on ch0 and ch1 after several steps", "[vector_lfo]") {
+    auto s = setup_applet(kAppletVectorLFO);
+    // Let the oscillator run freely for a while. Out(ch) must stay within the
+    // NT hem range (-HEMISPHERE_MAX_CV .. +HEMISPHERE_MAX_CV ~ -6V .. +6V).
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 20);
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float out1 = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    REQUIRE(out0 >= -7.0f);
+    REQUIRE(out0 <=  7.0f);
+    REQUIRE(out1 >= -7.0f);
+    REQUIRE(out1 <=  7.0f);
+}
+
+TEST_CASE("VL5: waveform max (63) round-trips cleanly", "[vector_lfo]") {
+    auto s = setup_applet(kAppletVectorLFO);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_vector_lfo(63, 63, 0, 0, false));
+    uint64_t data = left->OnDataRequest();
+    // waveform_number[ch] is a uint8_t but only 6 bits are packed; max storable value is 63
+    REQUIRE((int)((data >> 0) & 0x3F) == 63);
+    REQUIRE((int)((data >> 6) & 0x3F) == 63);
+}
 // === END vector_lfo ===
 
 // === BEGIN vector_eg ===

@@ -113,11 +113,8 @@ build/arm/bus_probe.o: applets/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
 
-build/arm/aeabi_probe.o: applets/aeabi_probe.cpp $(COMPILER_RT_OBJS)
-	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) -c -o build/arm/aeabi_probe.raw.o $<
-	$(ARM_LD) -r --strip-debug build/arm/aeabi_probe.raw.o $(COMPILER_RT_OBJS) -o build/arm/aeabi_probe.linked.o
-	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/aeabi_probe.linked.o $@
+# aeabi_probe rule lives below COMPILER_RT_OBJS so its $(COMPILER_RT_OBJS)
+# prereq expansion is non-empty (Make expands prereqs at rule-parse time).
 
 # Hem shim sources (header-only for now; compiled as part of each applet's TU)
 SHIM_INCLUDE := -Ishim/include
@@ -155,6 +152,12 @@ COMPILER_RT_OBJS := \
 build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.c
 	mkdir -p $(@D)
 	$(ARM_CC) $(ARM_CFLAGS) -Ishim/src/compiler_rt -c -o $@ $<
+
+build/arm/aeabi_probe.o: applets/aeabi_probe.cpp $(COMPILER_RT_OBJS)
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o build/arm/aeabi_probe.raw.o $<
+	$(ARM_LD) -r --strip-debug build/arm/aeabi_probe.raw.o $(COMPILER_RT_OBJS) -o build/arm/aeabi_probe.linked.o
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/aeabi_probe.linked.o $@
 
 build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.S
 	mkdir -p $(@D)

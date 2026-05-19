@@ -136,14 +136,14 @@ Standard sequence for any non-trivial change:
 5. **Integration** on the feature branch: cherry-pick implementer commits, add registration entries, run `make test-applets` and `make arm`.
 6. **PR** opened by the feature branch. Hardware smoke check happens after PR open since it needs physical access.
 
-## Audit disciplines (Phase 5 lessons)
+## Audit disciplines
 
 - Load-bearing infrastructure (helpers, shim subsystems) is designed in the kickoff prompt or preflight, not the brainstorm. Brainstorms categorize and select; they do not design under deadline.
 - Cat-C demotion threshold: if more than 2 of N candidates carry deferred deps in audit, halt and assess whether the boundary is wrong, not just whether scope is small. High demotion rate is evidence of mis-drawn boundaries.
 - Per-dep LoC counted in preflight drives split/monolithic decisions, not brainstorm wrestling. Thresholds: under 1500 monolithic, 1500-2250 split, over 2250 halt and carve sub-phase.
 - Tiny deps (under ~150 LoC) that have no standalone use bundle into the bigger dep they serve. Two implementers for one logical unit is more risk than reward.
 
-## NT plug-in runtime (Phase 5 Layer 3)
+## NT plug-in runtime
 
 PIC plug-in builds require all-PIC linkage. The NT firmware applies relocations at on-device link time and treats `-fPIC` plug-ins as the expected shape. Mixing PIC plug-in code with non-PIC ARM asm (e.g., from `libgcc.a` extraction) produces "relocation of non-loaded section" warnings on every load. Stock `arm-none-eabi-gcc` ships no PIC `libgcc` multilib for `v7e-m+dp/hard` (verify with `arm-none-eabi-gcc -fPIC -print-libgcc-file-name` returning the same path as without `-fPIC`). Solution: vendor compiler-rt builtins under `shim/src/compiler_rt/` (verbatim from llvm-project tag `llvmorg-19.1.0`), compile each `.c` file with `arm-none-eabi-gcc` (NOT `c++` — C++ name-mangles EABI symbol names), and partial-link via `ld -r --strip-debug`. Apache-2.0 with LLVM exception licensing avoids GPL drag. `cxx_runtime_stubs.cpp` handles the C++ ABI symbols the runtime doesn't link: `__aeabi_atexit` (no-op), `__dso_handle` (nullptr), operator `new` (returns nullptr, arm-only), `std::__throw_bad_function_call` (spin, arm-only). NT firmware also doesn't provide certain vendor static class members: `SegmentDisplay::digit` is declared `static constexpr uint8_t digit[10]` but never defined out-of-class (C++11/14 odr-use bug); shim provides the out-of-class definition in `shim/src/globals.cpp`. `applets/aeabi_probe.cpp` is the permanent diagnostic for confirming which firmware symbols are unresolved after toolchain or vendor updates: deploy it via `make deploy-sysex SYSEX_PLUGIN=build/arm/aeabi_probe_stripped.o` and read the NT screen's first unresolved-symbol error.
 
@@ -151,7 +151,7 @@ Diagnostic discipline beats guessing. When stripping sections in sequence doesn'
 
 ## NT firmware .text budget (~82KB per .o, scan-time)
 
-NT firmware refuses to register a plug-in whose `.text` exceeds approximately 82KB. Misc > Plug-ins > View Info shows "Not enough memory for .text : <name>" and the entry as Failed. Empirically: 50KB (Phase 5) loads, 81566 B loads, 83448 B fails. Section count is NOT the cap; the same firmware accepted a 12-section build at 81KB and refused a 14-section build at 83KB. Each `.o` is checked independently. If a single applet set exceeds the cap, ship it across multiple plug-ins via `HEMI_VARIANT`.
+NT firmware refuses to register a plug-in whose `.text` exceeds approximately 82KB. Misc > Plug-ins > View Info shows "Not enough memory for .text : <name>" and the entry as Failed. Empirically: 50KB loads, 81566 B loads, 83448 B fails. Section count is NOT the cap; the same firmware accepted a 12-section build at 81KB and refused a 14-section build at 83KB. Each `.o` is checked independently. If a single applet set exceeds the cap, ship it across multiple plug-ins via `HEMI_VARIANT`.
 
 ## Runtime ITC pool is shared across loaded slots
 
@@ -168,11 +168,11 @@ Misc > Plug-ins > View Info shows pass/fail per `.o` with ITC/DTC/DRAM stats. Pr
 
 ## ARM unresolved-symbol surface (firmware contract)
 
-Firmware resolves at load: `NT_*` ABI (`NT_drawText`, `NT_screen`, `NT_jsonParse*`, `NT_intToString`), `_GLOBAL_OFFSET_TABLE_`, and newlib `memcpy`/`memset`/`memmove`/`strlen`/`logf`/`powf`. NOT resolved: `__aeabi_d2lz` (Phase 6 added compiler_rt `fixdfdi.c` + `fixunsdfdi.c` + `fp_lib.h` + `int_math.h`, vendored Apache-2.0 from llvmorg-19.1.0; `fixdfdi.c` emits the EABI alias `__aeabi_d2lz` via its internal `AEABI_RTABI` macro when `__ARM_EABI__` is defined), `vsnprintf` (newlib-nano omits; inline integer format if needed — see `shim/src/graphics.cpp` for the precedent that supports vendor `Relabi.h`'s `%3d`/`%u.%u` formats without pulling vsnprintf). `arm-none-eabi-nm <plugin.o> | grep ' U '` enumerates.
+Firmware resolves at load: `NT_*` ABI (`NT_drawText`, `NT_screen`, `NT_jsonParse*`, `NT_intToString`), `_GLOBAL_OFFSET_TABLE_`, and newlib `memcpy`/`memset`/`memmove`/`strlen`/`logf`/`powf`. NOT resolved: `__aeabi_d2lz` (handled by compiler_rt `fixdfdi.c` + `fixunsdfdi.c` + `fp_lib.h` + `int_math.h` vendored under `shim/src/compiler_rt/` from llvm-project tag `llvmorg-19.1.0`, Apache-2.0; `fixdfdi.c` emits the EABI alias `__aeabi_d2lz` via its internal `AEABI_RTABI` macro when `__ARM_EABI__` is defined), `vsnprintf` (newlib-nano omits; inline integer format if needed, see `shim/src/graphics.cpp` for the precedent that supports vendor `Relabi.h`'s `%3d`/`%u.%u` formats without pulling vsnprintf). `arm-none-eabi-nm <plugin.o> | grep ' U '` enumerates.
 
 ## Vendor dep cpps must link into ARM plug-in
 
-Vendor non-header-only `.cpp` files (not just headers) must compile into the ARM plug-in `.o`. Phase 5 dep tests cover them on host, but ARM-side calls only resolve if the cpps are linked into Hemispheres.{,2}.o. Phase 6 added `shim/src/lorenz/streams_{resources,lorenz_generator}.cpp` to `PHASE6_DEP_ARM_OBJS` in the `BUILD_ARM_HEMI_VARIANT` rule. Symptom of missing link: `arm-none-eabi-nm` lists `_ZN7streams15LorenzGenerator4InitEh` or similar as unresolved.
+Vendor non-header-only `.cpp` files (not just headers) must compile into the ARM plug-in `.o`. Per-dep host tests cover them, but ARM-side calls only resolve if the cpps are linked into Hemispheres.{,2}.o. The current additions are `shim/src/lorenz/streams_{resources,lorenz_generator}.cpp`, listed in `VENDOR_DEP_ARM_OBJS` and pulled into the `BUILD_ARM_HEMI_VARIANT` rule. Symptom of missing link: `arm-none-eabi-nm` lists `_ZN7streams15LorenzGenerator4InitEh` or similar as unresolved.
 
 ## C++ COMDAT section merge in ARM partial-link
 
@@ -180,11 +180,11 @@ gcc emits one `.text._ZN<mangled>` COMDAT section per inline class method. `ld -
 
 ## Factory variants: HEMI_VARIANT
 
-`shim/include/HemispheresFactory.h` gates Phase 6 applets by `HEMI_VARIANT` set per `.o` via Makefile:
+`shim/include/HemispheresFactory.h` gates the on-device applet set by `HEMI_VARIANT` set per `.o` via Makefile:
 
 - `0` = host build (default; all 56 applets, tests use this)
-- `1` = ARM `Hemispheres.o` primary: 31 P5 applets + 20 of 25 Phase 6 (~82KB text)
-- `2` = ARM `Hemispheres2.o` secondary: 5 largest Phase 6 (Relabi, Shredder, EnsOscKey, VectorLFO, Strum)
+- `1` = ARM `Hemispheres.o` primary: 51 applets (~82KB text)
+- `2` = ARM `Hemispheres2.o` secondary: 5 largest applets (Relabi, Shredder, EnsOscKey, VectorLFO, Strum)
 
 Applets dropped from a variant get `make_applet<Empty>` stubs in `factory_table` and skipped `#include`. `kMaxAppletSize`/`kMaxAppletAlign` hardcoded to 1024/16 in variants 1-2 (cmax chain needs all types in scope, only available in variant 0). New applets choose variant by per-class `.text` size measured on the pre-merge `Hemispheres.raw.o` (`arm-none-eabi-readelf -W -S`); greedy-keep favors smallest text in primary to maximize on-device applet count.
 

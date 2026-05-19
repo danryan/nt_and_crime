@@ -10,16 +10,11 @@
 //   #include "vector_osc/WaveformManager.h"
 //   #include "HSRelabiManager.h"
 //
-// Why this is needed instead of modifying shim/include/util/util_math.h:
-// The Phase 5 dep-branch pre-commit hook classifies util_math.h as a
-// shared Layer 0 file and hard-rejects any commit that stages it from a
-// phase5-dep/* branch. InterpLinear16 and DMAMEM are therefore provided
-// here, within the dep-vec-osc allowed surface, instead.
-//
-// Vendor headers that call InterpLinear16 compile correctly because this
-// header is included first (defining the function) before the vendor
-// headers' own #include "../util/util_math.h" runs (which does NOT define
-// InterpLinear16 in the shim copy).
+// InterpLinear16 lives here (not in shim/include/util/util_math.h) so
+// vendor headers that call it compile correctly: this header is included
+// first (defining the function) before the vendor headers' own
+// #include "../util/util_math.h" runs (which does NOT define InterpLinear16
+// in the shim copy).
 
 #include <cstdint>
 #include <cstring>

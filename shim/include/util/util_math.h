@@ -6,7 +6,7 @@
 // in the same TU as shim's util_math.h (ODR violation). Vendor simfloat
 // macros (int2simfloat, simfloat2int, simfloat) are available via
 // shim/include/HSUtils.h instead, so suppressing vendor's body does not
-// break Phase 4 applets (ADEG, ADSREG, Slew, CVRecV2) that use simfloat.
+// break applets (ADEG, ADSREG, Slew, CVRecV2) that use simfloat.
 #ifndef UTIL_MATH_H_
 #define UTIL_MATH_H_
 #endif

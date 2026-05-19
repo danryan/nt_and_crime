@@ -80,8 +80,8 @@ inline int Unpack(const uint64_t& data, PackLocation p) {
 
 namespace HS {
 
-// Phase 6 popup type / error type enums. Mirrors vendor HSUtils.h. Shim
-// PokePopup is a no-op for host tests; the popup UI is not exercised.
+// Popup type / error type enums. Mirrors vendor HSUtils.h. Shim PokePopup
+// is a no-op for host tests; the popup UI is not exercised.
 enum PopupType : uint8_t {
     MENU_POPUP = 0,
     CLOCK_POPUP,
@@ -95,7 +95,7 @@ enum ErrMsgIndex : uint8_t {
     MAX_PRESET_ERROR,
 };
 
-// Phase 6 popup-state globals. Mirrors vendor HSUtils.h:189-195.
+// Popup-state globals. Mirrors vendor HSUtils.h:189-195.
 extern uint8_t qview;        // which quantizer's setting is shown in popup
 extern uint8_t mview;        // which midi channel's setting is shown in popup
 extern int q_edit;

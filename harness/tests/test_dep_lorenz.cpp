@@ -7,20 +7,13 @@
 // and shim/src/lorenz/streams_lorenz_generator.h respectively (found via the
 // "current file's directory" rule for #include "..." search). Those forwarding
 // headers redirect to shim/include/lorenz/ via the -Ishim/include search path.
-//
-// NOTE for parent agent: the Makefile test_dep_lorenz rule requires
-// shim/src/lorenz/streams_resources.cpp and
-// shim/src/lorenz/streams_lorenz_generator.cpp as additional link sources
-// (or -Ishim/include/lorenz added plus those .cpp files in a separate object).
-// For now we include them as a single TU via #include. Phase 6 Makefile
-// adjustment needed to support LowerRenz applet compilation.
 #include <cstdint>
 #include <cstring>
 
-// Phase 6: streams_resources.cpp and streams_lorenz_generator.cpp are
-// compiled as separate TUs via Makefile's PHASE6_DEP_HOST_SRCS (so the
-// same code links into the Phase 6 LowerRenz applet build path without
-// duplicating symbols). Pull only the headers here.
+// streams_resources.cpp and streams_lorenz_generator.cpp are compiled as
+// separate TUs via Makefile's VENDOR_DEP_HOST_SRCS so the same code links
+// into the LowerRenz applet build path without duplicating symbols. Pull
+// only the headers here.
 #include "lorenz/streams_lorenz_generator.h"
 
 // OC::CORE::ticks declared in OC_core.h, defined in shim/src/globals.cpp

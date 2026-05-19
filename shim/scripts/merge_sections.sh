@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Collapse gcc COMDAT sub-sections into canonical .text/.rodata/.data/.bss.
-# NT firmware caps the per-plugin section count; Phase 6 produced 1793 split
-# sections vs ~976 in Phase 5. C++ COMDAT for inline class methods emits one
-# .text.<mangled> section per method. ld -r + linker scripts do not merge
-# COMDAT input sections under partial-link semantics; objcopy --rename-section
-# does, by giving every sub-section the same canonical name so the subsequent
-# ld -r --gc-keep-exported pass coalesces them.
+# C++ COMDAT for inline class methods emits one .text.<mangled> section per
+# method, which can produce thousands of sections per plug-in. ld -r + linker
+# scripts do not merge COMDAT input sections under partial-link semantics;
+# objcopy --rename-section does, by giving every sub-section the same
+# canonical name so the subsequent ld -r --gc-keep-exported pass coalesces
+# them.
 #
 # Usage: merge_sections.sh <input.o> <output.o>
 set -euo pipefail

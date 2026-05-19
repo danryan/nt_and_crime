@@ -23,7 +23,6 @@ extern const uint8_t schmitt[8];
 extern const uint8_t stairs[8];
 extern const uint8_t switchApp[8];
 extern const uint8_t voltage[8];
-// Phase 4 additions
 extern const uint8_t binaryCounter[8];
 extern const uint8_t shiftGate[8];
 extern const uint8_t trending[8];
@@ -31,7 +30,6 @@ extern const uint8_t probDiv[8];
 extern const uint8_t AD_EG[8];
 extern const uint8_t ADSR_EG[8];
 extern const uint8_t gameOfLife[8];
-// Phase 6 additions
 extern const uint8_t vectorLFO[8];
 extern const uint8_t vectorEG[8];
 extern const uint8_t vectorMod[8];

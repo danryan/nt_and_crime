@@ -1,5 +1,5 @@
 // Output-parity class: float-using, 1-LSB tolerance on int16 output.
-// dep-vec-osc invariant tests (Phase 5 Layer 1).
+// dep-vec-osc invariant tests.
 //
 // VectorOscillator tests use SetPhaseIncrement(0x10000) against a Sine
 // library waveform with SetScale(32767). The first 16 samples are pinned;

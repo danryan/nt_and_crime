@@ -1,4 +1,4 @@
-// Hemispheres2: secondary applet host for the 5 Phase 6 applets that don't
+// Hemispheres2: secondary applet host for the 5 largest applets that don't
 // fit in the primary Hemispheres.o under the NT firmware's per-plug-in .text
 // budget (empirically ~82KB). Compiled with -DHEMI_VARIANT=2 so the shared
 // HemispheresFactory.h registers only Relabi, Shredder, EnsOscKey,
@@ -11,4 +11,4 @@
 #include "hemispheres_shim.h"
 
 NT_HEMISPHERES_PLUGIN("hmi2", "Hemispheres2",
-                     "Phazerville Hemisphere pair (Phase 6 secondary applet set)")
+                     "Phazerville Hemisphere pair (secondary applet set)")

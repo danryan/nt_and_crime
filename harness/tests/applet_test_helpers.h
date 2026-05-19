@@ -274,8 +274,8 @@ uint64_t pack_shift_gate(int length_left, int length_right,
 uint64_t pack_trending(int assign_left, int assign_right, int sensitivity);
 // === END trending ===
 
-// Phase 6 pack helper declarations. Each implementer fills in their slug
-// section with the per-applet pack_<applet> signature and bit-layout doc.
+// Pack helper declarations. Each section documents the per-applet
+// pack_<applet> signature and bit-layout.
 
 // === BEGIN vector_lfo ===
 // VectorLFO OnDataRequest bit layout:

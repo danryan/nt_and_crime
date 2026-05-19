@@ -31,7 +31,6 @@ using hem_shim::kAppletStairs;
 using hem_shim::kAppletSwitch;
 using hem_shim::kAppletTLNeuron;
 using hem_shim::kAppletVoltage;
-// Phase 4
 using hem_shim::kAppletADEG;
 using hem_shim::kAppletADSREG;
 using hem_shim::kAppletBinary;
@@ -39,7 +38,6 @@ using hem_shim::kAppletGameOfLife;
 using hem_shim::kAppletProbabilityDivider;
 using hem_shim::kAppletShiftGate;
 using hem_shim::kAppletTrending;
-// Phase 6
 using hem_shim::kAppletVectorLFO;
 using hem_shim::kAppletVectorEG;
 using hem_shim::kAppletVectorMod;
@@ -2210,7 +2208,7 @@ TEST_CASE("stairs ST6: rand=1 mode keeps output within CV range and differs acro
 // Channel 0: sequential switch - Clock(0) toggles step (0->1->0) each Controller tick.
 //   Out(0) = In(step). 10x risk: one Clock(0) buffer toggles step 10 times (even),
 //   so net effect is zero. Testing channel 0 without Clock(0) is reliable; testing
-//   toggle via Clock(0) is not (attempt-1 SW2 was defeated by this).
+//   toggle via Clock(0) is not.
 // Channel 1: gated switch - Gate(1) high selects In(1), otherwise In(0).
 //   No 10x risk on the gated switch path (Gate is polled per tick, not a counter).
 // OnDataRequest returns 0; active[] is runtime-only state.
@@ -2775,8 +2773,7 @@ TEST_CASE("Trending TR4: assign packed values out of range mask correctly", "[tr
 // === END trending ===
 
 // === BEGIN helper ===
-// Time-injection helper unit tests (Layer 0a #7). Both must pass before
-// Phase 5 Layer 0a is considered complete.
+// Time-injection helper unit tests.
 
 TEST_CASE("helper H1: step_n_inner_ticks equivalent to step_n_frames on Cumulus at N=10", "[helper]") {
     // step_n_inner_ticks(.., 10) must produce state byte-identical to
@@ -2934,13 +2931,13 @@ TEST_CASE("VectorEG VE5: releasing gate drops Out(0) below sustain level",
     auto* left = get_applet(s.hi, LEFT);
     // Fast frequency so envelope reaches sustain in few buffers.
     left->OnDataReceive(pack_vector_eg(48, 49, 2000, 2000, 0));
-    // Phase 1: hold gate to reach sustain plateau.
+    // Hold gate to reach sustain plateau.
     hold_gate(s.bus, LEFT, 0, 8);
     step_n_frames(s.loaded, s.alg, s.bus, 32 * 15);
     float sustained_out = read_cv_at(s.bus, LEFT, 0, 0, 8);
     REQUIRE(sustained_out > 0.5f);  // confirmed in sustain phase
 
-    // Phase 2: release gate and run through release phase.
+    // Release gate and run through release phase.
     clear_bus(s.bus);
     step_n_frames(s.loaded, s.alg, s.bus, 32 * 15);
     float released_out = read_cv_at(s.bus, LEFT, 0, 0, 8);
@@ -3275,7 +3272,6 @@ TEST_CASE("Relabi RL5: Controller advances oscillator; Out(0) is finite and non-
 // === END relabi ===
 
 // === BEGIN lower_renz ===
-// Phase 6 applet test region (unblocked by dep-lorenz).
 // Lorenz generator runs via LorenzGeneratorManager singleton; Process() fires
 // only every LORENZ_PROCESS_TICKS=16 buffers. Tests step enough buffers to
 // allow at least one Process() call. The Lorenz attractor seed is non-zero
@@ -3345,16 +3341,15 @@ TEST_CASE("LowerRenz LR5: Gate(1) freeze holds outputs constant", "[lower_renz]"
 // === END lower_renz ===
 
 // === BEGIN ebb_and_lfo ===
-// Phase 6 applet test region (unblocked by dep-tideslite).
+// Tideslite-using applet tests; not yet ported.
 // === END ebb_and_lfo ===
 
 // === BEGIN wtvco ===
-// Phase 6 applet test region (unblocked by dep-tideslite; audit pending).
+// Tideslite-using applet tests; audit pending.
 // === END wtvco ===
 
 // === BEGIN metronome ===
-// Phase 6 applet test region (unblocked by dep-clock-mgr).
-// Metronome is Class D: OnDataRequest() returns 0 (no state serialized).
+// Metronome tests. OnDataRequest() returns 0 (no state serialized).
 // Clock-rate coverage uses step_n_inner_ticks so the harness advances
 // OC::CORE::ticks and calls clock_m.advance_one_tick() for each inner tick,
 // matching the hemispheres_shim::step() inner loop exactly.
@@ -4079,7 +4074,7 @@ TEST_CASE("chordinator CH4: Out(1) reflects chord harmonic offset from root", "[
 
 // === BEGIN dual_quant ===
 // DualQuant: two-channel chromatic/scale quantizer.
-// Vendor: DualQuant.h:1-142. Class B, recipe Class B.
+// Vendor: DualQuant.h:1-142.
 // Controller: continuous mode (no clock), per-channel Quantize(ch, In(ch)).
 // OnDataRequest: scale[0] at [0,8), scale[1] at [8,8), root[0] at [16,4), root[1] at [20,4).
 // Default scale: OC::Scales::SCALE_SEMI = 5 (Chromatic/12-semitone).
@@ -4470,7 +4465,7 @@ TEST_CASE("scale_duet SD4: Gate(1) high switches to mask[1] scale", "[scale_duet
 // === END scale_duet ===
 
 // === BEGIN duo_tet ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// Quantizer-using applet tests; not yet ported.
 // === END duo_tet ===
 
 // === BEGIN ens_osc_key ===
@@ -4760,9 +4755,9 @@ TEST_CASE("Combin8 CB5: attenuversion=0 mutes aux source contribution", "[combin
 // === END combin8 ===
 
 // === BEGIN reset_clock ===
-// Phase 6 Class C applet test region (uses step_n_inner_ticks helper).
+// ResetClock tests (use step_n_inner_ticks helper).
 // Vendor: vendor/O_C-Phazerville/software/src/applets/ResetClock.h
-// 5-fact specification (from abort-reports/2026-05-18-resetclock-spec-mismatch.md):
+// 5-fact specification:
 //   F1: Clock(1) is external Reset input; drives Reset(), not pending_clocks++.
 //   F2: ClockOut(1) fires when pending_clocks==1 at output time (not on Clock(0) edge count).
 //   F3: Start() does NOT reset offset_mod; OnDataReceive followed by first Controller
@@ -5079,7 +5074,7 @@ TEST_CASE("xfader XF7: Gate(1) alone nudges balance toward 255", "[xfader]") {
 // === END xfader ===
 
 // === BEGIN scope ===
-// Scope applet tests (Class C).
+// Scope applet tests.
 // Vendor: Scope.h:1-254. Phazerville SHA 7800d929.
 //
 // OnDataRequest (Scope.h:133): packs nothing; returns 0. No pack helper.

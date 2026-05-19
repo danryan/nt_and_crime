@@ -12,10 +12,9 @@ public:
     void print(const char* s);
     void print(int n);
 
-    // Vendor weegfx::Graphics::printf. Phase 6 Relabi::View calls it for
-    // status text. Variadic printf-style format; shim implementation
-    // delegates to vsnprintf into a small stack buffer then forwards to
-    // print(const char*).
+    // Vendor weegfx::Graphics::printf. Relabi::View calls it for status
+    // text. Variadic printf-style format; shim implementation delegates to
+    // vsnprintf into a small stack buffer then forwards to print(const char*).
     void printf(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
 
     void setPixel(int x, int y);

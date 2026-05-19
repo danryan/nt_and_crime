@@ -82,9 +82,9 @@ public:
         return ((v + (v >= 0 ? 64 : -64)) / 128) * 128;
     }
 
-    // Cancel edit mode. Mirrors vendor HSApplication.h:252. Phase 6 shim
-    // does not maintain selected_input_map state; CancelEdit just exits
-    // EditMode if active.
+    // Cancel edit mode. Mirrors vendor HSApplication.h:252. Shim does not
+    // maintain selected_input_map state; CancelEdit just exits EditMode if
+    // active.
     void CancelEdit() {
         if (EditMode()) CursorToggle();
     }
@@ -244,7 +244,7 @@ public:
     // and prints it. The shim does not link tideslite into Hemispheres.o
     // (the dep is host-test-only). Stub prints the raw pitch value; host
     // tests do not exercise View() rendering, and ARM display fidelity is
-    // not under test for Phase 6 applets that use this helper.
+    // not under test for the applets that use this helper.
     void gfxPrintFreqFromPitch(int16_t pitch) {
         gfxPrint(pitch);
     }

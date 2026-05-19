@@ -1,5 +1,5 @@
-// Phase 6: include guard added (vendor copy lacks one). Allows the shim's
-// pre-include to suppress vendor's relative-include in Hemispheres.cpp TU.
+// Include guard added (vendor copy lacks one). Allows the shim's pre-include
+// to suppress vendor's relative-include in Hemispheres.cpp TU.
 #ifndef HS_WAVEFORM_LIBRARY_H_
 #define HS_WAVEFORM_LIBRARY_H_
 

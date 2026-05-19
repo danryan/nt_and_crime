@@ -49,9 +49,8 @@ void* operator new(std::size_t)                                { return nullptr;
 void* operator new[](std::size_t)                              { return nullptr; }
 #pragma GCC diagnostic pop
 #endif
-// operator delete already provided in shim/src/globals.cpp (Phase 4
-// baseline). cxx_runtime_stubs.cpp only adds the missing-from-Phase-4
-// piece (operator new on arm).
+// operator delete is provided in shim/src/globals.cpp.
+// cxx_runtime_stubs.cpp adds the missing operator new on arm.
 
 #if defined(__arm__)
 namespace std {

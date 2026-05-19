@@ -333,9 +333,8 @@ uint64_t pack_trending(int assign_left, int assign_right, int sensitivity) {
 }
 // === END trending ===
 
-// Phase 6 pack helper definitions. Each implementer fills in their slug
-// section with the per-applet pack_<applet> body mirroring vendor
-// OnDataRequest byte-by-byte.
+// Pack helper definitions. Each section holds the per-applet pack_<applet>
+// body mirroring vendor OnDataRequest byte-by-byte.
 
 // === BEGIN vector_lfo ===
 uint64_t pack_vector_lfo(int waveform_a, int waveform_b, int pitch_a, int pitch_b, bool modshape) {

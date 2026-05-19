@@ -1,4 +1,4 @@
-// dep-cv-map invariant tests (Phase 5 Layer 1).
+// dep-cv-map invariant tests.
 // Output-parity class: integer-only across CVInputMap, bjorklund, and
 // clkdivmult. All call sites have integer inputs and integer outputs.
 //

@@ -40,15 +40,21 @@ inline auto constrain(T x, U lo, V hi) -> typename std::common_type<T, U, V>::ty
 // Arduino-style min/max as free templates. Vendor applets call `min(a, b)`
 // and `max(a, b)` as ordinary identifiers. c++17 libc++ <algorithm> may
 // #undef any `min`/`max` macros after Arduino.h is included, so a global
-// free template provides a stable identifier-form fallback. Defined as
-// templates with a single type parameter so mixed-type call sites
-// (`min(6*x, 63)`) compile cleanly via implicit conversion.
+// free template provides a stable identifier-form fallback. Two type
+// parameters so mixed-type call sites (`min(uint8_t, int)`,
+// `min(6 * col_width, 63)`) compile cleanly via std::common_type.
 #undef min
 #undef max
-template <typename T>
-inline T min(T a, T b) { return a < b ? a : b; }
-template <typename T>
-inline T max(T a, T b) { return a > b ? a : b; }
+template <typename T, typename U>
+inline auto min(T a, U b) -> typename std::common_type<T, U>::type {
+    using R = typename std::common_type<T, U>::type;
+    return static_cast<R>(a) < static_cast<R>(b) ? static_cast<R>(a) : static_cast<R>(b);
+}
+template <typename T, typename U>
+inline auto max(T a, U b) -> typename std::common_type<T, U>::type {
+    using R = typename std::common_type<T, U>::type;
+    return static_cast<R>(a) > static_cast<R>(b) ? static_cast<R>(a) : static_cast<R>(b);
+}
 
 // Arduino-style micros() shim. Returns the shim's monotonic tick counter
 // cast to uint32_t. Used by vendor applets only as a seed source for

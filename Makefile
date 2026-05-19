@@ -156,10 +156,22 @@ build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.S
 	mkdir -p $(@D)
 	$(ARM_CC) $(ARM_CFLAGS) -Ishim/src/compiler_rt -c -o $@ $<
 
-build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS) $(COMPILER_RT_OBJS)
+# Phase 6 dep sources that ship .cpp implementations (not header-only). LowerRenz
+# references streams::LorenzGenerator::Init/Process; the firmware does not provide
+# them, so they must be linked into Hemispheres.o. streams_resources.cpp carries the
+# constant tables LorenzGenerator references at runtime.
+PHASE6_DEP_ARM_SRCS := shim/src/lorenz/streams_resources.cpp \
+                      shim/src/lorenz/streams_lorenz_generator.cpp
+PHASE6_DEP_ARM_OBJS := $(patsubst shim/src/%.cpp,build/arm/shim_src/%.o,$(PHASE6_DEP_ARM_SRCS))
+
+build/arm/shim_src/%.o: shim/src/%.cpp
+	mkdir -p $(@D)
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
+
+build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS) $(COMPILER_RT_OBJS) $(PHASE6_DEP_ARM_OBJS)
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o build/arm/Hemispheres.raw.o $<
-	$(ARM_LD) -r --strip-debug build/arm/Hemispheres.raw.o $(COMPILER_RT_OBJS) -o build/arm/Hemispheres.linked.o
+	$(ARM_LD) -r --strip-debug build/arm/Hemispheres.raw.o $(PHASE6_DEP_ARM_OBJS) $(COMPILER_RT_OBJS) -o build/arm/Hemispheres.linked.o
 	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/Hemispheres.linked.o $@
 
 build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)

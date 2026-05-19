@@ -1,3 +1,8 @@
+// Phase 6: include guard added (vendor copy lacks one). Allows the shim's
+// pre-include to suppress vendor's relative-include in Hemispheres.cpp TU.
+#ifndef HS_WAVEFORM_LIBRARY_H_
+#define HS_WAVEFORM_LIBRARY_H_
+
 namespace HS {
 
 #define VO_TOC 255
@@ -317,3 +322,5 @@ VOSegment library_waveforms[] = {
 };
 
 }; // namespace HS
+
+#endif // HS_WAVEFORM_LIBRARY_H_

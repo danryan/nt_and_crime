@@ -25,11 +25,44 @@ const char* help_strings[HS::HELP_LABEL_COUNT] = { nullptr };
 int cursor_countdown[HS::APPLET_CURSOR_COUNT] = { 0 };
 EncoderEditor enc_edit[HS::APPLET_CURSOR_COUNT] = {{ false }};
 int gfx_offset = 0;
+// Phase 6 popup-state globals. Mirrors vendor HSUtils.cpp:23-31. Host
+// tests do not exercise popups; PokePopup is a no-op.
+uint8_t qview = 0;
+uint8_t mview = 0;
+int q_edit = 0;
+int midi_edit = 0;
+PopupType popup_type = MENU_POPUP;
+ErrMsgIndex msg_idx = NO_ERROR;
+uint32_t popup_tick = 0;
+void PokePopup(PopupType /*pop*/, ErrMsgIndex /*err*/) {}
+void PokePopup(PopupType /*pop*/, const char* /*msg*/) {}
 }
 
 namespace OC {
 namespace Strings {
 const char* const capital_letters[] = { "A", "B", "C", "D", "E", "F", "G", "H" };
+// Vendor OC_strings.cpp:67-69 verbatim. note_names is space-padded
+// (two-char "C ", "C#", ...), note_names_unpadded omits trailing spaces.
+const char* const note_names[12] = {
+    "C ", "C#", "D ", "D#", "E ", "F ", "F#", "G ", "G#", "A ", "A#", "B "
+};
+const char* const note_names_unpadded[12] = {
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+};
+// Vendor OC_scales.cpp scale name lists. Phase 6 applets (MultiScale,
+// ScaleDuet) call OC::Strings::scale_names; the shim re-exports the
+// scale names from braids_quantizer_scales for tight pitch labels.
+const char* const scale_names[] = {
+    "Off", "Semi", "Maj", "Min", "Dor", "Phr", "Lyd", "Mix", "Aeo", "Loc",
+    "BluM", "BluR", "Pmaj", "Pmin", "Folk", "Japn", "Gam", "Gyps", "Arab",
+    "Flam", "Whol", "Pyth", "Eb/4", "E/4", "Ea/4", "Bhai", "Gunk", "Mars",
+    "User"
+};
+const char* const scale_names_short[] = {
+    "Off", "Sm", "Maj", "Mn", "Do", "Ph", "Ly", "Mx", "Ae", "Lc",
+    "BM", "BR", "Pj", "Pi", "Fk", "Jp", "Gm", "Gy", "Ar", "Fl",
+    "Wh", "Py", "Eb", "E4", "Ea", "Bh", "Gn", "Mr", "Us"
+};
 }
 }
 

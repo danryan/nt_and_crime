@@ -95,6 +95,19 @@ struct CVInputMap {
         source = s;
         attenuversion = static_cast<int8_t>(data >> 8);
     }
+
+    // Mirrors vendor CVInputMap::InputName at vendor CVInputMap.h:71. Returns
+    // a short label for the current source. Used by Combin8::View for the
+    // CV map editor display.
+    const char* InputName() const {
+        static const char* const names[CVMAP_ADC_LAST + 1] = {
+            "--", "A", "B", "C", "D"
+        };
+        int s = source;
+        if (s < 0) s = 0;
+        if (s > CVMAP_ADC_LAST) s = CVMAP_ADC_LAST;
+        return names[s];
+    }
 };
 
 extern CVInputMap cvmap[4];

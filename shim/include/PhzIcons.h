@@ -31,4 +31,24 @@ extern const uint8_t probDiv[8];
 extern const uint8_t AD_EG[8];
 extern const uint8_t ADSR_EG[8];
 extern const uint8_t gameOfLife[8];
+// Phase 6 additions
+extern const uint8_t vectorLFO[8];
+extern const uint8_t vectorEG[8];
+extern const uint8_t vectorMod[8];
+extern const uint8_t vectorMorph[8];
+extern const uint8_t lowerenz[8];
+extern const uint8_t strum[8];
+extern const uint8_t shredder[8];
+extern const uint8_t carpeggio[8];
+extern const uint8_t squanch[8];
+extern const uint8_t chordinate[8];
+extern const uint8_t dualQuantizer[8];
+extern const uint8_t enigmaJr[8];
+extern const uint8_t multiscale[8];
+extern const uint8_t scaleDuet[8];
+extern const uint8_t calibr8[8];
+extern const uint8_t resetClk[8];
+extern const uint8_t shuffle[8];
+extern const uint8_t mixerBal[8];
+extern const uint8_t scope[8];
 }

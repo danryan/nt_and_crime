@@ -2,6 +2,8 @@
 #include <distingnt/api.h>
 #include <cstring>
 #include <cstdlib>
+#include <cstdarg>
+#include <cstdio>
 
 shim::Graphics graphics;
 
@@ -110,6 +112,15 @@ void Graphics::drawBitmap8(int x, int y, int w, const uint8_t* data) {
             if (bits & (1u << row)) set_pixel(x + col, y + row, 15);
         }
     }
+}
+
+void Graphics::printf(const char* fmt, ...) {
+    char buf[64];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n > 0) print(buf);
 }
 
 }  // namespace shim

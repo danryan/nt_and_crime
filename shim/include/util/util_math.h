@@ -1,4 +1,15 @@
 #pragma once
+// Define vendor's traditional include guard so vendor's util/util_math.h
+// (pulled via relative include from applets/*.h, e.g. LowerRenz.h's
+// `#include "../util/util_math.h"`) becomes a no-op once shim's copy is
+// in scope. Without this, vendor's util_math.h would redefine Proportion
+// in the same TU as shim's util_math.h (ODR violation). Vendor simfloat
+// macros (int2simfloat, simfloat2int, simfloat) are available via
+// shim/include/HSUtils.h instead, so suppressing vendor's body does not
+// break Phase 4 applets (ADEG, ADSREG, Slew, CVRecV2) that use simfloat.
+#ifndef UTIL_MATH_H_
+#define UTIL_MATH_H_
+#endif
 #include <algorithm>
 #include <cstdint>
 

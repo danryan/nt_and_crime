@@ -7,12 +7,12 @@ HOST_CXX := $(shell command -v clang++ >/dev/null 2>&1 && echo clang++ || echo g
 NT_API_INCLUDE := vendor/distingNT_API/include
 HEM_SRC_DIR    := vendor/O_C-Phazerville/software/src
 
-ARM_FLAGS := -std=c++11 -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard \
+ARM_FLAGS := -std=c++17 -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard \
              -mthumb -fno-rtti -fno-exceptions -fno-threadsafe-statics \
              -Os -fPIC -Wall \
              -I$(NT_API_INCLUDE)
 
-HOST_FLAGS := -std=c++14 -fno-rtti -fno-exceptions -Wall -O2 \
+HOST_FLAGS := -std=c++17 -fno-rtti -fno-exceptions -Wall -O2 \
               -DNT_HEM_HOST_SIM=1 \
               -Iharness/include -I$(NT_API_INCLUDE)
 
@@ -166,7 +166,13 @@ build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
 
-build/host/test_hemispheres: harness/tests/test_hemispheres.cpp harness/tests/applet_test_helpers.cpp build/host/Hemispheres.host.o $(HARNESS_SRCS)
+# Phase 6 dep cpp sources linked into the host test binary. Phase 5 dep
+# tests #include these .cpp files directly inline; for the Phase 6 applet
+# host build the same code is compiled as separate TUs and linked in.
+PHASE6_DEP_HOST_SRCS := shim/src/lorenz/streams_resources.cpp \
+                       shim/src/lorenz/streams_lorenz_generator.cpp
+
+build/host/test_hemispheres: harness/tests/test_hemispheres.cpp harness/tests/applet_test_helpers.cpp build/host/Hemispheres.host.o $(HARNESS_SRCS) $(PHASE6_DEP_HOST_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
 
@@ -180,7 +186,15 @@ test-applets: build/host/test_hemispheres
 DEP_TESTS := test_dep_vec_osc test_dep_lorenz test_dep_tideslite \
              test_dep_clock_mgr test_dep_quant test_dep_cv_map
 
-build/host/test_dep_%: harness/tests/test_dep_%.cpp build/host/Hemispheres.host.o $(HARNESS_SRCS)
+# Shim core sources (globals, graphics, icons, cxx runtime stubs). Linked
+# into dep tests in place of Hemispheres.host.o so dep tests do not pull
+# vendor copies of vec_osc / lorenz dep headers (which would collide with
+# the shim copies the dep tests already include).
+SHIM_CORE_SRCS := shim/src/globals.cpp shim/src/graphics.cpp shim/src/icons.cpp \
+                  shim/src/quant/braids_quantizer.cpp shim/src/quant/OC_scales.cpp \
+                  shim/src/quant/q_engine.cpp shim/src/cv_map/bjorklund.cpp
+
+build/host/test_dep_%: harness/tests/test_dep_%.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS) $(PHASE6_DEP_HOST_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
 

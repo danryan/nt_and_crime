@@ -18,6 +18,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+// Phase 6: include guard added (vendor copy lacks one). Allows the shim's
+// pre-include to suppress vendor's relative-include in Hemispheres.cpp TU.
+#ifndef HS_RELABI_MANAGER_H_
+#define HS_RELABI_MANAGER_H_
+
 class RelabiManager {
   static RelabiManager* instance;
 
@@ -86,3 +91,5 @@ public:
 };
 
 RelabiManager* RelabiManager::instance = 0;
+
+#endif // HS_RELABI_MANAGER_H_

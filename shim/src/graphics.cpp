@@ -2,6 +2,8 @@
 #include <distingnt/api.h>
 #include <cstring>
 #include <cstdlib>
+#include <cstdarg>
+#include <cstdio>
 
 shim::Graphics graphics;
 
@@ -110,6 +112,54 @@ void Graphics::drawBitmap8(int x, int y, int w, const uint8_t* data) {
             if (bits & (1u << row)) set_pixel(x + col, y + row, 15);
         }
     }
+}
+
+namespace {
+
+// Append decimal digits of |value| (unsigned) to |out| starting at |idx|.
+// Returns updated index. Caller ensures |out| has space.
+inline int append_uint(char* out, int idx, unsigned value) {
+    char tmp[12];
+    int n = 0;
+    if (value == 0) tmp[n++] = '0';
+    while (value) { tmp[n++] = (char)('0' + value % 10); value /= 10; }
+    while (n--) out[idx++] = tmp[n];
+    return idx;
+}
+
+}  // anonymous namespace
+
+// Inline implementation of the two Relabi call patterns: "%3d" (right-aligned
+// 3-wide signed) and "%u.%u" (two unsigned ints joined by a literal dot).
+// Vendor Relabi.h is the only caller; supporting just these two patterns
+// drops the dependency on newlib vsnprintf and keeps the NT plug-in's
+// undefined-symbol surface stable across phases.
+void Graphics::printf(const char* fmt, ...) {
+    char buf[16];
+    int idx = 0;
+    va_list ap;
+    va_start(ap, fmt);
+    if (fmt[0] == '%' && fmt[1] == '3' && fmt[2] == 'd' && fmt[3] == 0) {
+        int v = va_arg(ap, int);
+        unsigned uv = (unsigned)(v < 0 ? -v : v);
+        int digits = 0;
+        for (unsigned t = uv; t; t /= 10) ++digits;
+        if (digits == 0) digits = 1;
+        int width = digits + (v < 0 ? 1 : 0);
+        for (int pad = width; pad < 3; ++pad) buf[idx++] = ' ';
+        if (v < 0) buf[idx++] = '-';
+        idx = append_uint(buf, idx, uv);
+    } else if (fmt[0] == '%' && fmt[1] == 'u' && fmt[2] == '.'
+            && fmt[3] == '%' && fmt[4] == 'u' && fmt[5] == 0) {
+        unsigned a = va_arg(ap, unsigned);
+        unsigned b = va_arg(ap, unsigned);
+        idx = append_uint(buf, idx, a);
+        buf[idx++] = '.';
+        idx = append_uint(buf, idx, b);
+    }
+    va_end(ap);
+    buf[idx] = 0;
+    if (idx > 0) print(buf);
 }
 
 }  // namespace shim

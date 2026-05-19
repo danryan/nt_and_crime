@@ -17,14 +17,11 @@
 #include <cstdint>
 #include <cstring>
 
-// Include vendor .cpp files directly (single-TU build).
-// streams_resources.cpp includes "streams_resources.h" (bare name) ->
-// forwarding header shim/src/lorenz/streams_resources.h -> lorenz/streams_resources.h.
-// streams_lorenz_generator.cpp includes "streams_lorenz_generator.h" (bare name) ->
-// forwarding header shim/src/lorenz/streams_lorenz_generator.h ->
-// lorenz/streams_lorenz_generator.h (which includes util/util_macros.h via -Ishim/include).
-#include "../../shim/src/lorenz/streams_resources.cpp"
-#include "../../shim/src/lorenz/streams_lorenz_generator.cpp"
+// Phase 6: streams_resources.cpp and streams_lorenz_generator.cpp are
+// compiled as separate TUs via Makefile's PHASE6_DEP_HOST_SRCS (so the
+// same code links into the Phase 6 LowerRenz applet build path without
+// duplicating symbols). Pull only the headers here.
+#include "lorenz/streams_lorenz_generator.h"
 
 // OC::CORE::ticks declared in OC_core.h, defined in shim/src/globals.cpp
 // (compiled into Hemispheres.host.o, linked into this binary).

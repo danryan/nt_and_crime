@@ -149,6 +149,45 @@ PIC plug-in builds require all-PIC linkage. The NT firmware applies relocations 
 
 Diagnostic discipline beats guessing. When stripping sections in sequence doesn't fix a "non-loaded section" error, the next move is `arm-none-eabi-objdump -r build/arm/Hemispheres.o | awk '$2 ~ /^R_ARM/ {print $2}' | sort | uniq -c` to enumerate actual relocation types, not another strip flag. The relocation table tells you what's wrong: `R_ARM_GOT32`/`R_ARM_GOTPC` reveal PIC code, `R_ARM_ABS32` reveals direct addressing. Mixed in a single `.o` is the failure pattern. Hardware deploys are slow; one minute reading `objdump -r` saves an hour of strip-and-redeploy cycles.
 
+## NT firmware .text budget (~82KB per .o, scan-time)
+
+NT firmware refuses to register a plug-in whose `.text` exceeds approximately 82KB. Misc > Plug-ins > View Info shows "Not enough memory for .text : <name>" and the entry as Failed. Empirically: 50KB (Phase 5) loads, 81566 B loads, 83448 B fails. Section count is NOT the cap; the same firmware accepted a 12-section build at 81KB and refused a 14-section build at 83KB. Each `.o` is checked independently. If a single applet set exceeds the cap, ship it across multiple plug-ins via `HEMI_VARIANT`.
+
+## Runtime ITC pool is shared across loaded slots
+
+Two limits, not one:
+
+- Scan-time cap (~82KB `.text` per `.o`): described above.
+- Run-time pool (shared across all loaded algorithm instances): each slot loads its own copy of plug-in `.text` into ITC RAM. Total ITC across slots must fit a hardware budget (empirically ~100KB; one Hemispheres at ~65KB ITC alongside one Hemispheres2 at ~52KB ITC overflows). Error path is identical: "Not enough memory for .text : <name>" when adding the second algorithm to a preset.
+
+NT API has no mechanism to share `.text` across plug-ins (`calculateStaticRequirements` shares DATA only). Hemispheres.o + Hemispheres2.o are alternates; users pick one set per preset.
+
+## Diagnosing failed plug-in loads
+
+Misc > Plug-ins > View Info shows pass/fail per `.o` with ITC/DTC/DRAM stats. Press a button on a Failed entry to see the detailed reason. Use `mcp__nt_helper__show_screen` to capture screen state in-session after `make deploy-sysex`; bisect plug-in size against the .text cap by iterating builds and screenshotting. `aeabi_probe.cpp` remains the diagnostic for unresolved-symbol errors.
+
+## ARM unresolved-symbol surface (firmware contract)
+
+Firmware resolves at load: `NT_*` ABI (`NT_drawText`, `NT_screen`, `NT_jsonParse*`, `NT_intToString`), `_GLOBAL_OFFSET_TABLE_`, and newlib `memcpy`/`memset`/`memmove`/`strlen`/`logf`/`powf`. NOT resolved: `__aeabi_d2lz` (Phase 6 added compiler_rt `fixdfdi.c` + `fixunsdfdi.c` + `fp_lib.h` + `int_math.h`, vendored Apache-2.0 from llvmorg-19.1.0; `fixdfdi.c` emits the EABI alias `__aeabi_d2lz` via its internal `AEABI_RTABI` macro when `__ARM_EABI__` is defined), `vsnprintf` (newlib-nano omits; inline integer format if needed — see `shim/src/graphics.cpp` for the precedent that supports vendor `Relabi.h`'s `%3d`/`%u.%u` formats without pulling vsnprintf). `arm-none-eabi-nm <plugin.o> | grep ' U '` enumerates.
+
+## Vendor dep cpps must link into ARM plug-in
+
+Vendor non-header-only `.cpp` files (not just headers) must compile into the ARM plug-in `.o`. Phase 5 dep tests cover them on host, but ARM-side calls only resolve if the cpps are linked into Hemispheres.{,2}.o. Phase 6 added `shim/src/lorenz/streams_{resources,lorenz_generator}.cpp` to `PHASE6_DEP_ARM_OBJS` in the `BUILD_ARM_HEMI_VARIANT` rule. Symptom of missing link: `arm-none-eabi-nm` lists `_ZN7streams15LorenzGenerator4InitEh` or similar as unresolved.
+
+## C++ COMDAT section merge in ARM partial-link
+
+gcc emits one `.text._ZN<mangled>` COMDAT section per inline class method. `ld -r` preserves them under SHF_GROUP even with a `-T SECTIONS{}` script. Pipeline collapses them: `arm-none-eabi-objcopy --remove-section='.group'` followed by `ld -r -T shim/merge_sections.lds` merges all `.text._Z*`/`.data.rel.ro._Z*`/etc into single canonical sections. Drops ~1640 sections to ~14 with no behavior change. The section explosion is NOT a firmware cap (verified by deploying a 12-section 83KB build that still failed), but the cleaner artifact is easier to inspect and ship. Use `arm-none-eabi-readelf -W -S` (not `objdump -h`, which truncates) to inspect full mangled section names.
+
+## Factory variants: HEMI_VARIANT
+
+`shim/include/HemispheresFactory.h` gates Phase 6 applets by `HEMI_VARIANT` set per `.o` via Makefile:
+
+- `0` = host build (default; all 56 applets, tests use this)
+- `1` = ARM `Hemispheres.o` primary: 31 P5 applets + 20 of 25 Phase 6 (~82KB text)
+- `2` = ARM `Hemispheres2.o` secondary: 5 largest Phase 6 (Relabi, Shredder, EnsOscKey, VectorLFO, Strum)
+
+Applets dropped from a variant get `make_applet<Empty>` stubs in `factory_table` and skipped `#include`. `kMaxAppletSize`/`kMaxAppletAlign` hardcoded to 1024/16 in variants 1-2 (cmax chain needs all types in scope, only available in variant 0). New applets choose variant by per-class `.text` size measured on the pre-merge `Hemispheres.raw.o` (`arm-none-eabi-readelf -W -S`); greedy-keep favors smallest text in primary to maximize on-device applet count.
+
 ## Markdown discipline
 
 After editing any `.md` file, run `markdownlint <file>` and fix all errors. The repo's `.markdownlint.json` relaxes a small set of rules (long lines, HTML, sibling-only duplicate headings); the rest are enforced.

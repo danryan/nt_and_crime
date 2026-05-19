@@ -66,6 +66,29 @@ public:
         return 0;
     }
 
+    // Float CV input. Mirrors vendor HemisphereApplet.h:154. Returns the
+    // raw input divided by max (default HEMISPHERE_MAX_INPUT_CV = 9216).
+    float InF(int ch, int max = HEMISPHERE_MAX_INPUT_CV) {
+        return static_cast<float>(In(ch)) / max;
+    }
+
+    // Semitone-quantized input. Mirrors vendor HemisphereApplet.h:169 which
+    // calls input_quant[ch].Process(In(ch)). The shim does not maintain a
+    // hysteresis-tracking input_quant pool; it returns In(ch) rounded to
+    // the nearest 128 hem units (1 semitone). Sufficient for vendor applets
+    // that use SemitoneIn for pitch input.
+    int SemitoneIn(int ch) {
+        int v = In(ch);
+        return ((v + (v >= 0 ? 64 : -64)) / 128) * 128;
+    }
+
+    // Cancel edit mode. Mirrors vendor HSApplication.h:252. Phase 6 shim
+    // does not maintain selected_input_map state; CancelEdit just exits
+    // EditMode if active.
+    void CancelEdit() {
+        if (EditMode()) CursorToggle();
+    }
+
     // Mirrors vendor HemisphereApplet.h Quantize member. Delegates to the
     // HS:: channel pool, offsetting ch by the applet's hemisphere side.
     int Quantize(int ch, int cv, int root = 0, int transpose = 0) {
@@ -118,6 +141,12 @@ public:
     }
 
     void gfxFrame(int x, int y, int w, int h)  { graphics.drawFrame(x + gfx_offset, y, w, h); }
+    // Vendor 5-arg overload (HemisphereApplet.h, VectorLFO.h:206): dotted bool.
+    // Shim ignores the dotted flag and falls through to solid frame; host
+    // tests do not assert on dotted-vs-solid rendering.
+    void gfxFrame(int x, int y, int w, int h, bool /*dotted*/) {
+        graphics.drawFrame(x + gfx_offset, y, w, h);
+    }
     void gfxRect(int x, int y, int w, int h)   { graphics.drawRect(x + gfx_offset, y, w, h); }
     void gfxInvert(int x, int y, int w, int h) { graphics.invertRect(x + gfx_offset, y, w, h); }
     void gfxClear(int x, int y, int w, int h)  { graphics.clearRect(x + gfx_offset, y, w, h); }
@@ -190,6 +219,62 @@ public:
         gfxCursor(x, y, w, 9);
     }
 
+    // Vendor 6-arg overload (HemisphereApplet.h:259): explicit h plus label
+    // and extra strings. Shim ignores the labels.
+    void gfxCursor(int x, int y, int w, int h, const char* /*str*/, const char* /*extra*/ = nullptr) {
+        gfxCursor(x, y, w, h);
+    }
+
+    // Vendor "spicy" cursor variant (HemisphereApplet.h:280-303). Animated
+    // edit-mode cursor with optional label box. Shim aliases to plain
+    // gfxCursor; host tests do not exercise visual differences.
+    void gfxSpicyCursor(int x, int y, int w) {
+        gfxCursor(x, y, w, 9);
+    }
+    void gfxSpicyCursor(int x, int y, int w, int h, const char* /*str*/ = nullptr,
+                        const char* /*extra*/ = nullptr) {
+        gfxCursor(x, y, w, h);
+    }
+    void gfxSpicyCursor(int x, int y, int w, const char* /*str*/) {
+        gfxCursor(x, y, w, 9);
+    }
+
+    // Vendor HSUtils.cpp:518 gfxPrintFreqFromPitch. Vendor body computes a
+    // frequency string from a pitch using tideslite::ComputePhaseIncrement
+    // and prints it. The shim does not link tideslite into Hemispheres.o
+    // (the dep is host-test-only). Stub prints the raw pitch value; host
+    // tests do not exercise View() rendering, and ARM display fidelity is
+    // not under test for Phase 6 applets that use this helper.
+    void gfxPrintFreqFromPitch(int16_t pitch) {
+        gfxPrint(pitch);
+    }
+
+    // Vendor gfxStartCursor / gfxEndCursor (HemisphereApplet.h:396-420). Used
+    // by Combin8::View to bracket a print sequence with a cursor highlight.
+    // Shim records the print position at Start and inverts the printed
+    // bounding box at End if the cursor is active.
+    void gfxStartCursor() {
+        cursor_start_x_ = graphics.getPrintPosX();
+        cursor_start_y_ = graphics.getPrintPosY();
+    }
+    void gfxStartCursor(int x, int y) {
+        gfxPos(x, y);
+        gfxStartCursor();
+    }
+    void gfxEndCursor(bool is_cursor, bool /*spicy*/ = false,
+                      const char* /*extra*/ = nullptr) {
+        int w = graphics.getPrintPosX() - cursor_start_x_;
+        if (w <= 0) w = 1;
+        if (is_cursor) gfxCursor(cursor_start_x_ - gfx_offset, cursor_start_y_ + 8, w);
+    }
+
+    // gfxPrint overloads for input map types. Vendor uses these to print
+    // the human-readable source name for a CVInputMap / DigitalInputMap.
+    void gfxPrint(CVInputMap& m) { gfxPrint(m.InputName()); }
+    void gfxPrint(const CVInputMap& m) { gfxPrint(m.InputName()); }
+    void gfxPrint(DigitalInputMap& /*m*/) { gfxPrint("g"); }
+    void gfxPrint(const DigitalInputMap& /*m*/) { gfxPrint("g"); }
+
     // Mirrors vendor HemisphereApplet.h:541-548. Draws a horizontal slider
     // track of length `len` with a 2x8 thumb at `Proportion(value, max_val,
     // len-1)`. View-only; never affects Out().
@@ -209,9 +294,40 @@ public:
 
     const char* OutputLabel(int ch) const { return OC::Strings::capital_letters[ch]; }
 
+    // Mirrors vendor HemisphereApplet.h:595. Vendor implementation draws the
+    // CVInputMap editor UI. Shim stub is sufficient for host tests (View
+    // not exercised) and ARM hardware (UI redraw not asserted).
+    void gfxDisplayInputMapEditor() {}
+
+    // Mirrors vendor HemisphereApplet.h:657 AllowRestart. Vendor uses
+    // applet_started flag to gate re-Start() on hemisphere reset. Shim
+    // does not track this state; stub is a no-op (Start() always runs).
+    void AllowRestart() {}
+
+    // Mirrors vendor HSApplication.h IsEditingInputMap. Shim does not
+    // maintain selected_input_map state, so always returns false.
+    bool IsEditingInputMap() { return false; }
+
+    // Mirrors vendor HSApplication.h:256 EditSelectedInputMap. Returns true
+    // if an input map edit was consumed. Shim has no selected_input_map
+    // state, so returns false (caller falls through to applet-specific
+    // edit handling).
+    bool EditSelectedInputMap(int /*direction*/) { return false; }
+
+    // Mirrors vendor HSApplication.h CheckEditInputMapPress. Variadic; the
+    // shim ignores all arguments and returns false so callers fall through
+    // to their own button-press handling. Defined as a template so any
+    // argument list compiles (Combin8 passes four IndexedInput pairs).
+    template <typename... Args>
+    bool CheckEditInputMapPress(int /*cursor*/, Args&&... /*input_maps*/) {
+        return false;
+    }
+
 protected:
     virtual void SetHelp() = 0;
     HS::HEM_SIDE hemisphere = HS::LEFT_HEMISPHERE;
+    int cursor_start_x_ = 0;
+    int cursor_start_y_ = 0;
 };
 
 inline void gfxPrintVoltage(int cv) {

@@ -39,6 +39,30 @@ using hem_shim::kAppletGameOfLife;
 using hem_shim::kAppletProbabilityDivider;
 using hem_shim::kAppletShiftGate;
 using hem_shim::kAppletTrending;
+// Phase 6
+using hem_shim::kAppletVectorLFO;
+using hem_shim::kAppletVectorEG;
+using hem_shim::kAppletVectorMod;
+using hem_shim::kAppletVectorMorph;
+using hem_shim::kAppletRelabi;
+using hem_shim::kAppletLowerRenz;
+using hem_shim::kAppletCombin8;
+using hem_shim::kAppletPigeons;
+using hem_shim::kAppletStrum;
+using hem_shim::kAppletShredder;
+using hem_shim::kAppletCarpeggio;
+using hem_shim::kAppletSquanch;
+using hem_shim::kAppletChordinator;
+using hem_shim::kAppletDualQuant;
+using hem_shim::kAppletEnigmaJr;
+using hem_shim::kAppletOffsetQuant;
+using hem_shim::kAppletMultiScale;
+using hem_shim::kAppletScaleDuet;
+using hem_shim::kAppletEnsOscKey;
+using hem_shim::kAppletCalibr8;
+using hem_shim::kAppletXfader;
+using hem_shim::kAppletScope;
+using hem_shim::kAppletMetronome;
 using Catch::Approx;
 using namespace hem_test;
 
@@ -57,6 +81,14 @@ struct AppletSetup {
 
 AppletSetup setup_applet(hem_shim::AppletIndex idx, HemSide side = LEFT) {
     nt::reset_runtime();
+    // Reset the HS::q_engine quantizer pool to default state. The pool is a
+    // global; tests that call HS::SetScale / SetRootNote leak state across
+    // setup_applet calls otherwise. Default-construct each slot in place so
+    // every test sees scale=SCALE_SEMI, root=0, octave=0, mask=0xffff.
+    for (int ch = 0; ch < HS::QUANT_CHANNEL_COUNT; ++ch) {
+        HS::q_engine[ch].~QuantEngine();
+        new (&HS::q_engine[ch]) HS::QuantEngine();
+    }
     auto* loaded = nt::load_plugin();
     REQUIRE(loaded != nullptr);
     auto* alg = loaded->algorithm;
@@ -2782,27 +2814,534 @@ TEST_CASE("helper H2: step_n_inner_ticks tick-advancement invariant under load (
 // === END helper ===
 
 // === BEGIN vector_lfo ===
-// Phase 6 applet test region (unblocked by dep-vec-osc).
+// VectorLFO bit layout (OnDataRequest):
+//   [0,6)   = waveform_number[0]
+//   [6,6)   = waveform_number[1]
+//   [12,16) = pitch[0]  (int16_t raw, no bias)
+//   [28,16) = pitch[1]  (int16_t raw, no bias)
+//   [44,1)  = modshape
+
+TEST_CASE("VL1: Start() defaults: waveform 0 both channels, pitch 0, modshape false", "[vector_lfo]") {
+    auto s = setup_applet(kAppletVectorLFO);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x3F) == 0);  // waveform_number[0]
+    REQUIRE((int)((data >>  6) & 0x3F) == 0);  // waveform_number[1]
+    REQUIRE((int16_t)((data >> 12) & 0xFFFF) == 0);  // pitch[0]
+    REQUIRE((int16_t)((data >> 28) & 0xFFFF) == 0);  // pitch[1]
+    REQUIRE((int)((data >> 44) & 0x1) == 0);   // modshape
+}
+
+TEST_CASE("VL2: round-trip preserves waveform numbers and pitch", "[vector_lfo]") {
+    auto s = setup_applet(kAppletVectorLFO);
+    auto* left = get_applet(s.hi, LEFT);
+    // waveform 3 and 5, pitch +1000 and -500
+    left->OnDataReceive(pack_vector_lfo(3, 5, 1000, -500, false));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x3F) == 3);
+    REQUIRE((int)((data >>  6) & 0x3F) == 5);
+    REQUIRE((int16_t)((data >> 12) & 0xFFFF) == 1000);
+    REQUIRE((int16_t)((data >> 28) & 0xFFFF) == (int16_t)-500);
+}
+
+TEST_CASE("VL3: round-trip preserves modshape flag", "[vector_lfo]") {
+    auto s = setup_applet(kAppletVectorLFO);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_vector_lfo(0, 0, 0, 0, true));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 44) & 0x1) == 1);
+}
+
+TEST_CASE("VL4: Controller produces bounded output on ch0 and ch1 after several steps", "[vector_lfo]") {
+    auto s = setup_applet(kAppletVectorLFO);
+    // Let the oscillator run freely for a while. Out(ch) must stay within the
+    // NT hem range (-HEMISPHERE_MAX_CV .. +HEMISPHERE_MAX_CV ~ -6V .. +6V).
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 20);
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float out1 = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    REQUIRE(out0 >= -7.0f);
+    REQUIRE(out0 <=  7.0f);
+    REQUIRE(out1 >= -7.0f);
+    REQUIRE(out1 <=  7.0f);
+}
+
+TEST_CASE("VL5: waveform max (63) round-trips cleanly", "[vector_lfo]") {
+    auto s = setup_applet(kAppletVectorLFO);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_vector_lfo(63, 63, 0, 0, false));
+    uint64_t data = left->OnDataRequest();
+    // waveform_number[ch] is a uint8_t but only 6 bits are packed; max storable value is 63
+    REQUIRE((int)((data >> 0) & 0x3F) == 63);
+    REQUIRE((int)((data >> 6) & 0x3F) == 63);
+}
 // === END vector_lfo ===
 
 // === BEGIN vector_eg ===
-// Phase 6 applet test region (unblocked by dep-vec-osc).
+TEST_CASE("VectorEG VE1: Start() defaults waveform0=48, waveform1=49, freq=50 each",
+          "[vector_eg]") {
+    auto s = setup_applet(kAppletVectorEG);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x3F) == 48);  // waveform_number[0] = HS::EG1
+    REQUIRE((int)((data >>  6) & 0x3F) == 49);  // waveform_number[1] = HS::EG2
+    REQUIRE((int)((data >> 12) & 0x3FF) == 50); // freq[0]
+    REQUIRE((int)((data >> 22) & 0x3FF) == 50); // freq[1]
+    REQUIRE((int)((data >> 32) & 0x1) == 0);    // modshape = false
+}
+
+TEST_CASE("VectorEG VE2: round-trip preserves waveforms, freqs, modshape",
+          "[vector_eg]") {
+    auto s = setup_applet(kAppletVectorEG);
+    auto* left = get_applet(s.hi, LEFT);
+    // Use library waveform indices 40 and 45, distinct freqs, modshape=1.
+    left->OnDataReceive(pack_vector_eg(40, 45, 200, 300, 1));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x3F)  == 40);
+    REQUIRE((int)((data >>  6) & 0x3F)  == 45);
+    REQUIRE((int)((data >> 12) & 0x3FF) == 200);
+    REQUIRE((int)((data >> 22) & 0x3FF) == 300);
+    REQUIRE((int)((data >> 32) & 0x1)   == 1);
+}
+
+TEST_CASE("VectorEG VE3: gate-high triggers envelope; Out(0) rises above zero",
+          "[vector_eg]") {
+    auto s = setup_applet(kAppletVectorEG);
+    auto* left = get_applet(s.hi, LEFT);
+    // High frequency (2000 centihertz = 20 Hz) so envelope completes quickly.
+    // EG1 waveform is ADSR-shaped with sustain; Gate high -> osc.Start() then
+    // osc.Next() per tick.  After several buffers output is well above zero.
+    left->OnDataReceive(pack_vector_eg(48, 49, 2000, 2000, 0));
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 10);
+    float out = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    REQUIRE(out > 0.5f);
+}
+
+TEST_CASE("VectorEG VE4: no gate keeps Out(0) near zero after Start()",
+          "[vector_eg]") {
+    auto s = setup_applet(kAppletVectorEG);
+    // Gate(0) stays low.  gated[0] stays false; osc.Next() returns the held
+    // EOC level (last segment level of the EG waveform).  After Start() the
+    // osc is in released/EOC state and osc.Next() returns end-of-cycle level.
+    // For EG waveforms the release segment ends at 0, so output is 0V.
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 5);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.1f));
+}
+
+TEST_CASE("VectorEG VE5: releasing gate drops Out(0) below sustain level",
+          "[vector_eg]") {
+    auto s = setup_applet(kAppletVectorEG);
+    auto* left = get_applet(s.hi, LEFT);
+    // Fast frequency so envelope reaches sustain in few buffers.
+    left->OnDataReceive(pack_vector_eg(48, 49, 2000, 2000, 0));
+    // Phase 1: hold gate to reach sustain plateau.
+    hold_gate(s.bus, LEFT, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 15);
+    float sustained_out = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    REQUIRE(sustained_out > 0.5f);  // confirmed in sustain phase
+
+    // Phase 2: release gate and run through release phase.
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 15);
+    float released_out = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    // After release the envelope decays toward 0V; output must be lower.
+    REQUIRE(released_out < sustained_out);
+}
 // === END vector_eg ===
 
 // === BEGIN vector_mod ===
-// Phase 6 applet test region (unblocked by dep-vec-osc).
+TEST_CASE("VectorMod VM1: Start() defaults waveform=0 freq=50 both channels", "[vector_mod]") {
+    auto s = setup_applet(kAppletVectorMod);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    // waveform_number[0] at [0,6), waveform_number[1] at [6,6)
+    int wf0 = (int)(data & 0x3F);
+    int wf1 = (int)((data >> 6) & 0x3F);
+    // freq[0] at [12,10), freq[1] at [22,10)
+    int fr0 = (int)((data >> 12) & 0x3FF);
+    int fr1 = (int)((data >> 22) & 0x3FF);
+    REQUIRE(wf0 == 0);
+    REQUIRE(wf1 == 0);
+    REQUIRE(fr0 == 50);
+    REQUIRE(fr1 == 50);
+}
+
+TEST_CASE("VectorMod VM2: OnDataReceive then OnDataRequest round-trips all four fields", "[vector_mod]") {
+    auto s = setup_applet(kAppletVectorMod);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_vector_mod(3, 5, 120, 250));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)(data & 0x3F)          == 3);
+    REQUIRE((int)((data >> 6)  & 0x3F)  == 5);
+    REQUIRE((int)((data >> 12) & 0x3FF) == 120);
+    REQUIRE((int)((data >> 22) & 0x3FF) == 250);
+}
+
+TEST_CASE("VectorMod VM3: Controller advances oscillator; Out(0) non-zero after cycle-mode steps", "[vector_mod]") {
+    // Set In(0) above HEMISPHERE_3V_CV to enable cycle mode so the oscillator
+    // runs continuously. After enough steps the Sine waveform produces
+    // non-zero output on at least one sample.
+    auto s = setup_applet(kAppletVectorMod);
+    // 3.5V = above HEMISPHERE_3V_CV (3*1536=4608 hem). set_cv takes volts.
+    set_cv(s.bus, LEFT, 0, 3.5f, 8);
+    // Advance 64 frames so the oscillator traverses enough of the waveform.
+    step_n_frames(s.loaded, s.alg, s.bus, 64);
+    float out = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    // The oscillator output is non-zero (Sine waveform is mid-cycle).
+    REQUIRE(out != Approx(0.0f).margin(0.01f));
+}
+
+TEST_CASE("VectorMod VM4: round-trip stability; second encode matches first", "[vector_mod]") {
+    auto s = setup_applet(kAppletVectorMod);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_vector_mod(1, 2, 100, 200));
+    uint64_t first  = left->OnDataRequest();
+    left->OnDataReceive(first);
+    uint64_t second = left->OnDataRequest();
+    REQUIRE(first == second);
+}
 // === END vector_mod ===
 
 // === BEGIN vector_morph ===
-// Phase 6 applet test region (unblocked by dep-vec-osc).
+// VectorMorph: phase-position oscillator.  Two VectorOscillator channels driven
+// by a configurable phase offset; CV input further modulates the phase position.
+// OnDataRequest packs [0,6)=waveform0, [6,6)=waveform1, [12,9)=phase0,
+// [21,9)=phase1, [30,1)=linked.  waveform constants are in the HS namespace
+// (e.g. HS::Morph1=57, HS::Triangle=32, HS::Sine=35).
+// Default (LEFT, hemisphere=0): waveform=Morph1(57) on both channels,
+// phase[0]=0, phase[1]=180, linked=1.
+//
+// 10x clocked multiplier: VectorMorph Controller() has no clock-driven state
+// accumulation, so the multiplier does not affect output stability.
+
+TEST_CASE("vector_morph VM1: default serialisation reflects Start() state", "[vector_morph]") {
+    // LEFT hemisphere: phase[0]=0, phase[1]=180, both waveforms=Morph1(57), linked=1.
+    auto s = setup_applet(kAppletVectorMorph);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+
+    int wf0    = (int)(packed        & 0x3F);
+    int wf1    = (int)((packed >> 6) & 0x3F);
+    int ph0    = (int)((packed >> 12) & 0x1FF);
+    int ph1    = (int)((packed >> 21) & 0x1FF);
+    int linked = (int)((packed >> 30) & 0x01);
+
+    REQUIRE(wf0    == 57);   // HS::Morph1
+    REQUIRE(wf1    == 57);   // HS::Morph1
+    REQUIRE(ph0    == 0);
+    REQUIRE(ph1    == 180);
+    REQUIRE(linked == 1);
+}
+
+TEST_CASE("vector_morph VM2: round-trip preserves waveform, phase, and linked flag", "[vector_morph]") {
+    // Inject: waveform0=Triangle(32), waveform1=Sine(35), phase0=90, phase1=270, linked=0.
+    auto s = setup_applet(kAppletVectorMorph);
+    get_applet(s.hi, LEFT)->OnDataReceive(
+        pack_vector_morph(32, 35, 90, 270, 0));
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int wf0    = (int)(packed        & 0x3F);
+    int wf1    = (int)((packed >> 6) & 0x3F);
+    int ph0    = (int)((packed >> 12) & 0x1FF);
+    int ph1    = (int)((packed >> 21) & 0x1FF);
+    int linked = (int)((packed >> 30) & 0x01);
+
+    REQUIRE(wf0    == 32);    // Triangle
+    REQUIRE(wf1    == 35);    // Sine
+    REQUIRE(ph0    == 90);
+    REQUIRE(ph1    == 270);
+    REQUIRE(linked == 0);
+}
+
+TEST_CASE("vector_morph VM3: pack helper is stable across double round-trip", "[vector_morph]") {
+    // Two consecutive OnDataReceive+OnDataRequest cycles must yield identical output,
+    // confirming the helper has no hidden bias or gap bits.
+    auto s = setup_applet(kAppletVectorMorph);
+    uint64_t first = pack_vector_morph(57, 57, 45, 225, 1);
+    get_applet(s.hi, LEFT)->OnDataReceive(first);
+    uint64_t packed1 = get_applet(s.hi, LEFT)->OnDataRequest();
+
+    get_applet(s.hi, LEFT)->OnDataReceive(packed1);
+    uint64_t packed2 = get_applet(s.hi, LEFT)->OnDataRequest();
+
+    REQUIRE(packed1 == packed2);
+}
+
+TEST_CASE("vector_morph VM4: zero CV with phase=0 produces near-zero output on ch0", "[vector_morph]") {
+    // LEFT hemisphere, phase[0]=0, waveform=Morph1.
+    // Controller: last_phase[0] = (0*10 + 0 + 3600) % 3600 = 0.
+    // Morph1 at phase=0: start level = last-segment level (128->0), end = first segment (255->127).
+    // InterpLinear16(0, 127*256, 0) = 0, rescale(0) = 0 => Out(0)=0 => ~0V.
+    auto s = setup_applet(kAppletVectorMorph);
+    // Keep default state: phase[0]=0, waveform=Morph1.
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.05f));
+}
+
+TEST_CASE("vector_morph VM5: non-zero CV shifts phase and changes output", "[vector_morph]") {
+    // Apply a constant positive CV on ch0 while phase[0]=0.
+    // Without CV: out(0)=0 (from VM4).  With CV offset: phase shifts; output changes.
+    auto s = setup_applet(kAppletVectorMorph);
+
+    // Baseline with no CV: output near zero.
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float base = read_cv_at(s.bus, LEFT, 0, 0, 8);
+
+    // Apply +3V on CV in ch0.
+    // Proportion(In(0), HEMISPHERE_MAX_INPUT_CV=9216, 3599): +3V maps to ~1799 tenths-of-degree.
+    // This moves the playback position along the Morph1 waveform to a non-zero region.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float shifted = read_cv_at(s.bus, LEFT, 0, 0, 8);
+
+    REQUIRE(shifted != Approx(base).margin(0.01f));
+}
+
+TEST_CASE("vector_morph VM6: phase=900 (90 degrees) reflects waveform at quarter-cycle", "[vector_morph]") {
+    // Inject phase[0]=90 (stored in 5-degree increments -> OnDataReceive as 90).
+    // Controller: last_phase[0] = (90*10 + 0 + 3600) % 3600 = 900.
+    // This is the quarter-point of the Morph1 waveform; the output should differ from phase=0.
+    auto s = setup_applet(kAppletVectorMorph);
+
+    // phase=0 output (baseline from VM4: ~0V).
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float at_zero = read_cv_at(s.bus, LEFT, 0, 0, 8);
+
+    // Now set phase[0]=90.
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_vector_morph(57, 57, 90, 180, 1));
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float at_quarter = read_cv_at(s.bus, LEFT, 0, 0, 8);
+
+    REQUIRE(at_quarter != Approx(at_zero).margin(0.01f));
+}
 // === END vector_morph ===
 
 // === BEGIN relabi ===
-// Phase 6 applet test region (unblocked by dep-vec-osc + Relabi bundle).
+TEST_CASE("Relabi RL1: Start() defaults are freqKnob={30,34,38}, xmod=1, phase=0, thresh=3", "[relabi]") {
+    // Verify Start() initialises all seven per-oscillator knob groups to the
+    // vendor-specified defaults before any Controller() call alters them.
+    auto s = setup_applet(kAppletRelabi);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+
+    // freqKnob[0..2]: 6 bits each at offsets 0, 6, 12
+    REQUIRE((int)((data >> 0)  & 0x3F) == 30);  // 3 Hz
+    REQUIRE((int)((data >> 6)  & 0x3F) == 34);  // 5 Hz
+    REQUIRE((int)((data >> 12) & 0x3F) == 38);  // 7 Hz
+
+    // xmodKnob[0..2]: 3 bits each at offsets 18, 21, 24
+    REQUIRE((int)((data >> 18) & 0x07) == 1);
+    REQUIRE((int)((data >> 21) & 0x07) == 1);
+    REQUIRE((int)((data >> 24) & 0x07) == 1);
+
+    // phaseKnob[0..2]: 3 bits each at offsets 27, 30, 33
+    REQUIRE((int)((data >> 27) & 0x07) == 0);
+    REQUIRE((int)((data >> 30) & 0x07) == 0);
+    REQUIRE((int)((data >> 33) & 0x07) == 0);
+
+    // threshKnob[0..2]: 3 bits each at offsets 36, 39, 42
+    REQUIRE((int)((data >> 36) & 0x07) == 3);
+    REQUIRE((int)((data >> 39) & 0x07) == 3);
+    REQUIRE((int)((data >> 42) & 0x07) == 3);
+
+    // freqKnobMul=1, freqKnobDiv=0: bits [45,3) and [48,3)
+    REQUIRE((int)((data >> 45) & 0x07) == 1);
+    REQUIRE((int)((data >> 48) & 0x07) == 0);
+
+    // outputAssign[0..3] = {0,1,2,6}: bits [51,3), [54,3), [57,3), [60,3)
+    REQUIRE((int)((data >> 51) & 0x07) == 0);
+    REQUIRE((int)((data >> 54) & 0x07) == 1);
+    REQUIRE((int)((data >> 57) & 0x07) == 2);
+    REQUIRE((int)((data >> 60) & 0x07) == 6);
+}
+
+TEST_CASE("Relabi RL2: OnDataReceive round-trips all 63 bits via pack_relabi", "[relabi]") {
+    // Exercise all 18 fields at non-default values.
+    // Field maxima: freq 0..63, xmod 0..7, phase 0..7, thresh 0..6,
+    //               mul 0..7, div 0..7, out 0..7.
+    auto s = setup_applet(kAppletRelabi);
+    auto* left = get_applet(s.hi, LEFT);
+
+    uint64_t packed = pack_relabi(
+        63, 62, 61,  // freq0..2 (max)
+        7,  6,  5,   // xmod0..2
+        7,  6,  5,   // phase0..2
+        6,  5,  4,   // thresh0..2 (max valid is 6)
+        7,  7,       // freqKnobMul, freqKnobDiv (max)
+        7,  6,  5, 4 // outputAssign[0..3]
+    );
+    left->OnDataReceive(packed);
+    uint64_t data = left->OnDataRequest();
+
+    REQUIRE((int)((data >> 0)  & 0x3F) == 63);
+    REQUIRE((int)((data >> 6)  & 0x3F) == 62);
+    REQUIRE((int)((data >> 12) & 0x3F) == 61);
+    REQUIRE((int)((data >> 18) & 0x07) == 7);
+    REQUIRE((int)((data >> 21) & 0x07) == 6);
+    REQUIRE((int)((data >> 24) & 0x07) == 5);
+    REQUIRE((int)((data >> 27) & 0x07) == 7);
+    REQUIRE((int)((data >> 30) & 0x07) == 6);
+    REQUIRE((int)((data >> 33) & 0x07) == 5);
+    REQUIRE((int)((data >> 36) & 0x07) == 6);
+    REQUIRE((int)((data >> 39) & 0x07) == 5);
+    REQUIRE((int)((data >> 42) & 0x07) == 4);
+    REQUIRE((int)((data >> 45) & 0x07) == 7);
+    REQUIRE((int)((data >> 48) & 0x07) == 7);
+    REQUIRE((int)((data >> 51) & 0x07) == 7);
+    REQUIRE((int)((data >> 54) & 0x07) == 6);
+    REQUIRE((int)((data >> 57) & 0x07) == 5);
+    REQUIRE((int)((data >> 60) & 0x07) == 4);
+}
+
+TEST_CASE("Relabi RL3: OnDataReceive round-trips minimum field values", "[relabi]") {
+    // All fields at zero: verifies no sign-extension or bias artefacts.
+    auto s = setup_applet(kAppletRelabi);
+    auto* left = get_applet(s.hi, LEFT);
+
+    uint64_t packed = pack_relabi(
+        0, 0, 0,   // freq0..2
+        0, 0, 0,   // xmod0..2
+        0, 0, 0,   // phase0..2
+        0, 0, 0,   // thresh0..2
+        0, 0,      // freqKnobMul, freqKnobDiv
+        0, 0, 0, 0 // outputAssign[0..3]
+    );
+    left->OnDataReceive(packed);
+    uint64_t data = left->OnDataRequest();
+
+    // All fields must decode to zero.
+    REQUIRE(data == 0ULL);
+}
+
+TEST_CASE("Relabi RL4: Controller registers in RelabiManager; both sides linked when right also steps", "[relabi]") {
+    // When Relabi runs on BOTH sides within the IsLinked window (160 ticks),
+    // the right hemisphere observes linked=true in its next Controller() call
+    // and routes output through the manager (follower path). Verify that the
+    // right side produces finite output after a paired step sequence.
+    auto* loaded = nt::load_plugin();
+    REQUIRE(loaded != nullptr);
+    auto* alg = loaded->algorithm;
+    REQUIRE(alg != nullptr);
+
+    select_applet(alg, LEFT,  kAppletRelabi);
+    select_applet(alg, RIGHT, kAppletRelabi);
+
+    float* bus = nt::bus_frames_base();
+    clear_bus(bus);
+
+    // Both sides swap and start in first step; both call Register() in Controller.
+    step_n_frames(loaded, alg, bus, 32);
+    step_n_frames(loaded, alg, bus, 32);
+
+    auto* hi = as_instance(alg);
+    auto* right = get_applet(hi, RIGHT);
+
+    // OnDataRequest must return a well-formed (non-garbage) value for right side.
+    uint64_t data = right->OnDataRequest();
+    // freqKnob defaults: freqKnob[0]=30, [1]=34, [2]=38 (unchanged by follower path)
+    REQUIRE((int)((data >> 0)  & 0x3F) == 30);
+    REQUIRE((int)((data >> 6)  & 0x3F) == 34);
+    REQUIRE((int)((data >> 12) & 0x3F) == 38);
+}
+
+TEST_CASE("Relabi RL5: Controller advances oscillator; Out(0) is finite and non-constant over N steps", "[relabi]") {
+    // Default outputAssign[0]=0 routes sample[0]+HEMISPHERE_3V_CV to OUT0.
+    // After enough steps the sine oscillator must produce a value distinct from
+    // zero at some frame.
+    auto s = setup_applet(kAppletRelabi);
+
+    float first_sample  = read_cv_at(s.bus, LEFT, 0, 0, 8);
+
+    // Step several more frames to allow oscillator to advance.
+    step_n_frames(s.loaded, s.alg, s.bus, 320);
+
+    float later_sample = read_cv_at(s.bus, LEFT, 0, 0, 8);
+
+    // Both samples must be finite.
+    REQUIRE(std::isfinite(first_sample));
+    REQUIRE(std::isfinite(later_sample));
+
+    // Oscillator must have produced at least some non-zero output at some point.
+    // read_cv_at at the later step reflects the final frame of the most recent
+    // step() call; combined the two samples span enough phase that they differ.
+    // (3 Hz sine at 10 inner ticks per step advances ~0.03 rad per step;
+    //  after 10+ steps the oscillator has moved significantly.)
+    REQUIRE(std::abs(later_sample - first_sample) > 0.0f);
+}
 // === END relabi ===
 
 // === BEGIN lower_renz ===
 // Phase 6 applet test region (unblocked by dep-lorenz).
+// Lorenz generator runs via LorenzGeneratorManager singleton; Process() fires
+// only every LORENZ_PROCESS_TICKS=16 buffers. Tests step enough buffers to
+// allow at least one Process() call. The Lorenz attractor seed is non-zero
+// (lorenz.Init sets it), so outputs diverge from zero within a few Process()
+// calls. 10x inner-tick multiplier is benign here (no counter in if(Clock)).
+
+TEST_CASE("LowerRenz LR1: Start() defaults freq=128, rho=64", "[lower_renz]") {
+    auto s = setup_applet(kAppletLowerRenz);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 0) & 0xFF) == 128);
+    REQUIRE((int)((data >> 8) & 0xFF) == 64);
+}
+
+TEST_CASE("LowerRenz LR2: round-trip preserves freq and rho", "[lower_renz]") {
+    auto s = setup_applet(kAppletLowerRenz);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_lower_renz(200, 100));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 0) & 0xFF) == 200);
+    REQUIRE((int)((data >> 8) & 0xFF) == 100);
+}
+
+TEST_CASE("LowerRenz LR3: after N steps Out(0) and Out(1) are non-zero", "[lower_renz]") {
+    // The Lorenz attractor starts with a non-zero seed; after enough Process()
+    // calls both X and Y outputs diverge from zero. Step 320 buffers to allow
+    // at least 20 Process() calls (320 / 16 = 20).
+    auto s = setup_applet(kAppletLowerRenz);
+    step_n_frames(s.loaded, s.alg, s.bus, 320);
+    float x = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float y = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    // At least one output must be non-zero; the attractor does not idle at 0.
+    bool either_nonzero = (x != Approx(0.0f).margin(0.01f)) ||
+                          (y != Approx(0.0f).margin(0.01f));
+    REQUIRE(either_nonzero);
+}
+
+TEST_CASE("LowerRenz LR4: outputs are within +/-6V after N steps", "[lower_renz]") {
+    // Proportion(..., 25000, HEMISPHERE_MAX_CV) clamps output to HEMISPHERE_MAX_CV
+    // = 9216 hem units = 6V. Both channels must stay in [-6V, +6V].
+    auto s = setup_applet(kAppletLowerRenz);
+    step_n_frames(s.loaded, s.alg, s.bus, 320);
+    float x = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float y = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    REQUIRE(x >= -6.5f);
+    REQUIRE(x <=  6.5f);
+    REQUIRE(y >= -6.5f);
+    REQUIRE(y <=  6.5f);
+}
+
+TEST_CASE("LowerRenz LR5: Gate(1) freeze holds outputs constant", "[lower_renz]") {
+    // When Gate(1) is asserted, Controller() does nothing. Record outputs after
+    // 320 buffers of free-running, then freeze for 160 more; outputs must not
+    // change during the frozen window.
+    auto s = setup_applet(kAppletLowerRenz);
+    step_n_frames(s.loaded, s.alg, s.bus, 320);
+    float x_before = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float y_before = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    // Assert Gate(1) = freeze gate held across all frames.
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 160);
+    float x_after = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float y_after = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    REQUIRE(x_after == Approx(x_before).margin(0.01f));
+    REQUIRE(y_after == Approx(y_before).margin(0.01f));
+}
 // === END lower_renz ===
 
 // === BEGIN ebb_and_lfo ===
@@ -2815,50 +3354,1119 @@ TEST_CASE("helper H2: step_n_inner_ticks tick-advancement invariant under load (
 
 // === BEGIN metronome ===
 // Phase 6 applet test region (unblocked by dep-clock-mgr).
+// Metronome is Class D: OnDataRequest() returns 0 (no state serialized).
+// Clock-rate coverage uses step_n_inner_ticks so the harness advances
+// OC::CORE::ticks and calls clock_m.advance_one_tick() for each inner tick,
+// matching the hemispheres_shim::step() inner loop exactly.
+// 10x-clocked-multiplier note: step_n_inner_ticks(N) drives N inner
+// Controller calls per step() call. Tock(0) is read by every Controller
+// call while the beat boundary is crossed. Tests use shape 2 (state probe
+// only) rather than counting fires across the 10x multiplier boundary.
+//
+// Timing model:
+//   After Start(), beat_tick = OC::CORE::ticks = 0. The first inner tick
+//   inside step_n_inner_ticks increments OC::CORE::ticks to 1, calls
+//   advance_one_tick() which fires SyncTrig. With count[0]=0 the formula
+//   gives next_tock_tick = beat_tick + 0*tpb/1 = 0, and now=1 >= 0, so
+//   Tock(0) becomes true. The countdown decrement runs (was 0, no-op), then
+//   Controller() sees Tock(0)=true and calls ClockOut(0). ClockOut sets
+//   outputs[0] to PULSE_VOLTAGE and clock_countdown[0] = 175. After the
+//   loop, the bus write captures the pulse voltage.
+
+// Singleton used by Metronome Controller (HS::clock_m via using ::clock_m).
+extern HSClockManager clock_m;
+
+// Reinitialize clock_m to a clean state and start it at OC::CORE::ticks=0.
+// Does NOT call advance_one_tick(); the first advance is deferred to the
+// subsequent step_n_inner_ticks() call so the Controller sees Tock(0)=true
+// on that first tick.
+static void metronome_reset_clock(uint16_t bpm = 120, int multiply = 1) {
+    OC::CORE::ticks = 0;
+    clock_m.~HSClockManager();
+    new (&clock_m) HSClockManager();
+    clock_m.SetTempoBPM(bpm);
+    clock_m.SetMultiply(multiply, 0);
+    clock_m.Start(false); // sets beat_tick = OC::CORE::ticks = 0, running=true
+}
+
+TEST_CASE("metronome MT1: OnDataRequest returns 0 (no state to persist)", "[metronome]") {
+    auto s = setup_applet(kAppletMetronome);
+    CHECK(get_applet(s.hi, LEFT)->OnDataRequest() == 0);
+}
+
+TEST_CASE("metronome MT2: GateOut(1) high when clock is running", "[metronome]") {
+    // GateOut(1, IsRunning()) maps to output channel 1 on the LEFT side.
+    // When clock_m.IsRunning() is true the Controller emits a sustained high
+    // via Out(1, PULSE_VOLTAGE * ONE_OCTAVE).
+    auto s = setup_applet(kAppletMetronome);
+    metronome_reset_clock(120, 1);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 1);
+    REQUIRE(clock_m.IsRunning() == true);
+    CHECK(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
+}
+
+TEST_CASE("metronome MT3: GateOut(1) low when clock is stopped", "[metronome]") {
+    auto s = setup_applet(kAppletMetronome);
+    // Reconstruct clock_m without starting it; IsRunning() stays false.
+    OC::CORE::ticks = 0;
+    clock_m.~HSClockManager();
+    new (&clock_m) HSClockManager();
+    REQUIRE(clock_m.IsRunning() == false);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 1);
+    // Output 1 must be low because the Controller writes Out(1, 0) when not running.
+    CHECK(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);
+}
+
+TEST_CASE("metronome MT4: ClockOut(0) fires on first inner tick after Start()", "[metronome]") {
+    // At 120 BPM, count[0]=0 gives next_tock_tick=beat_tick=0. The first
+    // advance_one_tick() (tick=1, now >= 0) fires Tock(0)=true. The
+    // countdown decrement runs before Controller() and is a no-op (was 0).
+    // Controller() sees Tock(0)=true and calls ClockOut(0), setting
+    // outputs[0] to pulse voltage and countdown to 175. The bus write after
+    // the loop captures the pulse.
+    auto s = setup_applet(kAppletMetronome);
+    metronome_reset_clock(120, 1);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 1);
+    REQUIRE(clock_m.IsRunning() == true);
+    CHECK(clock_m.Tock(0) == true);
+    CHECK(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);
+}
+
+TEST_CASE("metronome MT5: Tock(0) false in mid-beat window at 120 BPM", "[metronome]") {
+    // After the first Tock fires (count[0] advances to 1), Tock(0) becomes
+    // false until tick reaches beat_tick + ticks_per_beat = 8333. Advancing
+    // OC::CORE::ticks to 100 via direct advance_one_tick() calls leaves us
+    // at tick 100, far below 8333; Tock(0) must remain false.
+    auto s = setup_applet(kAppletMetronome);
+    metronome_reset_clock(120, 1);
+    // Drive the first inner tick through the step loop (fires Tock(0)=true).
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 1);
+    REQUIRE(clock_m.Tock(0) == true); // sanity: boundary fired on tick 1
+    // Advance 99 more ticks directly (now at tick 100, mid-beat).
+    for (int i = 0; i < 99; ++i) {
+        OC::CORE::ticks += 1;
+        clock_m.advance_one_tick();
+    }
+    // Tock(0) must be false; beat boundary at 8333 not yet reached.
+    CHECK(clock_m.Tock(0) == false);
+}
 // === END metronome ===
 
 // === BEGIN pigeons ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// 10x clocked-multiplier rule: Controller() fires 10 times per step() because
+// ticks_this_step = numFrames/3 = 10. A single Clock(ch) edge asserts
+// clocked[ch]=true across all 10 inner calls, so Bump() runs 10 times per
+// step buffer per edge. Tests use shape (2): round-trip + state-injection
+// only. No bus-level fire-count assertions.
+TEST_CASE("Pigeons PI1: Start() defaults match expected field values", "[pigeons]") {
+    auto s = setup_applet(kAppletPigeons);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    // Start() sets: pigeons[ch].mod = 7 + ch*3 (mod0=7, mod1=10)
+    //               qselect[ch] = io_offset + ch (qsel0=0, qsel1=1)
+    // Pigeon struct initializes val[0]=1, val[1]=2 (not overwritten by Start).
+    int val0_0 = (int)((data >>  0) & 0x3F);
+    int val0_1 = (int)((data >>  6) & 0x3F);
+    int mod0   = (int)((data >> 12) & 0x3F) + 1; // stored as mod-1
+    int val1_0 = (int)((data >> 18) & 0x3F);
+    int val1_1 = (int)((data >> 24) & 0x3F);
+    int mod1   = (int)((data >> 30) & 0x3F) + 1; // stored as mod-1
+    int qsel0  = (int)((data >> 36) & 0x0F);
+    int qsel1  = (int)((data >> 44) & 0x0F);
+    REQUIRE(val0_0 == 1);
+    REQUIRE(val0_1 == 2);
+    REQUIRE(mod0   == 7);
+    REQUIRE(val1_0 == 1);
+    REQUIRE(val1_1 == 2);
+    REQUIRE(mod1   == 10);
+    REQUIRE(qsel0  == 0);
+    REQUIRE(qsel1  == 1);
+}
+
+TEST_CASE("Pigeons PI2: round-trip preserves all pigeon positions and qselect indices",
+          "[pigeons]") {
+    auto s = setup_applet(kAppletPigeons);
+    auto* left = get_applet(s.hi, LEFT);
+    // Inject non-default state: distinct val pairs, mods at limits, qselect varied.
+    left->OnDataReceive(pack_pigeons(10, 20, 5, 30, 40, 12, 3, 7));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x3F) == 10); // val0_0
+    REQUIRE((int)((data >>  6) & 0x3F) == 20); // val0_1
+    REQUIRE(((int)((data >> 12) & 0x3F) + 1) == 5);  // mod0 (stored as mod-1)
+    REQUIRE((int)((data >> 18) & 0x3F) == 30); // val1_0
+    REQUIRE((int)((data >> 24) & 0x3F) == 40); // val1_1
+    REQUIRE(((int)((data >> 30) & 0x3F) + 1) == 12); // mod1 (stored as mod-1)
+    REQUIRE((int)((data >> 36) & 0x0F) == 3);  // qsel0
+    // bits [40,4) are gap; verify they remain 0 for round-trip stability
+    REQUIRE((int)((data >> 40) & 0x0F) == 0);
+    REQUIRE((int)((data >> 44) & 0x0F) == 7);  // qsel1
+}
+
+TEST_CASE("Pigeons PI3: round-trip is stable under double serialize-deserialize", "[pigeons]") {
+    auto s = setup_applet(kAppletPigeons);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_pigeons(5, 8, 3, 13, 21, 7, 2, 5));
+    uint64_t data1 = left->OnDataRequest();
+    left->OnDataReceive(data1);
+    uint64_t data2 = left->OnDataRequest();
+    REQUIRE(data1 == data2);
+}
+
+TEST_CASE("Pigeons PI4: Clock(0) advances pigeon state and produces output on Out(0)",
+          "[pigeons]") {
+    // 10x rule: Bump() fires 10 times per step edge. We assert output changes
+    // from 0V, not an exact value, because 10 Bump() calls on the Fibonacci
+    // modulo sequence produce a state that is deterministic but complex to
+    // precompute without running the vendor logic.
+    auto s = setup_applet(kAppletPigeons);
+    float out_before = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out_after = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    // After a Clock(0) edge the applet quantizes a Fibonacci-modulo position
+    // and writes it to Out(0). The semitone (chromatic) scale maps any
+    // non-zero note to a non-zero voltage; assert output is non-zero.
+    REQUIRE(out_after != Approx(out_before));
+}
+
+TEST_CASE("Pigeons PI5: qselect round-trip preserves values within 0..QUANT_CHANNEL_COUNT-1",
+          "[pigeons]") {
+    auto s = setup_applet(kAppletPigeons);
+    auto* left = get_applet(s.hi, LEFT);
+    // Use maximum representable qselect indices for the 4-bit field (0..15).
+    // QUANT_CHANNEL_COUNT = 8; values above 7 are clamped by OnEncoderMove
+    // but OnDataReceive stores whatever fits in 4 bits. Test the pack helper
+    // boundary: max 4-bit value is 15.
+    left->OnDataReceive(pack_pigeons(0, 0, 2, 0, 0, 2, 7, 7));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 36) & 0x0F) == 7);
+    REQUIRE((int)((data >> 44) & 0x0F) == 7);
+}
 // === END pigeons ===
 
 // === BEGIN strum ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// 10x multiplier note: Strum::Controller calls StartADCLag inside `Clock(ch)`
+// (at the bottom of Controller) and advances the strum sequencer inside
+// EndOfADCLag. EndOfADCLag fires after HEMISPHERE_ADC_LAG=96 inner ticks.
+// At 10 ticks per buffer that is ~10 buffers post-edge. ClockOut(1) fires once
+// per note with HEMISPHERE_CLOCK_TICKS=175 ticks (~17 buffers). Both are long
+// enough that step_n_frames(... 32*15) reliably clears the lag window and
+// leaves the gate asserted.
+TEST_CASE("Strum ST1: Start() defaults qselect=0, spacing=8, length=6, intervals={0,4,7,9,11,14}, stepmode=0, qmod=0",
+          "[strum]") {
+    auto s = setup_applet(kAppletStrum);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x0F) == 0);   // qselect = 0
+    REQUIRE((int)((data >> 12) & 0x1FF) == 8);  // spacing = HEM_BURST_SPACING_MIN = 8
+    REQUIRE((int)((data >> 21) & 0x0F) == 6);   // length = 6
+    // intervals default = {0, 4, 7, 9, 11, 14}; stored biased by +12
+    REQUIRE((int)((data >> 25) & 0x3F) == 0  + 12); // intervals[0]
+    REQUIRE((int)((data >> 31) & 0x3F) == 4  + 12); // intervals[1]
+    REQUIRE((int)((data >> 37) & 0x3F) == 7  + 12); // intervals[2]
+    REQUIRE((int)((data >> 43) & 0x3F) == 9  + 12); // intervals[3]
+    REQUIRE((int)((data >> 49) & 0x3F) == 11 + 12); // intervals[4]
+    REQUIRE((int)((data >> 55) & 0x3F) == 14 + 12); // intervals[5]
+    REQUIRE((int)((data >> 61) & 0x01) == 0);   // stepmode = false
+    REQUIRE((int)((data >> 62) & 0x01) == 0);   // qmod = false
+}
+
+TEST_CASE("Strum ST2: OnDataReceive then OnDataRequest round-trips all fields",
+          "[strum]") {
+    auto s = setup_applet(kAppletStrum);
+    auto* left = get_applet(s.hi, LEFT);
+    // Inject: qselect=1, spacing=200, length=4, intervals={-5,0,4,7,0,0}, stepmode=1, qmod=1
+    left->OnDataReceive(pack_strum(1, 200, 4, -5, 0, 4, 7, 0, 0, 1, 1));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x0F) == 1);       // qselect
+    REQUIRE((int)((data >> 12) & 0x1FF) == 200);    // spacing
+    REQUIRE((int)((data >> 21) & 0x0F) == 4);       // length
+    REQUIRE((int)((data >> 25) & 0x3F) == -5 + 12); // intervals[0]
+    REQUIRE((int)((data >> 31) & 0x3F) ==  0 + 12); // intervals[1]
+    REQUIRE((int)((data >> 37) & 0x3F) ==  4 + 12); // intervals[2]
+    REQUIRE((int)((data >> 43) & 0x3F) ==  7 + 12); // intervals[3]
+    REQUIRE((int)((data >> 49) & 0x3F) ==  0 + 12); // intervals[4]
+    REQUIRE((int)((data >> 55) & 0x3F) ==  0 + 12); // intervals[5]
+    REQUIRE((int)((data >> 61) & 0x01) == 1);        // stepmode
+    REQUIRE((int)((data >> 62) & 0x01) == 1);        // qmod
+}
+
+TEST_CASE("Strum ST3: Clock(0) triggers upward strum; ClockOut(1) fires after ADC lag",
+          "[strum]") {
+    // Drive a single rising edge on Clock(0). EndOfADCLag(0) fires ~10 buffers
+    // later. When it fires: countdown=0, inc=1, step_advance=true -> first note
+    // outputs on Out(0) and ClockOut(1) fires with 175-tick gate. 15 buffers
+    // is well inside the gate window.
+    auto s = setup_applet(kAppletStrum);
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 15);
+    // ClockOut(1) gate should be asserted on channel 1 (OUT axis).
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
+}
+
+TEST_CASE("Strum ST4: Clock(1) triggers downward strum; ClockOut(1) fires after ADC lag",
+          "[strum]") {
+    // Drive a rising edge on Clock(1). EndOfADCLag(1) fires: countdown=0, inc=-1,
+    // index set to length-1=5 (since index_out_of_bounds was false with index=0
+    // but becomes 0 regardless; step_advance=true -> first note fires).
+    // After ADC lag, ClockOut(1) should be asserted.
+    auto s = setup_applet(kAppletStrum);
+    set_gate(s.bus, LEFT, 1, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 15);
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);
+}
+
+TEST_CASE("Strum ST5: idle with no clock keeps Out(0) at 0V and no gate on Out(1)",
+          "[strum]") {
+    // No Clock(0) or Clock(1) fired; index=0, inc=0 from member init so the
+    // step_advance branch cannot fire (inc == 0 guard). Outputs remain at 0.
+    auto s = setup_applet(kAppletStrum);
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 5);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.1f));
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == false);
+}
+
+TEST_CASE("Strum ST6: stepmode serialises and constrains length in round-trip",
+          "[strum]") {
+    // Verify that OnDataReceive enforces the length constraint [1, MAX_CHORD_LENGTH=6].
+    // Values in range round-trip; values out of range are clamped to bounds.
+    auto s = setup_applet(kAppletStrum);
+    auto* left = get_applet(s.hi, LEFT);
+    // length=6 is the max; should round-trip exactly.
+    left->OnDataReceive(pack_strum(0, 8, 6, 0, 0, 0, 0, 0, 0, 0, 0));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 21) & 0x0F) == 6);
+    // length=1 is the min; should round-trip exactly.
+    left->OnDataReceive(pack_strum(0, 8, 1, 0, 0, 0, 0, 0, 0, 0, 0));
+    data = left->OnDataRequest();
+    REQUIRE((int)((data >> 21) & 0x0F) == 1);
+}
 // === END strum ===
 
 // === BEGIN shredder ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// 10x clocked-multiplier acknowledgement: Controller() fires 10 times per
+// step() call when Clock(0) is asserted. On the first inner tick reset=true
+// so !reset is false (step stays put); on ticks 2-10 step increments 9
+// times. Bus-level step-count assertions are avoided (shape 2). Coverage
+// uses round-trip + state-injection + range=0 zero-output verification.
+
+TEST_CASE("Shredder SR1: Start() defaults range[0]=1, range[1]=0, quant_channels=0, scale=5(SCALE_SEMI)",
+          "[shredder]") {
+    auto s = setup_applet(kAppletShredder);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    // range[0] at [0,4)
+    REQUIRE((int)((data >> 0) & 0x0F) == 1);
+    // bipolar[0] at [4,1)
+    REQUIRE((int)((data >> 4) & 0x01) == 0);
+    // shred_on_reset[0] at [5,1)
+    REQUIRE((int)((data >> 5) & 0x01) == 0);
+    // range[1] at [8,4)
+    REQUIRE((int)((data >> 8) & 0x0F) == 0);
+    // bipolar[1] at [12,1)
+    REQUIRE((int)((data >> 12) & 0x01) == 0);
+    // shred_on_reset[1] at [13,1)
+    REQUIRE((int)((data >> 13) & 0x01) == 0);
+    // quant_channels at [16,8)
+    REQUIRE((int)((data >> 16) & 0xFF) == 0);
+    // scale at [24,8): SCALE_SEMI = 5 (SCALE_USER_COUNT=4, then SCALE_SEMI=5)
+    REQUIRE((int)((data >> 24) & 0xFF) == 5);
+}
+
+TEST_CASE("Shredder SR2: round-trip preserves all settings",
+          "[shredder]") {
+    auto s = setup_applet(kAppletShredder);
+    auto* left = get_applet(s.hi, LEFT);
+    // Inject: range[0]=3, bipolar[0]=1, shred_on_reset[0]=1,
+    //         range[1]=2, bipolar[1]=0, shred_on_reset[1]=1,
+    //         quant_channels=2, scale=4, seed[0]=0xAB12, seed[1]=0xCD34
+    left->OnDataReceive(pack_shredder(3, 1, 1, 2, 0, 1, 2, 4, 0xAB12, 0xCD34));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 0)  & 0x0F)    == 3);        // range[0]
+    REQUIRE((int)((data >> 4)  & 0x01)    == 1);        // bipolar[0]
+    REQUIRE((int)((data >> 5)  & 0x01)    == 1);        // shred_on_reset[0]
+    REQUIRE((int)((data >> 8)  & 0x0F)    == 2);        // range[1]
+    REQUIRE((int)((data >> 12) & 0x01)    == 0);        // bipolar[1]
+    REQUIRE((int)((data >> 13) & 0x01)    == 1);        // shred_on_reset[1]
+    REQUIRE((int)((data >> 16) & 0xFF)    == 2);        // quant_channels
+    REQUIRE((int)((data >> 24) & 0xFF)    == 4);        // scale
+    REQUIRE((int)((data >> 32) & 0xFFFF)  == 0xAB12);  // seed[0]
+    REQUIRE((int)((data >> 48) & 0xFFFF)  == 0xCD34);  // seed[1]
+}
+
+TEST_CASE("Shredder SR3: range=0 produces zero output on both channels",
+          "[shredder]") {
+    // range[ch]=0 means sequence[ch][i]=0 for all i, so Out(ch)=Quantize(0)=0.
+    auto s = setup_applet(kAppletShredder);
+    auto* left = get_applet(s.hi, LEFT);
+    // range[0]=0, range[1]=0; seeds arbitrary, quant_channels=0 (both channels
+    // quantized), scale=SCALE_SEMI. Chromatic quantize of 0 returns 0.
+    left->OnDataReceive(pack_shredder(0, 0, 0, 0, 0, 0, 0, 4, 0x0001, 0x0002));
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 3);
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float out1 = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    REQUIRE(out0 == Approx(0.0f).margin(0.01f));
+    REQUIRE(out1 == Approx(0.0f).margin(0.01f));
+}
+
+TEST_CASE("Shredder SR4: Clock(1) resets step; output after Reset matches after inject",
+          "[shredder]") {
+    // State-injection shape: inject range[0]=0 (all zeros) so VoltageOut()
+    // always produces 0V regardless of step. Drive Clock(0) to advance step
+    // multiple times, then Clock(1) to Reset. After Reset, output is still 0V
+    // because sequence values are all zero. Verifies Reset() call chain without
+    // needing to observe internal step directly.
+    auto s = setup_applet(kAppletShredder);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_shredder(0, 0, 0, 0, 0, 0, 0, 4, 0x0001, 0x0002));
+
+    // Advance step by sending several Clock(0) pulses.
+    for (int i = 0; i < 3; ++i) {
+        set_gate(s.bus, LEFT, 0, 0, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        clear_bus(s.bus);
+    }
+
+    // Send Clock(1) to trigger Reset().
+    set_gate(s.bus, LEFT, 1, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    clear_bus(s.bus);
+
+    // With range=0, all sequence values are 0, so output is 0V at every step.
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    REQUIRE(out0 == Approx(0.0f).margin(0.01f));
+}
+
+TEST_CASE("Shredder SR5: seeds round-trip after Clock(0) advances",
+          "[shredder]") {
+    // Verifies that OnDataRequest still reflects the stored seeds after the
+    // applet has been running. Seeds are stored in seed[] and do not change
+    // during normal operation; only Shred(ch, true) overwrites them.
+    auto s = setup_applet(kAppletShredder);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_shredder(1, 0, 0, 1, 0, 0, 0, 4, 0x1234, 0x5678));
+
+    // Run a few steps without any clock (quiescent).
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 5);
+
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 32) & 0xFFFF) == 0x1234);  // seed[0] unchanged
+    REQUIRE((int)((data >> 48) & 0xFFFF) == 0x5678);  // seed[1] unchanged
+    REQUIRE((int)((data >> 24) & 0xFF)   == 4);        // scale unchanged
+}
 // === END shredder ===
 
 // === BEGIN carpeggio ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// Carpeggio: 16-step Cartesian arpeggiator. Clock(0) advances through a 4x4
+// grid of chord tones; Clock(1) resets step to 0. Chord + transpose are
+// serialised; sequence[] is runtime-only (derived from sel_chord via
+// ImprintChord). 10x multiplier applies: do NOT assert per-clock step counts.
+// Shape: round-trip + Start defaults + state-injection + output-range checks.
+
+TEST_CASE("Carpeggio CA1: Start() defaults sel_chord=2 transpose=0", "[carpeggio]") {
+    // ImprintChord(2) at Start sets sel_chord=2 (Maj inv 2). transpose=0.
+    // OnDataRequest: bits[0,8)=2, bits[8,8)=24 (transpose+24=0+24).
+    auto s = setup_applet(kAppletCarpeggio);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 0) & 0xFF) == 2);   // sel_chord=2
+    REQUIRE((int)((data >> 8) & 0xFF) == 24);  // transpose+24 = 0+24
+}
+
+TEST_CASE("Carpeggio CA2: round-trip preserves sel_chord and transpose", "[carpeggio]") {
+    // Inject chord=10 (sus2), transpose=12. Verify OnDataRequest encodes
+    // sel_chord=10 and transpose+24=36.
+    auto s = setup_applet(kAppletCarpeggio);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_carpeggio(10, 12));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 0) & 0xFF) == 10);  // sel_chord=10
+    REQUIRE((int)((data >> 8) & 0xFF) == 36);  // transpose+24 = 12+24
+}
+
+TEST_CASE("Carpeggio CA3: round-trip with negative transpose preserves bias", "[carpeggio]") {
+    // Inject chord=0 (Maj triad), transpose=-12. Stored as -12+24=12.
+    auto s = setup_applet(kAppletCarpeggio);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_carpeggio(0, -12));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 0) & 0xFF) == 0);   // sel_chord=0
+    REQUIRE((int)((data >> 8) & 0xFF) == 12);  // transpose+24 = -12+24
+}
+
+TEST_CASE("Carpeggio CA4: Start() outputs non-zero pitch on Out(0) immediately", "[carpeggio]") {
+    // ImprintChord(2) fills sequence with Maj inv 2 tones starting at step=0:
+    // sequence[0] = chord_tones[0] = 7. pitch_out_for_step calls
+    // MIDIQuantizer::CV(7+36=43, transpose=0). Out(0) should be non-zero.
+    // Verify via read_cv_at after setup (setup_applet already calls step once).
+    auto s = setup_applet(kAppletCarpeggio);
+    float out = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    // MIDIQuantizer::CV(43, 0, kOctaveZero=5): cv = 3*1536 + 7*128 - 5*1536
+    // = 4608 + 896 - 7680 = -2176. In volts: -2176/1536 ~= -1.417V.
+    // Accept any non-zero value confirming pitch was written (not reset to 0V).
+    REQUIRE(std::abs(out) > 0.1f);
+}
+
+TEST_CASE("Carpeggio CA5: Clock(1) reset drives Out(0) from step=0 sequence value", "[carpeggio]") {
+    // After injecting chord=0 (Maj triad: {0,4,7}, 3 notes), step=0 gives
+    // sequence[0]=0. pitch_out_for_step: MIDIQuantizer::CV(0+36=36, 0) with
+    // kOctaveZero=5: octave=3, semitone=0 -> cv=3*1536 - 5*1536 = -3072.
+    // In volts: -3072/1536 = -2.0V. After Clock(1) reset, Out(0) encodes C.
+    auto s = setup_applet(kAppletCarpeggio);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_carpeggio(0, 0));  // Maj triad, transpose=0
+    // Advance a few buffers to let ImprintChord propagate, then send Clock(1).
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 3);
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 1, 0, 8);  // Clock(1) = reset
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    clear_bus(s.bus);
+    // After Clock(1) reset, step=0. pitch_out_for_step writes sequence[0]=0.
+    // Out(0) = MIDIQuantizer::CV(36, 0) = -3072 hem units = -2.0V.
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    REQUIRE(out == Approx(-2.0f).margin(0.05f));
+}
+
+TEST_CASE("Carpeggio CA6: Clock(0) advances arpeggiator; Out(0) stays within CV range", "[carpeggio]") {
+    // 10x multiplier: one step() call with Clock(0) fires Controller 10 times.
+    // Do not assert a specific step index. Verify Out(0) stays within [-6V, 6V]
+    // across multiple Clock(0) edges covering all 16 sequence positions.
+    auto s = setup_applet(kAppletCarpeggio);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_carpeggio(0, 0));  // Maj triad
+    for (int edge = 0; edge < 16; ++edge) {
+        clear_bus(s.bus);
+        set_gate(s.bus, LEFT, 0, 0, 8);  // Clock(0)
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        clear_bus(s.bus);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+        float out = read_cv_at(s.bus, LEFT, 0, 0, 8);
+        REQUIRE(out >= -6.0f);
+        REQUIRE(out <= 6.0f);
+    }
+}
 // === END carpeggio ===
 
 // === BEGIN squanch ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// Squanch: dual-channel quantizer. In(0) is the pitch input for both channels.
+// Channel 0 gets shifted by shift[0] semitones (or +1 octave when Gate(1) high).
+// Channel 1 gets shifted by DetentedIn(1). continuous=1 at Start, so Controller
+// runs every step without waiting for Clock(0).
+//
+// Scale index mapping (OC::Scales):
+//   indices 0-3 = user scales (Init() copies braids::scales[1] = Semitones)
+//   index 4     = braids::scales[0] = Off (no notes)
+//   index 5     = braids::scales[1] = Semitones (chromatic, 12 notes)
+//   index 6     = braids::scales[2] = Ionian/Major (7 notes: C D E F G A B)
+//
+// 10x clocked multiplier: Clock(0) sets continuous=0 but that only prevents
+// the quantize block from running on subsequent steps. Tests use the default
+// continuous=1 mode (no clock) to avoid the multiplier complication.
+
+TEST_CASE("Squanch SQ1: Start() defaults round-trip", "[squanch]") {
+    // QuantEngine() initializes scale = OC::Scales::SCALE_SEMI = 5 (Semitones/chromatic).
+    // shift[0]=0, shift[1]=0, root=0, note_wrap[0]=0, note_wrap[1]=0.
+    auto s = setup_applet(kAppletSquanch);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0xFF) == 5);   // scale = SCALE_SEMI = 5
+    REQUIRE((int)((data >>  8) & 0xFF) == 48);  // shift[0] + 48 = 0 + 48
+    REQUIRE((int)((data >> 16) & 0xFF) == 48);  // shift[1] + 48 = 0 + 48
+    REQUIRE((int)((data >> 24) & 0x0F) == 0);   // root
+    REQUIRE((int)((data >> 28) & 0x3F) == 0);   // note_wrap[0]
+    REQUIRE((int)((data >> 34) & 0x3F) == 0);   // note_wrap[1]
+}
+
+TEST_CASE("Squanch SQ2: round-trip preserves all fields", "[squanch]") {
+    auto s = setup_applet(kAppletSquanch);
+    auto* left = get_applet(s.hi, LEFT);
+    // scale=6 (Ionian/Major), shift[0]=12, shift[1]=-12, root=5 (F), wrap[0]=7, wrap[1]=3
+    left->OnDataReceive(pack_squanch(6, 12, -12, 5, 7, 3));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0xFF) == 6);    // scale
+    REQUIRE((int)((data >>  8) & 0xFF) == 60);   // shift[0] + 48 = 12 + 48
+    REQUIRE((int)((data >> 16) & 0xFF) == 36);   // shift[1] + 48 = -12 + 48
+    REQUIRE((int)((data >> 24) & 0x0F) == 5);    // root
+    REQUIRE((int)((data >> 28) & 0x3F) == 7);    // note_wrap[0]
+    REQUIRE((int)((data >> 34) & 0x3F) == 3);    // note_wrap[1]
+}
+
+TEST_CASE("Squanch SQ3: Chromatic identity — C (0V) passes through unchanged", "[squanch]") {
+    // Default scale is SCALE_SEMI (Semitones, 12-note chromatic).
+    // C = 0 hem units = 0V is unambiguously in-scale at any root.
+    // With root=0 and shift=0, Quantize(ch, 0, 0, 0) must return 0.
+    auto s = setup_applet(kAppletSquanch);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    // C maps to C: output should be at 0V.
+    REQUIRE(out0 == Approx(0.0f).margin(0.08f));
+}
+
+TEST_CASE("Squanch SQ4: Out(0) and Out(1) both carry quantized pitch in continuous mode", "[squanch]") {
+    // Both outputs should reflect quantized In(0) when shift=0 and no Gate(1).
+    // Use 0V (C) which is in-scale for any chromatic/semitone-based scale.
+    auto s = setup_applet(kAppletSquanch);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float out1 = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    // C (0V) maps to C (0V) on both channels in chromatic mode.
+    REQUIRE(out0 == Approx(0.0f).margin(0.08f));
+    REQUIRE(out1 == Approx(0.0f).margin(0.08f));
+}
+
+TEST_CASE("Squanch SQ5: Major scale preserves in-scale note G (7 semitones)", "[squanch]") {
+    // Ionian/Major (OC scale index 6): C D E F G A B.
+    // G = 896 hem units (≈ 0.583V) is in the major scale.
+    // Reset hysteresis to 0V first, then step at G to escape the C cell.
+    // Output must land on G.
+    auto s = setup_applet(kAppletSquanch);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_squanch(6, 0, 0, 0, 0, 0));  // Ionian/Major, root C
+    float g_volts = 896.0f / 1536.0f;  // G = 896 hem = 0.583V
+    // Reset hysteresis via a 0V step, then step at G.
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, g_volts, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    // G is in C major; output must be G (within 1 semitone = 0.083V margin).
+    REQUIRE(out0 == Approx(g_volts).margin(0.09f));
+}
+
+TEST_CASE("Squanch SQ6: scale change takes effect — G quantizes differently in Locrian", "[squanch]") {
+    // Verify that OnDataReceive with a new scale changes quantizer output.
+    // Locrian (OC index 4+8=12): {C, Db, Eb, F, Gb, Ab, Bb}. G (896 hem) absent.
+    // After settling hysteresis at 0V, step at G. On chromatic, G maps to G.
+    // After switching to Locrian and resetting hysteresis at 0V, step at G again.
+    // On Locrian, G maps to either Gb (768) or Ab (1024) — NOT G (896).
+    auto s = setup_applet(kAppletSquanch);
+    auto* left = get_applet(s.hi, LEFT);
+    float g_volts = 896.0f / 1536.0f;  // G = 896 hem units ≈ 0.583V
+
+    // Chromatic (default scale 5 = SCALE_SEMI): G is in-scale.
+    // Reset hysteresis to 0V (setup_applet already did one 0V step; do one more to ensure).
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    // Now step at G to move hysteresis out of the 0V cell.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, g_volts, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out_chromatic = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    REQUIRE(out_chromatic == Approx(g_volts).margin(0.09f));
+
+    // Switch to Locrian and reset hysteresis by stepping at 0V first.
+    left->OnDataReceive(pack_squanch(12, 0, 0, 0, 0, 0));
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);  // resets hysteresis to 0V in Locrian
+    // Now step at G.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, g_volts, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out_locrian = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    // G is not in Locrian; output must differ from G (896 hem = 0.583V).
+    REQUIRE(std::abs(out_locrian - g_volts) > 0.05f);
+}
 // === END squanch ===
 
 // === BEGIN chordinator ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// Chordinator tests
+// Vendor: Chordinator.h. Dual-output chord quantizer.
+//   Out(0) = chord root: In(0) quantized to scale ch0.
+//   Out(1) = chord harmonic: Quantize(ch1, In(1) + chord_root_pitch) using
+//            a chord-mask-rotated quantizer on ch1.
+//   OnDataRequest layout (28 bits):
+//     [0, 8) = GetScale(0)    (OC scale index, default SCALE_SEMI=5)
+//     [8, 4) = GetRootNote(0) (0..11, default 0)
+//     [12,16)= chord_mask     (uint16 bitmask, default 0x0015 = 0b10101)
+//   No 10x risk: Controller uses continuous mode by default (continuous[ch]=1
+//   from Start()), so no clock-gated counter advances. Clock(ch) merely
+//   switches to S&H mode; the output is set on EndOfADCLag, not per-tick.
+
+TEST_CASE("chordinator CH1: Start defaults serialize correctly", "[chordinator]") {
+    // Start(): scale ch0 defaults to SCALE_SEMI (OC index 5), root=0, chord_mask=0b10101=0x0015.
+    // OnDataRequest packs: scale=5 at [0,8), root_note=0 at [8,4), chord_mask=0x0015 at [12,16).
+    auto s = setup_applet(kAppletChordinator);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+
+    int scale      = (int)((packed >>  0) & 0xFF);
+    int root_note  = (int)((packed >>  8) & 0x0F);
+    int chord_mask = (int)((packed >> 12) & 0xFFFF);
+
+    REQUIRE(scale      == 5);       // SCALE_SEMI
+    REQUIRE(root_note  == 0);
+    REQUIRE(chord_mask == 0x0015);  // 0b10101: root + 2nd + 4th degree on chromatic
+}
+
+TEST_CASE("chordinator CH2: serialise round-trip preserves scale, root, and chord mask", "[chordinator]") {
+    // Pack scale=2 (Ionian, 7-note), root_note=3, chord_mask=0x0055 (0b1010101).
+    // OnDataReceive + OnDataRequest must return identical values.
+    auto s = setup_applet(kAppletChordinator);
+    uint64_t injected = pack_chordinator(2, 3, 0x0055);
+    get_applet(s.hi, LEFT)->OnDataReceive(injected);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+
+    int scale      = (int)((packed >>  0) & 0xFF);
+    int root_note  = (int)((packed >>  8) & 0x0F);
+    int chord_mask = (int)((packed >> 12) & 0xFFFF);
+
+    REQUIRE(scale      == 2);
+    REQUIRE(root_note  == 3);
+    REQUIRE(chord_mask == 0x0055);
+}
+
+TEST_CASE("chordinator CH3: Out(0) outputs quantized root pitch from In(0)", "[chordinator]") {
+    // In continuous mode (default), Out(0) = Quantize(ch0, In(0)).
+    // With In(0) = 0V and SCALE_SEMI (chromatic), quantized pitch = 0 => Out(0) = 0V.
+    // With In(0) = 1V (= 1 octave = 1536 hem units), quantized pitch = 1536 => Out(0) = 1V.
+    auto s = setup_applet(kAppletChordinator);
+
+    // 0V input: root quantizes to 0V.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);
+    set_cv(s.bus, LEFT, 1, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.02f));
+
+    // 1V input: root on chromatic scale quantizes to 1V (nearest semitone boundary).
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    set_cv(s.bus, LEFT, 1, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(1.0f).margin(0.02f));
+}
+
+TEST_CASE("chordinator CH4: Out(1) reflects chord harmonic offset from root", "[chordinator]") {
+    // With default chord_mask=0b10101 and chromatic scale, the chord quantizer on ch1
+    // is configured to allow semitone degrees 0, 2, 4 (relative to chord root).
+    // With chord_root_pitch = 0 and In(1) = 0, harm_pitch = Quantize(ch1, 0+0) = 0V.
+    // With In(1) = 1 semitone (128 hem ~ 0.083V), the chord quantizer maps to the
+    // nearest enabled degree: degree 2 (2 semitones = 256 hem ~ 0.167V). Assert
+    // Out(1) > Out(0) to confirm the harmonic quantizer shifts the output.
+    auto s = setup_applet(kAppletChordinator);
+
+    // Root = 0, harmonic input = 0: both outputs at 0V.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);
+    set_cv(s.bus, LEFT, 1, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float root_out = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float harm_out = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    REQUIRE(root_out == Approx(0.0f).margin(0.02f));
+    REQUIRE(harm_out == Approx(0.0f).margin(0.02f));
+
+    // Shift In(1) by ~2.5 semitones above root; chord quantizer should snap
+    // to degree 2 (M2, enabled). Input at 2.5/12V puts it clearly past the
+    // midpoint between disabled note 1 (1 st) and enabled note 2 (2 st), so
+    // braids quantizer hysteresis cannot snap it down to root.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);
+    set_cv(s.bus, LEFT, 1, 2.5f / 12.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float harm_shifted = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    REQUIRE(harm_shifted > 0.0f);  // chord quantizer moved the output above root
+}
 // === END chordinator ===
 
 // === BEGIN dual_quant ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// DualQuant: two-channel chromatic/scale quantizer.
+// Vendor: DualQuant.h:1-142. Class B, recipe Class B.
+// Controller: continuous mode (no clock), per-channel Quantize(ch, In(ch)).
+// OnDataRequest: scale[0] at [0,8), scale[1] at [8,8), root[0] at [16,4), root[1] at [20,4).
+// Default scale: OC::Scales::SCALE_SEMI = 5 (Chromatic/12-semitone).
+// Ionian (Major) = braids::scales[2] -> OC::Scales index 6.
+// 10x multiplier: Controller fires 10 times per step() in continuous mode
+// (no Clock check guarding Quantize), but repeated quantize is idempotent.
+// All assertions use continuous mode (no Clock input needed).
+
+TEST_CASE("dual_quant DQ1: Start() defaults to Chromatic (SCALE_SEMI=5) on both channels", "[dual_quant]") {
+    // Start() sets continuous[ch]=1 but does not call QuantizerConfigure.
+    // QuantEngine constructor sets scale=OC::Scales::SCALE_SEMI=5 on fresh reset_runtime.
+    auto s = setup_applet(kAppletDualQuant);
+    uint64_t data = get_applet(s.hi, LEFT)->OnDataRequest();
+    int scale0 = (int)((data >>  0) & 0xFF);
+    int scale1 = (int)((data >>  8) & 0xFF);
+    int root0  = (int)((data >> 16) & 0x0F);
+    int root1  = (int)((data >> 20) & 0x0F);
+    REQUIRE(scale0 == 5);  // SCALE_SEMI = Chromatic
+    REQUIRE(scale1 == 5);
+    REQUIRE(root0  == 0);
+    REQUIRE(root1  == 0);
+}
+
+TEST_CASE("dual_quant DQ2: round-trip preserves scale and root for both channels", "[dual_quant]") {
+    // Pack non-default values: scale0=6 (Ionian/Major), scale1=7 (Dorian),
+    // root0=2 (D), root1=5 (F).
+    auto s = setup_applet(kAppletDualQuant);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_dual_quant(6, 7, 2, 5));
+    uint64_t data = get_applet(s.hi, LEFT)->OnDataRequest();
+    int scale0 = (int)((data >>  0) & 0xFF);
+    int scale1 = (int)((data >>  8) & 0xFF);
+    int root0  = (int)((data >> 16) & 0x0F);
+    int root1  = (int)((data >> 20) & 0x0F);
+    REQUIRE(scale0 == 6);
+    REQUIRE(scale1 == 7);
+    REQUIRE(root0  == 2);
+    REQUIRE(root1  == 5);
+}
+
+TEST_CASE("dual_quant DQ3: Chromatic identity - output within half semitone of input", "[dual_quant]") {
+    // Chromatic scale snaps to nearest semitone (128 hem units).
+    // Input exactly on a semitone boundary -> output matches input within 1/1536 V rounding.
+    // Test ch0 at 0.5V (semitone 6 = 768 hem) and ch1 at 1.0V (semitone 12 = 1536 hem = 1 octave).
+    auto s = setup_applet(kAppletDualQuant);
+    // Default scale is Chromatic on both channels.
+    set_cv(s.bus, LEFT, 0, 0.5f, 8);   // ch0: 0.5V = 768 hem (semitone boundary)
+    set_cv(s.bus, LEFT, 1, 1.0f, 8);   // ch1: 1.0V = 1536 hem (octave boundary)
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float out1 = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    // Chromatic snaps to nearest 1/12 V; input is already on the grid.
+    REQUIRE(out0 == Approx(0.5f).margin(0.005f));   // within << 1 semitone (0.083V)
+    REQUIRE(out1 == Approx(1.0f).margin(0.005f));
+}
+
+TEST_CASE("dual_quant DQ4: Major scale (Ionian) snaps non-Major pitch to nearest Major note", "[dual_quant]") {
+    // Ionian (Major) braids::scales[2]: notes at {0,256,512,640,896,1152,1408}/1536 semitones.
+    // Input 480 hem (between D=256 and E=512, dist-to-D=224, dist-to-E=32) -> snaps to E=512.
+    // 480 hem input = 480/1536 V = 0.3125 V; expected output 512/1536 V = 0.3333 V.
+    auto s = setup_applet(kAppletDualQuant);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_dual_quant(6, 5, 0, 0));  // ch0=Ionian, ch1=Chromatic
+    set_cv(s.bus, LEFT, 0, 480.0f / 1536.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    // E = 512 hem = 512/1536 V = 0.3333 V. Accept half-semitone margin (0.042V).
+    REQUIRE(out0 == Approx(512.0f / 1536.0f).margin(0.042f));
+}
 // === END dual_quant ===
 
 // === BEGIN enigma_jr ===
-// Phase 6 applet test region (unblocked by dep-quant).
+TEST_CASE("EnigmaJr EJ1: Start() defaults p=0, type0=NOTE5, type1=MODULATION, tm_index=0",
+          "[enigma_jr]") {
+    auto s = setup_applet(kAppletEnigmaJr);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 0)  & 0x7F)    == 0);  // p = 0
+    REQUIRE((int)((data >> 7)  & 0x0F)    == 2);  // type0 = NOTE5 (2)
+    REQUIRE((int)((data >> 11) & 0x0F)    == 5);  // type1 = MODULATION (5)
+    REQUIRE((int)((data >> 15) & 0xFFFF)  == 0);  // tm_index = 0
+}
+
+TEST_CASE("EnigmaJr EJ2: round-trip preserves p, type0, type1, tm_index",
+          "[enigma_jr]") {
+    auto s = setup_applet(kAppletEnigmaJr);
+    auto* left = get_applet(s.hi, LEFT);
+    // p=50, type0=GATE(8), type1=NOTE4(1), tm_index=7
+    left->OnDataReceive(pack_enigma_jr(50, 8, 1, 7));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 0)  & 0x7F)    == 50);
+    REQUIRE((int)((data >> 7)  & 0x0F)    == 8);
+    REQUIRE((int)((data >> 11) & 0x0F)    == 1);
+    REQUIRE((int)((data >> 15) & 0xFFFF)  == 7);
+}
+
+TEST_CASE("EnigmaJr EJ3: Clock(0) produces bounded CV output on channel 0",
+          "[enigma_jr]") {
+    // Default output[0] type is NOTE5. With zero TM register and zero transpose,
+    // note_number = (0 & 0x1F) + 64 = 64. quantizer.Lookup(64) returns a
+    // quantized pitch CV in [0, HEMISPHERE_MAX_CV]. Output is non-negative.
+    auto s = setup_applet(kAppletEnigmaJr);
+    // Deliver a Clock(0) edge; 10x harness multiplier fires Advance + SendToDAC
+    // 10 times. With p=0 and zero register, advance is deterministic (all zeros).
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 12);  // > 96 inner ticks (ADC lag)
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    REQUIRE(out0 >= 0.0f);
+    REQUIRE(out0 <= 6.5f);
+}
+
+TEST_CASE("EnigmaJr EJ4: Clock(1) Reset does not corrupt serialized fields",
+          "[enigma_jr]") {
+    // Clock(1) triggers Reset() which restores tm_state.reg from
+    // user_turing_machines[ix].reg. The serialized fields (p, type0, type1,
+    // tm_index) are unaffected by Reset; only the runtime register is restored.
+    auto s = setup_applet(kAppletEnigmaJr);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_enigma_jr(30, 4, 3, 2));
+    // Deliver Clock(0) to advance register, then Clock(1) to reset it.
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 1, 0, 8);  // Clock(1) = Reset
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32 * 12);
+    // Serialized fields must survive the reset cycle unchanged.
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >> 0)  & 0x7F)    == 30);
+    REQUIRE((int)((data >> 7)  & 0x0F)    == 4);
+    REQUIRE((int)((data >> 11) & 0x0F)    == 3);
+    REQUIRE((int)((data >> 15) & 0xFFFF)  == 2);
+}
+
+TEST_CASE("EnigmaJr EJ5: p field clamps at 7-bit boundary (max=100 fits in 7 bits)",
+          "[enigma_jr]") {
+    // p is constrained to [0,100] by OnEncoderMove but stored raw in 7 bits.
+    // 100 < 128, so no mask truncation. Verify 100 round-trips without loss.
+    auto s = setup_applet(kAppletEnigmaJr);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_enigma_jr(100, 0, 0, 0));
+    REQUIRE((int)((left->OnDataRequest() >> 0) & 0x7F) == 100);
+}
 // === END enigma_jr ===
 
 // === BEGIN offset_quant ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// OffsetQuant: two-channel quantizer where each channel's CV input selects a
+// range window (0-2V, 1-3V, 2-4V, 3-5V, or FULL passthrough) and then
+// quantizes the result to the configured scale.
+//
+// 10x clocked-multiplier rule: OffsetQuant uses continuous[ch] (default true
+// after Start) or ADC-lag clocked mode. These tests use continuous mode only,
+// avoiding clock edges, so the 10x multiplier does not affect output counts.
+// round-trip shape is used: OnDataReceive then OnDataRequest.
+
+TEST_CASE("offset_quant OQ1: Start defaults match vendor", "[offset_quant]") {
+    // Start(): continuous[ch]=1, range_mode[ch]=RANGE_0_2=1.
+    // QuantEngine default: scale=SCALE_SEMI=5, root_note=0.
+    // Expected packed: range0=1, range1=1, scale0=5, scale1=5, root0=0, root1=0.
+    auto s = setup_applet(kAppletOffsetQuant);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int range0 = (int)((packed)       & 0x7);
+    int range1 = (int)((packed >> 3)  & 0x7);
+    int scale0 = (int)((packed >> 6)  & 0xFF);
+    int scale1 = (int)((packed >> 14) & 0xFF);
+    int root0  = (int)((packed >> 22) & 0xF);
+    int root1  = (int)((packed >> 26) & 0xF);
+    REQUIRE(range0 == 1);   // RANGE_0_2
+    REQUIRE(range1 == 1);   // RANGE_0_2
+    REQUIRE(scale0 == 5);   // SCALE_SEMI
+    REQUIRE(scale1 == 5);   // SCALE_SEMI
+    REQUIRE(root0  == 0);
+    REQUIRE(root1  == 0);
+}
+
+TEST_CASE("offset_quant OQ2: serialise round-trip preserves all fields", "[offset_quant]") {
+    // Pack non-default values: range0=0(FULL), range1=3(RANGE_2_4),
+    // scale0=2, scale1=7, root0=3, root1=9.
+    auto s = setup_applet(kAppletOffsetQuant);
+    get_applet(s.hi, LEFT)->OnDataReceive(
+        pack_offset_quant(0, 3, 2, 7, 3, 9));
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int range0 = (int)((packed)       & 0x7);
+    int range1 = (int)((packed >> 3)  & 0x7);
+    int scale0 = (int)((packed >> 6)  & 0xFF);
+    int scale1 = (int)((packed >> 14) & 0xFF);
+    int root0  = (int)((packed >> 22) & 0xF);
+    int root1  = (int)((packed >> 26) & 0xF);
+    REQUIRE(range0 == 0);
+    REQUIRE(range1 == 3);
+    REQUIRE(scale0 == 2);
+    REQUIRE(scale1 == 7);
+    REQUIRE(root0  == 3);
+    REQUIRE(root1  == 9);
+}
+
+TEST_CASE("offset_quant OQ3: RANGE_FULL passes CV through to chromatic quantizer", "[offset_quant]") {
+    // RANGE_FULL: offset=pitch. With SCALE_SEMI (chromatic, all 12 semitones),
+    // a 1V (1536 hem) input quantizes to the nearest semitone = 1V.
+    // Continuous mode is default (no clock needed).
+    auto s = setup_applet(kAppletOffsetQuant);
+    // Set range_mode[0]=RANGE_FULL=0, scale=SCALE_SEMI=5, root=0.
+    get_applet(s.hi, LEFT)->OnDataReceive(
+        pack_offset_quant(0, 0, 5, 5, 0, 0));
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);  // 1V in
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    // Chromatic quantizer at 1V => output should be 1V.
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(1.0f).margin(0.1f));
+}
+
+TEST_CASE("offset_quant OQ4: RANGE_0_2 maps 0V input to 0V output", "[offset_quant]") {
+    // RANGE_0_2 default: Proportion(0, MAX, 2*ONE_OCTAVE) = 0. Quantize(0) = 0V.
+    // Continuous mode; chromatic scale; root=0.
+    auto s = setup_applet(kAppletOffsetQuant);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);  // 0V in
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.05f));
+}
+
+TEST_CASE("offset_quant OQ5: two channels operate independently", "[offset_quant]") {
+    // Both channels run in continuous mode with RANGE_FULL (direct passthrough to
+    // quantizer). Feed distinct CV on ch0 and ch1; each output must track its own
+    // input independently on the chromatic scale.
+    auto s = setup_applet(kAppletOffsetQuant);
+    get_applet(s.hi, LEFT)->OnDataReceive(
+        pack_offset_quant(0, 0, 5, 5, 0, 0));  // RANGE_FULL, SCALE_SEMI both channels
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);   // ch0: 1V
+    set_cv(s.bus, LEFT, 1, 2.0f, 8);   // ch1: 2V
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float out1 = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    // Outputs are distinct: ch0 near 1V, ch1 near 2V.
+    REQUIRE(out0 == Approx(1.0f).margin(0.1f));
+    REQUIRE(out1 == Approx(2.0f).margin(0.1f));
+}
 // === END offset_quant ===
 
 // === BEGIN multi_scale ===
-// Phase 6 applet test region (unblocked by dep-quant).
+TEST_CASE("MultiScale MS1: Start() defaults all four scale masks to 0x0001", "[multi_scale]") {
+    // Vendor Start() sets scale_mask[i] = 0x0001 for all i in 0..3.
+    // OnDataRequest packs four 12-bit masks at bits [0,12), [12,12), [24,12), [36,12).
+    auto s = setup_applet(kAppletMultiScale);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x0FFF) == 0x0001);
+    REQUIRE((int)((data >> 12) & 0x0FFF) == 0x0001);
+    REQUIRE((int)((data >> 24) & 0x0FFF) == 0x0001);
+    REQUIRE((int)((data >> 36) & 0x0FFF) == 0x0001);
+}
+
+TEST_CASE("MultiScale MS2: OnDataReceive round-trips all four scale masks", "[multi_scale]") {
+    // Four distinct 12-bit patterns exercising all 12 bits per field.
+    auto s = setup_applet(kAppletMultiScale);
+    auto* left = get_applet(s.hi, LEFT);
+    // mask0=0xABC, mask1=0x123, mask2=0xFFF, mask3=0x001 (no-bias, no-gap).
+    left->OnDataReceive(pack_multi_scale(0xABC, 0x123, 0xFFF, 0x001));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x0FFF) == 0xABC);
+    REQUIRE((int)((data >> 12) & 0x0FFF) == 0x123);
+    REQUIRE((int)((data >> 24) & 0x0FFF) == 0xFFF);
+    REQUIRE((int)((data >> 36) & 0x0FFF) == 0x001);
+}
+
+TEST_CASE("MultiScale MS3: continuous mode outputs quantized CV at Out(0) with no clock", "[multi_scale]") {
+    // Default continuous=true: Controller always calls quant.Process(In(0)) and
+    // drives Out(0). With default scale_mask[0]=0x0001 (root note only, C) the
+    // quantizer snaps any positive input to the nearest root (0V = root = 0).
+    // With In(0)=0V the quantized output must be 0V.
+    auto s = setup_applet(kAppletMultiScale);
+    clear_bus(s.bus);
+    // Leave In(1)=0V (scale select stays at 0) and In(0)=0V.
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    REQUIRE(out == Approx(0.0f).margin(0.05f));
+}
+
+TEST_CASE("MultiScale MS4: scale change via In(1) fires ClockOut(1) and tracks current_scale", "[multi_scale]") {
+    // Controller selects scale = Proportion(DetentedIn(1), HEMISPHERE_MAX_INPUT_CV, 4)
+    // constrained 0..3. A full-scale In(1)=6V -> Proportion(9216, 9216, 4)=4
+    // constrained to 3 -> current_scale=3. When current_scale changes, ClockOut(1)
+    // fires once (sets clock_countdown[ch] = HEMISPHERE_CLOCK_TICKS = 175).
+    // Start leaves current_scale=0. Drive In(1) to 6V for one step to trigger change.
+    auto s = setup_applet(kAppletMultiScale);
+    clear_bus(s.bus);
+    // In(1) at 6V drives scale select to 3 (max), triggering a scale-change clock.
+    set_cv(s.bus, LEFT, 1, 6.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    // ClockOut(1) fires on scale change: Out(1) must read high at frame 0.
+    bool trig = read_gate_at(s.bus, LEFT, 1, 0, 8);
+    REQUIRE(trig == true);
+    // Drain the 175-tick clock pulse (10 ticks/step -> 18 steps to fully expire).
+    // Keep In(1)=6V so scale stays at 3 (no new change) while we drain.
+    for (int i = 0; i < 20; ++i) {
+        clear_bus(s.bus);
+        set_cv(s.bus, LEFT, 1, 6.0f, 8);
+        step_n_frames(s.loaded, s.alg, s.bus, 32);
+    }
+    // After clock pulse has expired, Out(1) must read low.
+    bool trig2 = read_gate_at(s.bus, LEFT, 1, 0, 8);
+    REQUIRE(trig2 == false);
+}
 // === END multi_scale ===
 
 // === BEGIN scale_duet ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// ScaleDuet: dual-scale chromatic quantizer.
+//   OnDataRequest: mask[0] at [0,12), mask[1] at [12,12). Both are 12-bit chromatic bitmasks; no bias.
+//   Start(): mask[0]=0xffff and mask[1]=0xffff, stored as 12-bit: 0xfff each.
+//            continuous=1 (runs without clock). last_scale=0.
+//   Controller(): continuous mode quantizes In(0) via active mask each tick.
+//                 Gate(1) high selects mask[1]; low selects mask[0].
+//                 ClockOut(1) fires when quantized pitch changes.
+//   10x risk: Out(0) is overwritten every tick; stable. ClockOut(1) fires per change; not counted here.
+//   Coverage shape: defaults + round-trip + continuous output + scale-select via Gate(1).
+
+TEST_CASE("scale_duet SD1: Start defaults match vendor (mask0=0xfff, mask1=0xfff)", "[scale_duet]") {
+    // Start(): mask[0]=0xffff, mask[1]=0xffff. Packed: 0xfff at [0,12), 0xfff at [12,12).
+    auto s = setup_applet(kAppletScaleDuet);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int m0 = (int)((packed)       & 0xFFF);
+    int m1 = (int)((packed >> 12) & 0xFFF);
+    REQUIRE(m0 == 0xFFF);
+    REQUIRE(m1 == 0xFFF);
+}
+
+TEST_CASE("scale_duet SD2: OnDataReceive then OnDataRequest round-trip preserves both masks", "[scale_duet]") {
+    // mask0=0x555 (alternate bits), mask1=0xAAA (complementary alternate bits).
+    auto s = setup_applet(kAppletScaleDuet);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_scale_duet(0x555, 0xAAA));
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int m0 = (int)((packed)       & 0xFFF);
+    int m1 = (int)((packed >> 12) & 0xFFF);
+    REQUIRE(m0 == 0x555);
+    REQUIRE(m1 == 0xAAA);
+}
+
+TEST_CASE("scale_duet SD3: continuous mode outputs quantized pitch; 0V in yields 0V out with full chromatic mask", "[scale_duet]") {
+    // continuous=1 by default; quantizer runs without clock.
+    // Full chromatic mask passes 0V input unaltered to Out(0).
+    auto s = setup_applet(kAppletScaleDuet);
+    // Default mask[0]=0xfff: all 12 semitones active. Input 0V (C); output should be 0V.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);   // In(0) = 0V
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.02f));
+}
+
+TEST_CASE("scale_duet SD4: Gate(1) high switches to mask[1] scale", "[scale_duet]") {
+    // Set mask[0]=0xFFF (all 12 semitones), mask[1]=0x001 (C only).
+    // Use two different input pitches chosen to avoid braids hysteresis:
+    //   - Scale1 step: 0.167V (D; re-quantizes since 256 hem > initial next_boundary ~80).
+    //     With C-only, output = 0V.
+    //   - Scale0 step: 0.9V (near B; 1382 hem > C-only next_boundary ~-2112+3072=960 hem).
+    //     With full chromatic, output ~ 0.917V (nearest semitone = B = 1408 hem).
+    // Both steps trigger re-quantize; the difference in output confirms scale selection.
+    auto s = setup_applet(kAppletScaleDuet);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_scale_duet(0xFFF, 0x001));
+
+    // Gate(1) high: mask[1]=C-only. Input 0.167V (~D). Re-quantizes to nearest C = 0V.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.167f, 8);
+    hold_gate(s.bus, LEFT, 1, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out_scale1 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    REQUIRE(out_scale1 == Approx(0.0f).margin(0.02f));
+
+    // Gate(1) low: mask[0]=all-12-chromatic. Input 0.9V (~B = semitone 11).
+    // 0.9V = 1382 hem is outside C-only boundaries, so re-quantizes with mask[0].
+    // Nearest semitone to B (1408 hem) = B. Output ~ 0.917V.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.9f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    float out_scale0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    // B (semitone 11) is in the chromatic scale; output is well above C (> 0.5V).
+    REQUIRE(out_scale0 > 0.5f);
+}
 // === END scale_duet ===
 
 // === BEGIN duo_tet ===
@@ -2866,13 +4474,689 @@ TEST_CASE("helper H2: step_n_inner_ticks tick-advancement invariant under load (
 // === END duo_tet ===
 
 // === BEGIN ens_osc_key ===
-// Phase 6 applet test region (unblocked by dep-quant).
+TEST_CASE("EnsOscKey EK1: Start() defaults scale=6 octave=0 voltages=3,4,5,6 root=0",
+          "[ens_osc_key]") {
+    auto s = setup_applet(kAppletEnsOscKey);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    // bits [0,8) = scale = 6 (Ionian)
+    REQUIRE((int)((data >>  0) & 0xFF) == 6);
+    // bits [8,4)  = octave+5 = 0+5 = 5
+    REQUIRE((int)((data >>  8) & 0x0F) == 5);
+    // bits [12,4) = voltage_maj = 3
+    REQUIRE((int)((data >> 12) & 0x0F) == 3);
+    // bits [16,4) = voltage_min = 4
+    REQUIRE((int)((data >> 16) & 0x0F) == 4);
+    // bits [20,4) = voltage_dim = 5
+    REQUIRE((int)((data >> 20) & 0x0F) == 5);
+    // bits [24,4) = voltage_no_match = 6
+    REQUIRE((int)((data >> 24) & 0x0F) == 6);
+    // bits [28,4) = root = 0
+    REQUIRE((int)((data >> 28) & 0x0F) == 0);
+}
+
+TEST_CASE("EnsOscKey EK2: round-trip preserves scale, octave, voltages, root",
+          "[ens_osc_key]") {
+    auto s = setup_applet(kAppletEnsOscKey);
+    auto* left = get_applet(s.hi, LEFT);
+    // scale=7 (Dorian), octave=2 -> stored 7, voltage_maj=5 min=6 dim=7 no_match=8, root=3
+    left->OnDataReceive(pack_ens_osc_key(7, 2, 5, 6, 7, 8, 3));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0xFF) == 7);
+    REQUIRE((int)((data >>  8) & 0x0F) == 7); // octave+5 = 2+5 = 7
+    REQUIRE((int)((data >> 12) & 0x0F) == 5);
+    REQUIRE((int)((data >> 16) & 0x0F) == 6);
+    REQUIRE((int)((data >> 20) & 0x0F) == 7);
+    REQUIRE((int)((data >> 24) & 0x0F) == 8);
+    REQUIRE((int)((data >> 28) & 0x0F) == 3);
+}
+
+TEST_CASE("EnsOscKey EK3: continuous mode, 0V pitch with root=0 Ionian -> Out(1) = Major code",
+          "[ens_osc_key]") {
+    // EnsOscKey starts with continuous=1; Controller fires without a clock.
+    // scale=6 (Ionian), root=0. Pitch In(0)=0V -> quantizes to C (0 semitones).
+    // interval = (0-0+12)%12 = 0 -> Ionian Major -> Out(1) = code_maj.
+    // code_maj = voltageToCode(3) = (int)((3/2.0 - 0.25) * 1536) = 1920.
+    auto s = setup_applet(kAppletEnsOscKey);
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8); // pitch = 0V
+    set_cv(s.bus, LEFT, 1, 0.0f, 8); // octave CV = 0
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    // Out(1) is the chord quality voltage in hem units; read raw from bus.
+    // 1920 hem units = 1920 / ONE_OCTAVE V = 1920 / 1536 V = 1.25 V
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(1.25f).margin(0.05f));
+}
+
+TEST_CASE("EnsOscKey EK4: continuous mode, D pitch (2 semitones) root=0 Ionian -> Out(1) = Minor code",
+          "[ens_osc_key]") {
+    // Pitch In(0) = 2 semitones above 0 = 2*128 = 256 hem units = 256/1536 V.
+    // Quantized to D (semitone=2). interval=(2-0+12)%12=2 -> Ionian Minor.
+    // code_min = voltageToCode(4) = (int)((4/2.0 - 0.25) * 1536) = 2688.
+    // 2688 hem units = 2688 / 1536 V = 1.75 V.
+    auto s = setup_applet(kAppletEnsOscKey);
+    clear_bus(s.bus);
+    // 256 hem units expressed as volts: 256.0f / 1536.0f
+    set_cv(s.bus, LEFT, 0, 256.0f / 1536.0f, 8);
+    set_cv(s.bus, LEFT, 1, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(1.75f).margin(0.05f));
+}
+
+TEST_CASE("EnsOscKey EK5: root=7 (G), pitch=0V (C) -> interval 5 from G -> Ionian Major",
+          "[ens_osc_key]") {
+    // C is 5 semitones above G. interval=(0-7+12)%12=5 -> Ionian: 5 is Major.
+    // code_maj = voltageToCode(3) = 1920 hem units = 1.25V.
+    auto s = setup_applet(kAppletEnsOscKey);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_ens_osc_key(6, 0, 3, 4, 5, 6, 7)); // Ionian, root=G
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);
+    set_cv(s.bus, LEFT, 1, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(1.25f).margin(0.05f));
+}
+
+TEST_CASE("EnsOscKey EK6: root=9 (A), pitch=0V -> quantizer snaps near A -> Ionian Minor",
+          "[ens_osc_key]") {
+    // With root=A (9) the braids quantizer uses root=1152 hem as the snap anchor.
+    // Pitch 0V (raw 0) snaps to a scale note whose semitone yields a minor interval
+    // relative to A in Ionian (interval 2 = B, or 4, or 9 -> all minor).
+    // Observed: Out(1) = code_min = voltageToCode(4) = 1.75V.
+    auto s = setup_applet(kAppletEnsOscKey);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_ens_osc_key(6, 0, 3, 4, 5, 6, 9)); // Ionian, root=A
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);
+    set_cv(s.bus, LEFT, 1, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(1.75f).margin(0.05f));
+}
 // === END ens_osc_key ===
 
 // === BEGIN calibr8 ===
-// Phase 6 applet test region (unblocked by dep-quant).
+// Calibr8 tests.
+// Vendor: Calibr8.h. Two-channel pitch calibration applet: applies per-channel
+// scale_factor (precision multiplier), offset (fine-tuning additive), and
+// transpose (semitone shift) to quantized pitch CV inputs.
+//
+// OnDataRequest packing (50 bits):
+//   [0,10)  = scale_factor[0] + 500  (range -500..500, bias +500)
+//   [10,10) = scale_factor[1] + 500
+//   [20,8)  = offset[0] + 100        (range -100..100, bias +100)
+//   [28,8)  = offset[1] + 100
+//   [36,7)  = transpose[0] + 36      (range -36..60, bias +36)
+//   [43,7)  = transpose[1] + 36
+//
+// Controller: NoteNumber(In(ch), 0) quantizes to semitone; transpose shifts;
+//   output_cv = MIDIQuantizer::CV(note) * (10000 + scale_factor[ch]) / 10000 + offset[ch].
+//
+// 10x multiplier risk: Controller sets clocked_mode and snapshot-samples
+//   transpose_active inside if(Clock(0)), but the transpose itself does not
+//   accumulate. No fire-count hazard for the CV-output identity tests.
+
+TEST_CASE("calibr8 CA1: Start() defaults zero all fields", "[calibr8]") {
+    // Start() calls AllowRestart(); it does not touch scale_factor/offset/transpose
+    // (all declared with in-class initializers = 0). OnDataRequest must pack all
+    // fields at their zero/neutral values: scale_factor bias +500, offset bias +100,
+    // transpose bias +36.
+    auto s = setup_applet(kAppletCalibr8);
+    uint64_t data = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x3FF) == 500); // scale_factor[0]+500 = 500
+    REQUIRE((int)((data >> 10) & 0x3FF) == 500); // scale_factor[1]+500 = 500
+    REQUIRE((int)((data >> 20) & 0xFF)  == 100); // offset[0]+100 = 100
+    REQUIRE((int)((data >> 28) & 0xFF)  == 100); // offset[1]+100 = 100
+    REQUIRE((int)((data >> 36) & 0x7F)  ==  36); // transpose[0]+36 = 36
+    REQUIRE((int)((data >> 43) & 0x7F)  ==  36); // transpose[1]+36 = 36
+}
+
+TEST_CASE("calibr8 CA2: OnDataReceive round-trip preserves all fields", "[calibr8]") {
+    // Non-default values for all six fields, well within legal ranges.
+    // scale_factor[0]=100, scale_factor[1]=-200, offset[0]=50, offset[1]=-30,
+    // transpose[0]=7, transpose[1]=-12.
+    auto s = setup_applet(kAppletCalibr8);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_calibr8(100, -200, 50, -30, 7, -12));
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((int)((data >>  0) & 0x3FF) - 500 == 100);   // scale_factor[0]
+    REQUIRE((int)((data >> 10) & 0x3FF) - 500 == -200);  // scale_factor[1]
+    REQUIRE((int)((data >> 20) & 0xFF)  - 100 == 50);    // offset[0]
+    REQUIRE((int)((data >> 28) & 0xFF)  - 100 == -30);   // offset[1]
+    REQUIRE((int)((data >> 36) & 0x7F)  -  36 == 7);     // transpose[0]
+    REQUIRE((int)((data >> 43) & 0x7F)  -  36 == -12);   // transpose[1]
+}
+
+TEST_CASE("calibr8 CA3: zero calibration is identity for 0V and 1V inputs", "[calibr8]") {
+    // Defaults: scale_factor=0, offset=0, transpose=0.
+    // MIDIQuantizer::NoteNumber(0V, 0, bias=5) = 60 (middle C at 0V).
+    // MIDIQuantizer::CV(60, 0, bias=5) = 0 hem units = 0V.
+    // At 1V input (1536 hem): NoteNumber = 72; CV(72) = 1536 hem = 1V.
+    // scale_factor=0 -> multiplier = 10000/10000 = 1. offset=0. Identity.
+    auto s = setup_applet(kAppletCalibr8);
+
+    // 0V input -> 0V output.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.01f));
+
+    // 1V input -> 1V output.
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(1.0f).margin(0.01f));
+}
+
+TEST_CASE("calibr8 CA4: non-zero offset shifts output by offset hem units", "[calibr8]") {
+    // Set offset[0]=50 (fine offset added after scale). Input=0V.
+    // NoteNumber(0) = 60; CV(60) = 0; output_cv = 0*10000/10000 + 50 = 50 hem.
+    // 50 hem / 1536 hem-per-volt ~ 0.0326V.
+    auto s = setup_applet(kAppletCalibr8);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_calibr8(0, 0, 50, 0, 0, 0));
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    // output = 50 / 1536.0f volts
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(50.0f / 1536.0f).margin(0.002f));
+}
+
+TEST_CASE("calibr8 CA5: non-zero transpose shifts pitch by semitones", "[calibr8]") {
+    // Set transpose[0]=12 (one octave up). Input=0V (note 60 at 0V).
+    // input_note = 60 + 12 = 72. CV(72) = 1536 hem = 1V.
+    // scale_factor=0, offset=0. output_cv = 1V.
+    auto s = setup_applet(kAppletCalibr8);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_calibr8(0, 0, 0, 0, 12, 0));
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(1.0f).margin(0.01f));
+}
 // === END calibr8 ===
 
 // === BEGIN combin8 ===
-// Phase 6 applet test region (unblocked by dep-cv-map).
+TEST_CASE("Combin8 CB1: Start() defaults all four CVInputMaps unmapped (source=0, att=60)", "[combin8]") {
+    // Default: sources[ch][i] constructed with source=0, attenuversion=60.
+    // pack_combin8 encodes each as (source & 0xFF) | ((uint8_t)att << 8).
+    auto s = setup_applet(kAppletCombin8);
+    auto* left = get_applet(s.hi, LEFT);
+    uint64_t data = left->OnDataRequest();
+    // Each slot: low byte = source = 0, high byte = att = 60 = 0x3C.
+    uint16_t expected_slot = (uint16_t)(0x00 | (0x3Cu << 8));  // 0x3C00
+    REQUIRE((uint16_t)((data >>  0) & 0xFFFF) == expected_slot);  // sources[0][0]
+    REQUIRE((uint16_t)((data >> 16) & 0xFFFF) == expected_slot);  // sources[0][1]
+    REQUIRE((uint16_t)((data >> 32) & 0xFFFF) == expected_slot);  // sources[1][0]
+    REQUIRE((uint16_t)((data >> 48) & 0xFFFF) == expected_slot);  // sources[1][1]
+}
+
+TEST_CASE("Combin8 CB2: OnDataReceive round-trips four distinct CVInputMap values", "[combin8]") {
+    // Verifies serialisation round-trip: four slots with distinct source and
+    // attenuversion values survive OnDataReceive -> OnDataRequest unchanged.
+    auto s = setup_applet(kAppletCombin8);
+    auto* left = get_applet(s.hi, LEFT);
+    // sources[0][0]=ADC A att=60, [0][1]=ADC B att=30, [1][0]=ADC C att=-30, [1][1]=ADC D att=0
+    uint64_t packed = pack_combin8(1, 60,   // src=A, att=100%
+                                   2, 30,   // src=B, att=25%
+                                   3, -30,  // src=C, att=-25% (inverted)
+                                   4, 0);   // src=D, att=0% (muted)
+    left->OnDataReceive(packed);
+    uint64_t data = left->OnDataRequest();
+    REQUIRE((uint16_t)((data >>  0) & 0xFFFF) == (uint16_t)(1 | (uint8_t(60)  << 8)));
+    REQUIRE((uint16_t)((data >> 16) & 0xFFFF) == (uint16_t)(2 | (uint8_t(30)  << 8)));
+    REQUIRE((uint16_t)((data >> 32) & 0xFFFF) == (uint16_t)(3 | (uint8_t(-30) << 8)));
+    REQUIRE((uint16_t)((data >> 48) & 0xFFFF) == (uint16_t)(4 | (uint8_t(0)   << 8)));
+}
+
+TEST_CASE("Combin8 CB3: zero inputs with default routing yields zero output on both channels", "[combin8]") {
+    // Default: all CVInputMap sources are unmapped (source=0) so sources[ch][i].In()=0.
+    // With zero bus inputs, Out(ch) = In(ch) + 0 + 0 = 0.
+    auto s = setup_applet(kAppletCombin8);
+    clear_bus(s.bus);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.01f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(0.0f).margin(0.01f));
+}
+
+TEST_CASE("Combin8 CB4: non-default routing adds aux source to channel output", "[combin8]") {
+    // Route sources[0][0] to ADC B (source=2, att=60=100%).
+    // ADC A (ch=0 Left) = 0V, ADC B (ch=1 Left) = 2V.
+    // Out(0) = In(0) + sources[0][0].In() + sources[0][1].In()
+    //        = 0V    + 2V                  + 0V              = 2V.
+    // Out(1) = In(1) + 0 + 0 = 2V (ADC B is In(1) for ch=1, sources unmapped).
+    auto s = setup_applet(kAppletCombin8);
+    auto* left = get_applet(s.hi, LEFT);
+    // sources[0][0]=ADC B att=60; all others unmapped.
+    left->OnDataReceive(pack_combin8(2, 60,  // ch0 aux0: ADC B 100%
+                                     0, 60,  // ch0 aux1: unmapped
+                                     0, 60,  // ch1 aux0: unmapped
+                                     0, 60));// ch1 aux1: unmapped
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);  // ADC A = 0V
+    set_cv(s.bus, LEFT, 1, 2.0f, 8);  // ADC B = 2V
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    // Ch0: In(0)=0V + sources[0][0].In()=2V + sources[0][1].In()=0V = 2V
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.1f));
+    // Ch1: In(1)=2V (ADC B direct) + unmapped sources = 2V
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(2.0f).margin(0.1f));
+}
+
+TEST_CASE("Combin8 CB5: attenuversion=0 mutes aux source contribution", "[combin8]") {
+    // sources[0][0] points to ADC B but att=0 -> Atten(0)=0 -> In()=0.
+    // Out(0) = In(0) + 0 + 0 = In(0) = 0V.
+    auto s = setup_applet(kAppletCombin8);
+    auto* left = get_applet(s.hi, LEFT);
+    left->OnDataReceive(pack_combin8(2, 0,   // ch0 aux0: ADC B att=0% (muted)
+                                     0, 60,  // ch0 aux1: unmapped
+                                     0, 60,  // ch1 aux0: unmapped
+                                     0, 60));// ch1 aux1: unmapped
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 1, 3.0f, 8);  // ADC B = 3V (should be muted)
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+    // Ch0: In(0)=0 + att=0 muted + 0 = 0V
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(0.0f).margin(0.1f));
+}
 // === END combin8 ===
+
+// === BEGIN reset_clock ===
+// Phase 6 Class C applet test region (uses step_n_inner_ticks helper).
+// Vendor: vendor/O_C-Phazerville/software/src/applets/ResetClock.h
+// 5-fact specification (from abort-reports/2026-05-18-resetclock-spec-mismatch.md):
+//   F1: Clock(1) is external Reset input; drives Reset(), not pending_clocks++.
+//   F2: ClockOut(1) fires when pending_clocks==1 at output time (not on Clock(0) edge count).
+//   F3: Start() does NOT reset offset_mod; OnDataReceive followed by first Controller
+//       tick sees offset_mod=0 and jumps pending_clocks by the new offset value.
+//   F4: First-tick UpdateOffset jump: pending_clocks += (new_offset - old_offset).
+//   F5: Burst-style assertion shape: step_n_inner_ticks for tick-precise timing.
+// 10x clocked-multiplier: Clock(0) or Clock(1) asserted for all 10 inner ticks per buffer.
+// RC_TICKS_PER_MS = HEMISPHERE_CLOCK_TICKS = 175 (shim value).
+// Output cycle fires when ticks_since_clock > spacing * 175; resets ticks_since_clock to 0.
+
+TEST_CASE("reset_clock RC1: Start defaults length=8, offset=0, spacing=6", "[reset_clock]") {
+    // Verifies: F3 (Start initialises offset=0; offset_mod starts at 0 from zero-init,
+    // so no first-tick jump when cv1_mod==offset_mod==0 after a clean setup).
+    auto s = setup_applet(hem_shim::kAppletResetClock);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int length_field  = (int)((packed)        & 0x1F);  // stored as length-1
+    int offset_field  = (int)((packed >> 5)   & 0x1F);
+    int spacing_field = (int)((packed >> 10)  & 0x7F);
+    REQUIRE(length_field  == 7);   // length=8 stored as 8-1=7
+    REQUIRE(offset_field  == 0);
+    REQUIRE(spacing_field == 6);
+}
+
+TEST_CASE("reset_clock RC2: serialise round-trip preserves length, offset, spacing", "[reset_clock]") {
+    // Verifies: F2 (OnDataRequest packs only the stable settings; position, pending_clocks,
+    // offset_mod, ticks_since_clock are runtime-only and not serialised).
+    auto s = setup_applet(hem_shim::kAppletResetClock);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_reset_clock(16, 5, 20));
+
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int length_field  = (int)((packed)        & 0x1F);
+    int offset_field  = (int)((packed >> 5)   & 0x1F);
+    int spacing_field = (int)((packed >> 10)  & 0x7F);
+    REQUIRE(length_field  == 15);   // 16-1=15
+    REQUIRE(offset_field  == 5);
+    REQUIRE(spacing_field == 20);
+}
+
+TEST_CASE("reset_clock RC3: Clock(0) drives pending queue; ClockOut(1) fires when pending_clocks reaches 1", "[reset_clock]") {
+    // Verifies: F2 (Out(1) fires only when pending_clocks==1 at output time) and
+    //           F5 (Burst-style tick shape via step_n_inner_ticks).
+    // Mechanics: spacing=1 -> output fires when ticks_since_clock > 175.
+    // Prime ticks_since_clock past 175 with no pending_clocks so the condition fires
+    // on the very first inner tick after Clock(0) edges arrive.
+    // Clock(0) asserts for all 10 inner ticks (10x multiplier): tick 1 sees
+    // pending_clocks=0->1 and fires immediately (ticks_since_clock already > 175).
+    // pending_clocks==1 at that moment -> both Out(0) and Out(1) fire on tick 1.
+    // Pulse length = (1 * 175) / 2 = 87 inner ticks; 9 ticks pass in the same
+    // buffer so clock_countdown[1] = 87-9 = 78 > 0 when the bus is written.
+    auto s = setup_applet(hem_shim::kAppletResetClock);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_reset_clock(8, 0, 1));
+
+    // Prime: advance ticks_since_clock past 176 with no clock input.
+    clear_bus(s.bus);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 200);
+
+    // Drive Clock(0) via one buffer (single-sample gate pulse -> rising edge).
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 10);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);   // Out(0): advance clock
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);   // Out(1): Reset fires (pending==1)
+}
+
+TEST_CASE("reset_clock RC4: Clock(1) is the external Reset input", "[reset_clock]") {
+    // Verifies: F1 (Clock(1) drives Reset() which adds to pending queue;
+    //              Clock(0) is silent so pending_clocks++ path is not taken).
+    // Setup: length=2, offset=0, spacing=1.
+    // Reset() with position=0, length=2, offset_mod=0:
+    //   pending_clocks += (2 - 0 + 0 - 1) % 2 = 1.
+    // Prime ticks_since_clock > 175. Then one buffer with Clock(1) only:
+    //   Tick 1: Reset() fires -> pending_clocks=1. Output: pending==1, both Out(0)
+    //           and Out(1) fire. ticks_since_clock=0. position=1. pending_clocks=0.
+    //   Tick 2: Reset() fires: (2-1+0-1)%2=0, pending_clocks stays 0. No output.
+    //   Ticks 3-10: same, 0 pending.
+    // Out(0) and Out(1) both fired on tick 1 (pulse still active after 9 more ticks).
+    auto s = setup_applet(hem_shim::kAppletResetClock);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_reset_clock(2, 0, 1));
+
+    // Prime ticks_since_clock > 175 with no clock input.
+    clear_bus(s.bus);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 200);
+
+    // Drive Clock(1) only (no Clock(0)).
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 1, 0, 8);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 10);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);   // Out(0) fired via Reset path
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);   // Out(1) fired (pending==1)
+}
+
+TEST_CASE("reset_clock RC5: first-tick UpdateOffset jumps pending_clocks without clock input", "[reset_clock]") {
+    // Verifies: F3 (Start() does not reset offset_mod -> offset_mod=0 after setup)
+    //           F4 (UpdateOffset jump: pending_clocks += offset - offset_mod = 3 - 0 = 3)
+    //           F5 (step_n_inner_ticks tick budget covers 3 full output cycles).
+    // After OnDataReceive(length=8, offset=3, spacing=1):
+    //   First Controller tick: cv1_mod=3, offset_mod=0, 3 != 0 -> UpdateOffset.
+    //   pending_clocks += 3 - 0 = 3. No Clock(0) or Clock(1) input.
+    // Output fires 3 times over ~522 inner ticks (3 cycles of 174 wait + 1 fire tick each).
+    // Out(1) fires on the 3rd cycle when pending_clocks==1.
+    // With 600 inner ticks budget: Out(1) pulse (87 ticks) fires around tick 522,
+    //   78 ticks elapse after fire, clock_countdown[1] = 87 - 78 = 9 > 0 at bus write.
+    auto s = setup_applet(hem_shim::kAppletResetClock);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_reset_clock(8, 3, 1));
+
+    clear_bus(s.bus);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 600);
+
+    REQUIRE(read_gate_at(s.bus, LEFT, 0, 0, 8) == true);   // Out(0) fired at least once
+    REQUIRE(read_gate_at(s.bus, LEFT, 1, 0, 8) == true);   // Out(1) fired when pending==1
+}
+// === END reset_clock ===
+
+// === BEGIN shuffle ===
+
+TEST_CASE("shuffle SH1: Start() defaults delay[0]=delay[1]=0", "[shuffle]") {
+    // Vendor Shuffle.h:31-41: Start() sets delay[0]=0, delay[1]=0.
+    // pack_shuffle(0,0) must equal OnDataRequest() after placement-new + Start.
+    auto s = setup_applet(hem_shim::kAppletShuffle);
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    int d0 = (int)(packed        & 0x7F);
+    int d1 = (int)((packed >> 7) & 0x7F);
+    REQUIRE(d0 == 0);
+    REQUIRE(d1 == 0);
+}
+
+TEST_CASE("shuffle SH2: round-trip serialization preserves both delay values", "[shuffle]") {
+    // OnDataRequest / OnDataReceive must preserve arbitrary delay[0] and delay[1]
+    // values across a save/load cycle. pack_shuffle mirrors the 14-bit layout
+    // (bits [0,7) = delay[0], bits [7,7) = delay[1]).
+    auto s = setup_applet(hem_shim::kAppletShuffle);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_shuffle(37, 82));
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((int)(packed        & 0x7F) == 37);
+    REQUIRE((int)((packed >> 7) & 0x7F) == 82);
+}
+
+TEST_CASE("shuffle SH3: delay=0 straight pattern - short-N control test (N=10)", "[shuffle]") {
+    // At delay[0]=delay[1]=0, Proportion(0, 100, tempo)=0, so next_trigger=tick
+    // on every clock (after the first, which seeds last_tick). ClockOut(0) fires
+    // in the same inner tick as Clock(0). This test uses step_n_inner_ticks with
+    // N=10 (equivalent to one step_n_frames(..32)) to confirm the helper path
+    // produces the same observable as the default-tick path.
+    //
+    // 10x clocked-multiplier rule: Clock(0) fires on all 10 inner ticks of the
+    // buffer that received the rising edge. The which-flip and tempo/next_trigger
+    // update execute 10 times. We do not assert bus-level fire counts; instead we
+    // assert that OnDataRequest() is stable (round-trip holds) and that the applet
+    // did not crash or corrupt state.
+    auto s = setup_applet(hem_shim::kAppletShuffle);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_shuffle(0, 0));
+
+    // Seed tempo: send one clock edge and clear so the next edge sees last_tick>0.
+    clear_bus(s.bus);
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 10);
+    clear_bus(s.bus);
+
+    // Second clock with N=10 inner ticks: next_trigger=tick, ClockOut fires.
+    set_gate(s.bus, LEFT, 0, 0, 8);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 10);
+
+    // State must still round-trip cleanly after the tick sequence.
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((int)(packed        & 0x7F) == 0);
+    REQUIRE((int)((packed >> 7) & 0x7F) == 0);
+}
+
+TEST_CASE("shuffle SH4: tick-budget - step_n_inner_ticks advances ticks by N and state round-trips", "[shuffle]") {
+    // Tick-budget verification: after step_n_inner_ticks(N=200), OC::CORE::ticks
+    // must have advanced by exactly 200 ticks. Paired with round-trip stability to
+    // confirm the applet survives a large-N tick run without corrupting its state.
+    //
+    // 10x clocked-multiplier rule: bus-level fire-count assertions on ClockOut are
+    // unreliable (Controller() runs 200 times; Clock(0) is true on all 10 inner
+    // ticks of any buffer with a rising edge). This test asserts only the
+    // tick-advancement invariant and round-trip stability. See CLAUDE.md gotcha.
+    auto s = setup_applet(hem_shim::kAppletShuffle);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_shuffle(25, 75));
+
+    uint32_t ticks_before = OC::CORE::ticks;
+
+    clear_bus(s.bus);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 200);
+
+    uint32_t ticks_after = OC::CORE::ticks;
+    REQUIRE(ticks_after - ticks_before == 200);
+
+    // State must round-trip cleanly after the tick run.
+    uint64_t packed = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE((int)(packed        & 0x7F) == 25);
+    REQUIRE((int)((packed >> 7) & 0x7F) == 75);
+}
+
+// === END shuffle ===
+
+// === BEGIN xfader ===
+// XF1: round-trip serialise/deserialise preserves balance, rate, center, and flag.
+TEST_CASE("xfader XF1: serialise round-trip", "[xfader]") {
+    auto s = setup_applet(kAppletXfader);
+    // balance=200, rate=512, center=100, center_reset_enable=1
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_xfader(200, 512, 100, 1));
+    uint64_t data = get_applet(s.hi, LEFT)->OnDataRequest();
+    get_applet(s.hi, LEFT)->OnDataReceive(data);
+    uint64_t data2 = get_applet(s.hi, LEFT)->OnDataRequest();
+    REQUIRE(data == data2);
+}
+
+// XF2: position=0 routes In(0) straight to Out(0) (full signal1, none of signal2).
+// balance=0 => _balance=0 =>
+//   mix1 = Proportion(0,255,sig2) + Proportion(255,255,sig1) = 0 + sig1 = sig1
+TEST_CASE("xfader XF2: position 0 routes In(0) to Out(0)", "[xfader]") {
+    auto s = setup_applet(kAppletXfader);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_xfader(0, 128, 0, 0));
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);  // signal1 = 3V
+    set_cv(s.bus, LEFT, 1, 0.0f, 8);  // signal2 = 0V
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    // Out(0) should be ~3V (pure signal1)
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(3.0f).margin(0.15f));
+}
+
+// XF3: position=0 routes In(1) straight to Out(1) (full signal2, none of signal1).
+// mix2 = Proportion(0,255,sig1) + Proportion(255,255,sig2) = 0 + sig2 = sig2
+TEST_CASE("xfader XF3: position 0 routes In(1) to Out(1)", "[xfader]") {
+    auto s = setup_applet(kAppletXfader);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_xfader(0, 128, 0, 0));
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 0.0f, 8);  // signal1 = 0V
+    set_cv(s.bus, LEFT, 1, 4.0f, 8);  // signal2 = 4V
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    // Out(1) should be ~4V (pure signal2)
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(4.0f).margin(0.15f));
+}
+
+// XF4: position=255 routes In(1) to Out(0) and In(0) to Out(1).
+// _balance=255 =>
+//   mix1 = Proportion(255,255,sig2) + Proportion(0,255,sig1) = sig2 + 0 = sig2
+//   mix2 = Proportion(255,255,sig1) + Proportion(0,255,sig2) = sig1 + 0 = sig1
+TEST_CASE("xfader XF4: position 255 routes In(1) to Out(0) and In(0) to Out(1)", "[xfader]") {
+    auto s = setup_applet(kAppletXfader);
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_xfader(255, 128, 128, 0));
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);  // signal1 = 2V
+    set_cv(s.bus, LEFT, 1, 5.0f, 8);  // signal2 = 5V
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(5.0f).margin(0.15f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(2.0f).margin(0.15f));
+}
+
+// XF5: midpoint (balance=128) produces ~50/50 blend on both outputs.
+// _balance=128: mix1 = Proportion(128,255,sig2)+Proportion(127,255,sig1)
+// With sig1=4V, sig2=0V: mix1 = 0 + ~2V = ~2V; mix2 = ~2V + 0 = ~2V
+TEST_CASE("xfader XF5: midpoint balance produces ~50/50 blend", "[xfader]") {
+    auto s = setup_applet(kAppletXfader);
+    // Start() already sets balance=128; just confirm default state works
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 4.0f, 8);  // signal1 = 4V
+    set_cv(s.bus, LEFT, 1, 0.0f, 8);  // signal2 = 0V
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    // mix1 ~ Proportion(127,255,sig1) ~ 4V * 127/255 ~ 1.99V
+    // mix2 ~ Proportion(128,255,sig1) ~ 4V * 128/255 ~ 2.01V
+    float out0 = read_cv_at(s.bus, LEFT, 0, 0, 8);
+    float out1 = read_cv_at(s.bus, LEFT, 1, 0, 8);
+    REQUIRE(out0 == Approx(2.0f).margin(0.1f));
+    REQUIRE(out1 == Approx(2.0f).margin(0.1f));
+}
+
+// XF6: Gate(0) alone fades balance toward 0 (left/In(0) emphasis).
+// The Controller checks millis() delta and decrements balance by rate/4 per ms.
+// Use step_n_inner_ticks to advance time; hold_gate on gate ch0.
+TEST_CASE("xfader XF6: Gate(0) alone nudges balance toward 0", "[xfader]") {
+    auto s = setup_applet(kAppletXfader);
+    // Set balance to midpoint (128), rate=128 (default)
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_xfader(128, 128, 128, 0));
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 0, 8);  // Gate(0) high, Gate(1) low
+    // 2000 inner ticks = 2ms elapsed (millis = ticks/1000); fires balance decrement twice.
+    // Each decrement: balance -= rate/4 = 128/4 = 32. After 2ms: 128-64=64 < 128.
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 2000);
+
+    uint64_t data = get_applet(s.hi, LEFT)->OnDataRequest();
+    int new_balance = (int)(data & 0xFF);  // bits [0,8)
+    REQUIRE(new_balance < 128);
+}
+
+// XF7: Gate(1) alone fades balance toward 255 (right/In(1) emphasis).
+// Use rate=1024 so each ms fires += rate/4=256 in raw uint16 space,
+// crossing the _balance byte boundary in 1 fire (32768+256=33024 -> 129).
+TEST_CASE("xfader XF7: Gate(1) alone nudges balance toward 255", "[xfader]") {
+    auto s = setup_applet(kAppletXfader);
+    // balance=128, rate=1024 (high enough that 1ms fire is visible in _balance)
+    get_applet(s.hi, LEFT)->OnDataReceive(pack_xfader(128, 1024, 128, 0));
+
+    clear_bus(s.bus);
+    hold_gate(s.bus, LEFT, 1, 8);  // Gate(1) high, Gate(0) low
+    // 2000 inner ticks = 2ms elapsed; each ms fires += rate/4=256. After 1ms: _balance=129.
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 2000);
+
+    uint64_t data = get_applet(s.hi, LEFT)->OnDataRequest();
+    int new_balance = (int)(data & 0xFF);  // bits [0,8)
+    REQUIRE(new_balance > 128);
+}
+// === END xfader ===
+
+// === BEGIN scope ===
+// Scope applet tests (Class C).
+// Vendor: Scope.h:1-254. Phazerville SHA 7800d929.
+//
+// OnDataRequest (Scope.h:133): packs nothing; returns 0. No pack helper.
+// Start() (Scope.h:40): zeros BPM state, sets sample_ticks=320, freeze=0.
+// Controller (Scope.h:50-86): per-tick samples In(0)/In(1) into a 128-slot
+//   ring buffer at snapshot[ch][sample_num]; always passes through
+//   Out(ch) = In(ch) when not frozen.
+//
+// NorthernLightModular=0 (OC_gpio.h:4), so sample path is:
+//   raw = (In(n) + HEMISPHERE_MAX_INPUT_CV) / 2
+//   stored = constrain(Proportion(raw, HEMISPHERE_MAX_INPUT_CV, 255), 0, 255)
+//
+// sample_countdown is zero-init; first inner tick fires --0=-1<1, so a sample
+// is taken immediately, then countdown resets to sample_ticks=320.
+// ++sample_num %= 128 wraps the write pointer at 128 slots.
+//
+// 10x gotcha: sample_ticks adjusts inside Clock(1) branch; no per-tick
+// counter accumulation on that path. Pass-through Out(ch)=In(ch) is inside
+// the Controller inner loop but is a pure assignment, not a toggle. No
+// 10x modeling needed for these tests.
+//
+// freeze state is not serialised; no pack helper exists.
+
+TEST_CASE("scope SC1: serialise is no-op (OnDataRequest returns 0)", "[scope]") {
+    // Scope.h:133 packs nothing; OnDataRequest always returns 0.
+    auto s = setup_applet(kAppletScope);
+    REQUIRE(get_applet(s.hi, LEFT)->OnDataRequest() == 0);
+}
+
+TEST_CASE("scope SC2: Out(0) and Out(1) pass through In(0)/In(1) when not frozen", "[scope]") {
+    // Controller (Scope.h:84): ForEachChannel(ch) Out(ch, In(ch)).
+    // freeze=0 after Start, so both channels pass through unconditionally.
+    // 10x: Out(ch)=In(ch) is a pure assignment each inner tick; stable result.
+    auto s = setup_applet(kAppletScope);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 2.0f, 8);
+    set_cv(s.bus, LEFT, 1, -1.5f, 8);
+    step_n_frames(s.loaded, s.alg, s.bus, 32);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(2.0f).margin(0.1f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(-1.5f).margin(0.1f));
+}
+
+TEST_CASE("scope SC3: buffer fills after sufficient inner ticks without crash", "[scope]") {
+    // With sample_ticks=320 (Start default), 128 samples require 128*320=40960
+    // inner ticks. Drive 41280 ticks (129 samples) and verify the applet
+    // is still live: pass-through continues and OnDataRequest still returns 0.
+    // snapshot[] is private so wrap correctness is verified behaviorally.
+    auto s = setup_applet(kAppletScope);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 3.0f, 8);
+    set_cv(s.bus, LEFT, 1, -2.0f, 8);
+    // Drive 129 samples: 129 * 320 = 41280 inner ticks.
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 41280);
+
+    // Pass-through still correct after buffer fills.
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(3.0f).margin(0.1f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(-2.0f).margin(0.1f));
+    // Serialise still returns 0 (no state persisted).
+    REQUIRE(get_applet(s.hi, LEFT)->OnDataRequest() == 0);
+}
+
+TEST_CASE("scope SC4: buffer ring-wraps past 128 slots without crash", "[scope]") {
+    // Drive 300 samples (300*320=96000 inner ticks) to cause multiple full
+    // laps of the 128-slot ring. sample_num wraps via ++sample_num %= 128
+    // (Scope.h:73). Verify applet stability: pass-through correct, no crash.
+    auto s = setup_applet(kAppletScope);
+
+    clear_bus(s.bus);
+    set_cv(s.bus, LEFT, 0, 1.0f, 8);
+    set_cv(s.bus, LEFT, 1, 0.5f, 8);
+    step_n_inner_ticks(s.loaded, s.alg, s.bus, 96000);
+
+    REQUIRE(read_cv_at(s.bus, LEFT, 0, 0, 8) == Approx(1.0f).margin(0.1f));
+    REQUIRE(read_cv_at(s.bus, LEFT, 1, 0, 8) == Approx(0.5f).margin(0.1f));
+    REQUIRE(get_applet(s.hi, LEFT)->OnDataRequest() == 0);
+}
+// === END scope ===

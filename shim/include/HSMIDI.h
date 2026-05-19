@@ -57,6 +57,15 @@ struct _UsbMidiStub {
     uint8_t* getSysExArray() { return nullptr; }
     void send_now() {}
     void sendSysEx(uint32_t, const uint8_t*) {}
+
+    // Phase 6 EnigmaJr / EnigmaOutput stubs. No-op on the NT plug-in build
+    // (no USB MIDI to the disting NT) and on host tests.
+    void sendNoteOn(int /*note*/, int /*velocity*/, int /*channel*/) {}
+    void sendNoteOff(int /*note*/, int /*velocity*/, int /*channel*/) {}
+    void sendControlChange(int /*cc*/, int /*value*/, int /*channel*/) {}
+    void sendProgramChange(int /*program*/, int /*channel*/) {}
+    void sendPitchBend(int /*value*/, int /*channel*/) {}
+    void sendAfterTouch(int /*value*/, int /*channel*/) {}
 };
 
 // Global singleton matching Teensyduino naming convention.

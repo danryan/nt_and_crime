@@ -73,4 +73,9 @@ void QuantizerEdit(int ch) {
     (void)ch;
 }
 
+void SetScale(int ch, int scale) {
+    CONSTRAIN(ch, 0, QUANT_CHANNEL_COUNT - 1);
+    q_engine[ch].Configure(scale, 0);
+}
+
 } // namespace HS

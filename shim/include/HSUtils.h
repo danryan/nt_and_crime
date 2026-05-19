@@ -22,6 +22,9 @@
 #define HEMISPHERE_3V_CV (3 * ONE_OCTAVE)
 static constexpr uint32_t HEMISPHERE_PULSE_ANIMATION_TIME = 500;
 static constexpr uint32_t HEMISPHERE_PULSE_ANIMATION_TIME_LONG = 1200;
+namespace HS {
+static constexpr uint32_t HEMISPHERE_DOUBLE_CLICK_TIME = 8000;
+}
 
 #define PULSE_VOLTAGE 6                                         // octave_max on T4.1
 #define HEMISPHERE_MIN_CV (-(PULSE_VOLTAGE * ONE_OCTAVE))
@@ -74,6 +77,58 @@ inline int Unpack(const uint64_t& data, PackLocation p) {
     for (size_t i = 1; i < p.size; ++i) mask |= (uint64_t(1) << i);
     return static_cast<int>((data >> p.location) & mask);
 }
+
+namespace HS {
+
+// Phase 6 popup type / error type enums. Mirrors vendor HSUtils.h. Shim
+// PokePopup is a no-op for host tests; the popup UI is not exercised.
+enum PopupType : uint8_t {
+    MENU_POPUP = 0,
+    CLOCK_POPUP,
+    PRESET_POPUP,
+    QUANTIZER_POPUP,
+    MIDI_POPUP,
+    AUX_POPUP,
+};
+enum ErrMsgIndex : uint8_t {
+    NO_ERROR = 0,
+    MAX_PRESET_ERROR,
+};
+
+// Phase 6 popup-state globals. Mirrors vendor HSUtils.h:189-195.
+extern uint8_t qview;        // which quantizer's setting is shown in popup
+extern uint8_t mview;        // which midi channel's setting is shown in popup
+extern int q_edit;
+extern int midi_edit;
+extern PopupType popup_type;
+extern ErrMsgIndex msg_idx;
+extern uint32_t popup_tick;
+
+// PokePopup stubs. Host tests do not exercise popup display; the shim
+// definitions in shim/src/globals.cpp are no-ops.
+void PokePopup(PopupType pop, ErrMsgIndex err = NO_ERROR);
+void PokePopup(PopupType pop, const char* msg);
+
+}  // namespace HS
+
+// IndexedInput free template. Mirrors vendor HSUtils.h:266. Wraps an input
+// map reference with a positional index for variadic CheckEditInputMapPress
+// dispatch. Defined in global namespace per vendor convention (NOT inside
+// HS::); Combin8 calls it as `IndexedInput(CH1_AUX1, ...)`.
+#include <utility>
+template <typename T>
+constexpr std::pair<int, T&&> IndexedInput(int index, T&& input_map) {
+    return std::pair<int, T&&>(index, std::forward<T>(input_map));
+}
+
+// Channel/auxiliary IDs used by Combin8's IndexedInput calls. Mirrors
+// vendor enums.
+enum HemisphereInputAux : int {
+    CH1_AUX1 = 0,
+    CH1_AUX2,
+    CH2_AUX1,
+    CH2_AUX2,
+};
 
 namespace HS {
 
@@ -187,5 +242,7 @@ void NudgeRootNote(int ch, int dir);
 void NudgeOctave(int ch, int dir);
 void NudgeScale(int ch, int dir);
 void QuantizerEdit(int ch);
+// Vendor HS::SetScale (HSUtils.cpp). Sets scale on channel ch's QuantEngine.
+void SetScale(int ch, int scale);
 
 }  // namespace HS

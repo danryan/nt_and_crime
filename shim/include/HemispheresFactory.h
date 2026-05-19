@@ -69,18 +69,50 @@
 #include "ProbabilityDivider.h"
 #include "ShiftGate.h"
 #include "Trending.h"
+// Phase 6 plug-in variant selector. Set via Makefile per .o:
+//   HEMI_VARIANT=0  host build, full 56-applet factory (default; tests need it)
+//   HEMI_VARIANT=1  ARM Hemispheres.o primary: drops the 5 largest Phase 6
+//                   applets (Relabi, Shredder, EnsOscKey, VectorLFO, Strum)
+//                   to fit under the ~82KB per-plugin .text budget the NT
+//                   firmware enforces. Empirically: 20 of 25 Phase 6 applets
+//                   plus all 31 P5 applets = 81566 bytes .text on hardware.
+//   HEMI_VARIANT=2  ARM Hemispheres2.o secondary: registers ONLY the 5 dropped
+//                   applets so they remain reachable on hardware.
+//
+// Each ARM variant must fit under the .text cap independently; the cap is
+// per-.o, not per-host. View Info on the NT screen reports "Not enough
+// memory for .text : <name>" if a plug-in exceeds it.
+#ifndef HEMI_VARIANT
+#define HEMI_VARIANT 0
+#endif
+#define HEMI_IN_PRIMARY   (HEMI_VARIANT == 0 || HEMI_VARIANT == 1)
+#define HEMI_IN_SECONDARY (HEMI_VARIANT == 0 || HEMI_VARIANT == 2)
+
 // Phase 6 additions: Class A (vendor-dep)
+#if HEMI_IN_SECONDARY
 #include "VectorLFO.h"
+#endif
+#if HEMI_IN_PRIMARY
 #include "VectorEG.h"
 #include "VectorMod.h"
 #include "VectorMorph.h"
+#endif
+#if HEMI_IN_SECONDARY
 #include "Relabi.h"
+#endif
+#if HEMI_IN_PRIMARY
 #include "LowerRenz.h"
 #include "Combin8.h"
+#endif
 // Phase 6 additions: Class B (quantizer)
+#if HEMI_IN_PRIMARY
 #include "Pigeons.h"
+#endif
+#if HEMI_IN_SECONDARY
 #include "Strum.h"
 #include "Shredder.h"
+#endif
+#if HEMI_IN_PRIMARY
 #include "Carpeggio.h"
 #include "Squanch.h"
 #include "Chordinator.h"
@@ -89,7 +121,11 @@
 #include "OffsetQuant.h"
 #include "MultiScale.h"
 #include "ScaleDuet.h"
+#endif
+#if HEMI_IN_SECONDARY
 #include "EnsOscKey.h"
+#endif
+#if HEMI_IN_PRIMARY
 #include "Calibr8.h"
 // Phase 6 additions: Class C (helper-using)
 #include "ResetClock.h"
@@ -98,6 +134,7 @@
 #include "Scope.h"
 // Phase 6 additions: Class D (clock-mgr)
 #include "Metronome.h"
+#endif
 
 namespace hem_shim {
 
@@ -178,6 +215,12 @@ inline int applet_index_for_name(const char* name) {
 template <typename T>
 constexpr T cmax(T a, T b) { return a > b ? a : b; }
 
+// kMaxAppletSize / kMaxAppletAlign size the per-side applet buffers in
+// HemispheresInstance. ARM variants don't see all applet types so a sizeof
+// chain over the full set would fail to compile. Hardcode generous values
+// that fit any realistic Hemisphere applet (largest measured: ~700 bytes).
+// HemispheresInstance uses 2 * kMaxAppletSize for sram_left + sram_right.
+#if HEMI_VARIANT == 0
 constexpr size_t kMaxAppletSize =
     cmax(sizeof(Empty),
     cmax(sizeof(Logic),
@@ -236,7 +279,11 @@ constexpr size_t kMaxAppletSize =
     cmax(sizeof(Xfader),
     cmax(sizeof(Scope),
          sizeof(Metronome))))))))))))))))))))))))))))))))))))))))))))))))))))))));
+#else
+constexpr size_t kMaxAppletSize = 1024;
+#endif
 
+#if HEMI_VARIANT == 0
 constexpr size_t kMaxAppletAlign =
     cmax(alignof(Empty),
     cmax(alignof(Logic),
@@ -295,6 +342,9 @@ constexpr size_t kMaxAppletAlign =
     cmax(alignof(Xfader),
     cmax(alignof(Scope),
          alignof(Metronome))))))))))))))))))))))))))))))))))))))))))))))))))))))));
+#else
+constexpr size_t kMaxAppletAlign = 16;
+#endif
 
 template <class T>
 inline HemisphereApplet* make_applet(void* sram) {
@@ -314,53 +364,129 @@ inline AppletFactory applet_factory(AppletIndex idx) {
         &make_applet<Burst>,             // kAppletBurst
         &make_applet<Button>,            // kAppletButton
         &make_applet<Calculate>,         // kAppletCalculate
+#if HEMI_IN_PRIMARY
         &make_applet<Calibr8>,           // kAppletCalibr8
         &make_applet<Carpeggio>,         // kAppletCarpeggio
         &make_applet<Chordinator>,       // kAppletChordinator
+#else
+        &make_applet<Empty>,             // kAppletCalibr8 (primary-only)
+        &make_applet<Empty>,             // kAppletCarpeggio (primary-only)
+        &make_applet<Empty>,             // kAppletChordinator (primary-only)
+#endif
         &make_applet<ClkToGate>,         // kAppletClkToGate
         &make_applet<ClockDivider>,      // kAppletClockDivider
         &make_applet<ClockSkip>,         // kAppletClockSkip
+#if HEMI_IN_PRIMARY
         &make_applet<Combin8>,           // kAppletCombin8
+#else
+        &make_applet<Empty>,             // kAppletCombin8 (primary-only)
+#endif
         &make_applet<Compare>,           // kAppletCompare
         &make_applet<Cumulus>,           // kAppletCumulus
+#if HEMI_IN_PRIMARY
         &make_applet<DualQuant>,         // kAppletDualQuant
         &make_applet<EnigmaJr>,          // kAppletEnigmaJr
+#else
+        &make_applet<Empty>,             // kAppletDualQuant (primary-only)
+        &make_applet<Empty>,             // kAppletEnigmaJr (primary-only)
+#endif
+#if HEMI_IN_SECONDARY
         &make_applet<EnsOscKey>,         // kAppletEnsOscKey
+#else
+        &make_applet<Empty>,             // kAppletEnsOscKey (secondary-only)
+#endif
         &make_applet<EnvFollow>,         // kAppletEnvFollow
         &make_applet<GameOfLife>,        // kAppletGameOfLife
         &make_applet<GateDelay>,         // kAppletGateDelay
         &make_applet<GatedVCA>,          // kAppletGatedVCA
         &make_applet<Logic>,             // kAppletLogic
+#if HEMI_IN_PRIMARY
         &make_applet<LowerRenz>,         // kAppletLowerRenz
         &make_applet<Metronome>,         // kAppletMetronome
         &make_applet<MultiScale>,        // kAppletMultiScale
         &make_applet<OffsetQuant>,       // kAppletOffsetQuant
         &make_applet<Pigeons>,           // kAppletPigeons
+#else
+        &make_applet<Empty>,             // kAppletLowerRenz (primary-only)
+        &make_applet<Empty>,             // kAppletMetronome (primary-only)
+        &make_applet<Empty>,             // kAppletMultiScale (primary-only)
+        &make_applet<Empty>,             // kAppletOffsetQuant (primary-only)
+        &make_applet<Empty>,             // kAppletPigeons (primary-only)
+#endif
         &make_applet<PolyDiv>,           // kAppletPolyDiv
         &make_applet<ProbabilityDivider>,// kAppletProbabilityDivider
+#if HEMI_IN_SECONDARY
         &make_applet<Relabi>,            // kAppletRelabi
+#else
+        &make_applet<Empty>,             // kAppletRelabi (secondary-only)
+#endif
+#if HEMI_IN_PRIMARY
         &make_applet<ResetClock>,        // kAppletResetClock
+#else
+        &make_applet<Empty>,             // kAppletResetClock (primary-only)
+#endif
         &make_applet<RndWalk>,           // kAppletRndWalk
         &make_applet<RunglBook>,         // kAppletRunglBook
+#if HEMI_IN_PRIMARY
         &make_applet<ScaleDuet>,         // kAppletScaleDuet
+#else
+        &make_applet<Empty>,             // kAppletScaleDuet (primary-only)
+#endif
         &make_applet<Schmitt>,           // kAppletSchmitt
+#if HEMI_IN_PRIMARY
         &make_applet<Scope>,             // kAppletScope
+#else
+        &make_applet<Empty>,             // kAppletScope (primary-only)
+#endif
         &make_applet<ShiftGate>,         // kAppletShiftGate
+#if HEMI_IN_SECONDARY
         &make_applet<Shredder>,          // kAppletShredder
+#else
+        &make_applet<Empty>,             // kAppletShredder (secondary-only)
+#endif
+#if HEMI_IN_PRIMARY
         &make_applet<Shuffle>,           // kAppletShuffle
+#else
+        &make_applet<Empty>,             // kAppletShuffle (primary-only)
+#endif
         &make_applet<Slew>,              // kAppletSlew
+#if HEMI_IN_PRIMARY
         &make_applet<Squanch>,           // kAppletSquanch
+#else
+        &make_applet<Empty>,             // kAppletSquanch (primary-only)
+#endif
         &make_applet<Stairs>,            // kAppletStairs
+#if HEMI_IN_SECONDARY
         &make_applet<Strum>,             // kAppletStrum
+#else
+        &make_applet<Empty>,             // kAppletStrum (secondary-only)
+#endif
         &make_applet<Switch>,            // kAppletSwitch
         &make_applet<TLNeuron>,          // kAppletTLNeuron
         &make_applet<Trending>,          // kAppletTrending
+#if HEMI_IN_PRIMARY
         &make_applet<VectorEG>,          // kAppletVectorEG
+#else
+        &make_applet<Empty>,             // kAppletVectorEG (primary-only)
+#endif
+#if HEMI_IN_SECONDARY
         &make_applet<VectorLFO>,         // kAppletVectorLFO
+#else
+        &make_applet<Empty>,             // kAppletVectorLFO (secondary-only)
+#endif
+#if HEMI_IN_PRIMARY
         &make_applet<VectorMod>,         // kAppletVectorMod
         &make_applet<VectorMorph>,       // kAppletVectorMorph
+#else
+        &make_applet<Empty>,             // kAppletVectorMod (primary-only)
+        &make_applet<Empty>,             // kAppletVectorMorph (primary-only)
+#endif
         &make_applet<Voltage>,           // kAppletVoltage
+#if HEMI_IN_PRIMARY
         &make_applet<Xfader>,            // kAppletXfader
+#else
+        &make_applet<Empty>,             // kAppletXfader (primary-only)
+#endif
     };
     return table[idx];
 }

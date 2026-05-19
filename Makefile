@@ -113,9 +113,11 @@ build/arm/bus_probe.o: applets/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
 
-build/arm/aeabi_probe.o: applets/aeabi_probe.cpp
+build/arm/aeabi_probe.o: applets/aeabi_probe.cpp $(COMPILER_RT_OBJS)
 	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+	$(ARM_CXX) $(ARM_FLAGS) -c -o build/arm/aeabi_probe.raw.o $<
+	$(ARM_LD) -r --strip-debug build/arm/aeabi_probe.raw.o $(COMPILER_RT_OBJS) -o build/arm/aeabi_probe.linked.o
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/aeabi_probe.linked.o $@
 
 # Hem shim sources (header-only for now; compiled as part of each applet's TU)
 SHIM_INCLUDE := -Ishim/include
@@ -141,6 +143,8 @@ COMPILER_RT_SRCS := \
     shim/src/compiler_rt/udivdi3.c \
     shim/src/compiler_rt/divmoddi4.c \
     shim/src/compiler_rt/udivmoddi4.c \
+    shim/src/compiler_rt/fixdfdi.c \
+    shim/src/compiler_rt/fixunsdfdi.c \
     shim/src/compiler_rt/arm/aeabi_div0.c \
     shim/src/compiler_rt/arm/aeabi_ldivmod.S \
     shim/src/compiler_rt/arm/aeabi_uldivmod.S
@@ -168,11 +172,36 @@ build/arm/shim_src/%.o: shim/src/%.cpp
 	mkdir -p $(@D)
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
 
-build/arm/Hemispheres.o: applets/Hemispheres.cpp $(SHIM_DEPS) $(COMPILER_RT_OBJS) $(PHASE6_DEP_ARM_OBJS)
+# Hemispheres ARM build pipeline. Phase 6 splits the on-device applet set
+# into two .o files: Hemispheres.o (primary, variant 1, 20 of 25 Phase 6
+# applets plus all 31 P5 applets) and Hemispheres2.o (secondary, variant 2,
+# 5 of 25 Phase 6 applets: Relabi, Shredder, EnsOscKey, VectorLFO, Strum).
+# Each must fit under the NT firmware's per-plug-in .text budget
+# (empirically ~82KB) independently.
+#
+# HEMI_VARIANT selects the applet subset HemispheresFactory.h registers:
+#   0 = host build (all 56 applets; tests need them)
+#   1 = ARM primary
+#   2 = ARM secondary
+#
+# Section pipeline: compile -> partial-link with lorenz + compiler-rt ->
+# strip COMDAT groups -> re-partial-link with merge_sections.lds (collapses
+# split COMDAT subsections into single .text/.data/.rodata, reducing
+# section count from ~1640 to ~14). Required because gcc emits
+# `.text.<mangled>` per C++ COMDAT inline method; NT firmware fails to
+# load plug-ins past ~1600 sections.
+define BUILD_ARM_HEMI_VARIANT
+build/arm/$(1).o: applets/$(1).cpp $$(SHIM_DEPS) $$(COMPILER_RT_OBJS) $$(PHASE6_DEP_ARM_OBJS)
 	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o build/arm/Hemispheres.raw.o $<
-	$(ARM_LD) -r --strip-debug build/arm/Hemispheres.raw.o $(PHASE6_DEP_ARM_OBJS) $(COMPILER_RT_OBJS) -o build/arm/Hemispheres.linked.o
-	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/Hemispheres.linked.o $@
+	$$(ARM_CXX) $$(ARM_FLAGS) -DHEMI_VARIANT=$(2) $$(SHIM_INCLUDE) $$(HEM_APPLET_INCLUDE) -c -o build/arm/$(1).raw.o $$<
+	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o $$(PHASE6_DEP_ARM_OBJS) $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
+	arm-none-eabi-objcopy --remove-section='.group' build/arm/$(1).merge1.o build/arm/$(1).nogroup.o
+	$$(ARM_LD) -r -T shim/merge_sections.lds build/arm/$(1).nogroup.o -o build/arm/$(1).linked.o
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/$(1).linked.o $$@
+endef
+
+$(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres,1))
+$(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres2,2))
 
 build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/host
@@ -214,7 +243,7 @@ build/host/test_dep_%: harness/tests/test_dep_%.cpp $(SHIM_CORE_SRCS) $(HARNESS_
 test-deps: $(addprefix build/host/, $(DEP_TESTS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/Hemispheres.o
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/Hemispheres.o build/arm/Hemispheres2.o
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

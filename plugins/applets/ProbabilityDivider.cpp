@@ -19,8 +19,10 @@ struct _AppletInstance : public HemiPluginInterface {
     VendorApplet applet;
 };
 
-static void render_view_impl(_NT_algorithm* self, int /*origin_x*/, int /*origin_y*/) {
+static void render_view_impl(_NT_algorithm* self, int origin_x, int /*origin_y*/) {
+    HS::gfx_offset = origin_x;
     static_cast<_AppletInstance*>(self)->applet.View();
+    HS::gfx_offset = 0;
 }
 
 static void on_encoder_turn_impl(_NT_algorithm* self, int dir) {

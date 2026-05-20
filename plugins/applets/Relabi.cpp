@@ -16,9 +16,11 @@ struct _AppletInstance : public HemiPluginInterface {
     Relabi applet;
 };
 
-static void render_view_impl(_NT_algorithm* self, int /*origin_x*/, int /*origin_y*/) {
+static void render_view_impl(_NT_algorithm* self, int origin_x, int /*origin_y*/) {
+    HS::gfx_offset = origin_x;
     auto* inst = static_cast<_AppletInstance*>(self);
     inst->applet.View();
+    HS::gfx_offset = 0;
 }
 
 static void on_encoder_turn_impl(_NT_algorithm* self, int dir) {

@@ -1,5 +1,7 @@
 #include "nt_runtime.h"
 #include "plugin_loader.h"
+#include <cstddef>
+#include <distingnt/slot.h>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -248,6 +250,17 @@ bool     NT_getSlot(class _NT_slot& slot, uint32_t index) {
     (void)slot; (void)index;
     return false;
 }
+// Host-side stubs for _NT_slot methods declared in distingnt/slot.h. The
+// firmware provides these on hardware; the harness needs them only to
+// satisfy the linker. Host tests that need slot lookup bypass these via
+// per-host injection helpers (e.g. qq_test_inject_slot).
+const char*    _NT_slot::name(void) const                          { return ""; }
+uint32_t       _NT_slot::guid(void) const                          { return 0u; }
+_NT_algorithm* _NT_slot::plugin(void) const                        { return nullptr; }
+uint32_t       _NT_slot::numParameters(void) const                 { return 0u; }
+bool           _NT_slot::parameterInfo(_NT_parameter&, uint32_t) const { return false; }
+int16_t        _NT_slot::parameterPresetValue(uint32_t) const      { return 0; }
+int16_t        _NT_slot::parameterValue(uint32_t) const            { return 0; }
 void     NT_updateParameterDefinition(uint32_t algIdx, uint32_t paramIdx) {
     (void)algIdx; (void)paramIdx;
 }

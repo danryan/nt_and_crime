@@ -9,8 +9,14 @@ HEM_SRC_DIR    := vendor/O_C-Phazerville/software/src
 
 ARM_FLAGS := -std=c++17 -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard \
              -mthumb -fno-rtti -fno-exceptions -fno-threadsafe-statics \
+             -fno-unwind-tables -fno-asynchronous-unwind-tables \
+             -ffunction-sections -fdata-sections \
+             -fvisibility=hidden -fvisibility-inlines-hidden \
+             -fmerge-all-constants \
              -Os -fPIC -Wall \
              -I$(NT_API_INCLUDE)
+
+ARM_FLAGS_VISIBLE_ENTRY := $(filter-out -fvisibility=hidden -fvisibility-inlines-hidden,$(ARM_FLAGS))
 
 HOST_FLAGS := -std=c++17 -fno-rtti -fno-exceptions -Wall -O2 \
               -DNT_HEM_HOST_SIM=1 \
@@ -101,17 +107,24 @@ host: build/host/sim_gainCustomUI
 ARM_REF_SRCS := vendor/distingNT_API/examples/gainCustomUI.cpp \
                 vendor/distingNT_API/examples/gain.cpp
 
+# Vendor example plug-ins: declare pluginEntry without our
+# visibility-default attribute, so build them with default visibility.
 build/arm/gainCustomUI.o: vendor/distingNT_API/examples/gainCustomUI.cpp
 	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+	$(ARM_CXX) $(ARM_FLAGS_VISIBLE_ENTRY) -c -o $@ $<
 
 build/arm/gain.o: vendor/distingNT_API/examples/gain.cpp
 	mkdir -p build/arm
-	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+	$(ARM_CXX) $(ARM_FLAGS_VISIBLE_ENTRY) -c -o $@ $<
 
 build/arm/bus_probe.o: applets/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+
+build/arm/section_probe.o: applets/section_probe.cpp
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o build/arm/section_probe.raw.o $<
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/section_probe.raw.o $@
 
 # aeabi_probe rule lives below COMPILER_RT_OBJS so its $(COMPILER_RT_OBJS)
 # prereq expansion is non-empty (Make expands prereqs at rule-parse time).
@@ -193,18 +206,25 @@ build/arm/shim_src/%.o: shim/src/%.cpp
 # section count from ~1640 to ~14). Required because gcc emits
 # `.text.<mangled>` per C++ COMDAT inline method; NT firmware fails to
 # load plug-ins past ~1600 sections.
+# Per-variant vendor dep object lists. Variant 1 needs Lorenz (LowerRenz
+# applet). Variant 2 has none of the Lorenz-dependent applets so its dep
+# list is empty. If a future applet in variant 2 needs Lorenz, add the
+# objects back to VARIANT2_DEP_OBJS.
+VARIANT1_DEP_OBJS := $(VENDOR_DEP_ARM_OBJS)
+VARIANT2_DEP_OBJS :=
+
 define BUILD_ARM_HEMI_VARIANT
-build/arm/$(1).o: applets/$(1).cpp $$(SHIM_DEPS) $$(COMPILER_RT_OBJS) $$(VENDOR_DEP_ARM_OBJS)
+build/arm/$(1).o: applets/$(1).cpp $$(SHIM_DEPS) $$(COMPILER_RT_OBJS) $(3)
 	mkdir -p build/arm
 	$$(ARM_CXX) $$(ARM_FLAGS) -DHEMI_VARIANT=$(2) $$(SHIM_INCLUDE) $$(HEM_APPLET_INCLUDE) -c -o build/arm/$(1).raw.o $$<
-	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o $$(VENDOR_DEP_ARM_OBJS) $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
+	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o $(3) $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
 	arm-none-eabi-objcopy --remove-section='.group' build/arm/$(1).merge1.o build/arm/$(1).nogroup.o
 	$$(ARM_LD) -r -T shim/merge_sections.lds build/arm/$(1).nogroup.o -o build/arm/$(1).linked.o
 	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/$(1).linked.o $$@
 endef
 
-$(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres,1))
-$(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres2,2))
+$(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres,1,$(VARIANT1_DEP_OBJS)))
+$(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres2,2,$(VARIANT2_DEP_OBJS)))
 
 build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/host

@@ -166,6 +166,12 @@ NT API has no mechanism to share `.text` across plug-ins (`calculateStaticRequir
 
 Misc > Plug-ins > View Info shows pass/fail per `.o` with ITC/DTC/DRAM stats. Press a button on a Failed entry to see the detailed reason. Use `mcp__nt_helper__show_screen` to capture screen state in-session after `make deploy-sysex`; bisect plug-in size against the .text cap by iterating builds and screenshotting. `aeabi_probe.cpp` remains the diagnostic for unresolved-symbol errors.
 
+## Loader does not honor custom code sections
+
+NT firmware loader copies the canonical `.text` section verbatim into a fixed ITC buffer at registration. It does NOT recognize non-canonical executable section names (e.g., `.code_dram`, `.text.cold`). Functions tagged with `__attribute__((section(".code_dram")))` end up at unmapped addresses; the plug-in may register but adding it to a preset hard-faults the device when `step()` jumps into the unmapped region. Confirmed empirically with `applets/section_probe.cpp`: probe registered cleanly, hard-crashed on algorithm add. Power-cycle to recover; remove the bad `.o` via USB disk mode before next boot.
+
+Practical consequence: there is no way to route cold methods to DRAM/OCRAM to dodge the per-`.o` `.text` cap. The cap is binding. Strategies that target it: aggressive code shrink (Q15 LUTs, kill `printf`, drop unused vendor deps) and `HEMI_VARIANT` splits across multiple `.o` files. The `section_probe.cpp` diagnostic stays in tree so future firmware updates can be re-verified.
+
 ## ARM unresolved-symbol surface (firmware contract)
 
 Firmware resolves at load: `NT_*` ABI (`NT_drawText`, `NT_screen`, `NT_jsonParse*`, `NT_intToString`), `_GLOBAL_OFFSET_TABLE_`, and newlib `memcpy`/`memset`/`memmove`/`strlen`/`logf`/`powf`. NOT resolved: `__aeabi_d2lz` (handled by compiler_rt `fixdfdi.c` + `fixunsdfdi.c` + `fp_lib.h` + `int_math.h` vendored under `shim/src/compiler_rt/` from llvm-project tag `llvmorg-19.1.0`, Apache-2.0; `fixdfdi.c` emits the EABI alias `__aeabi_d2lz` via its internal `AEABI_RTABI` macro when `__ARM_EABI__` is defined), `vsnprintf` (newlib-nano omits; inline integer format if needed, see `shim/src/graphics.cpp` for the precedent that supports vendor `Relabi.h`'s `%3d`/`%u.%u` formats without pulling vsnprintf). `arm-none-eabi-nm <plugin.o> | grep ' U '` enumerates.

@@ -56,11 +56,40 @@ inline uint8_t output_unit_for(BusKind kind) {
                                     : (uint8_t)kNT_unitCvOutput;
 }
 
+// Maximum outputs supported per applet for the mode-name buffer below.
+// Vendor Hemisphere applets have at most 2 outputs; Quadrants-class
+// applets up to 4. Bump if a future applet exceeds this.
+constexpr int kMaxOutputModeNames = 4;
+constexpr int kMaxOutputModeNameLen = 24;
+
+template <typename ManifestNS>
+inline char (&mode_name_buffer())[kMaxOutputModeNames][kMaxOutputModeNameLen] {
+    static char buf[kMaxOutputModeNames][kMaxOutputModeNameLen] = {{0}};
+    return buf;
+}
+
 template <typename ManifestNS>
 void emit_base_parameters(_NT_parameter* dst) {
     int idx = 0;
     constexpr int N_in  = input_count<ManifestNS>();
     constexpr int N_out = output_count<ManifestNS>();
+
+    // Build "<output name> mode" into per-Manifest static storage so the
+    // _NT_parameter::name pointer stays valid across calls. Each per-applet
+    // plug-in calls emit_base_parameters once at construct() time.
+    auto& mode_names = mode_name_buffer<ManifestNS>();
+    for (int o = 0; o < N_out && o < kMaxOutputModeNames; ++o) {
+        const char* base = ManifestNS::outputs[o].name;
+        int i = 0;
+        while (base[i] && i < kMaxOutputModeNameLen - 6) {
+            mode_names[o][i] = base[i]; ++i;
+        }
+        const char suffix[] = " mode";
+        for (int j = 0; suffix[j] && i < kMaxOutputModeNameLen - 1; ++j) {
+            mode_names[o][i++] = suffix[j];
+        }
+        mode_names[o][i] = 0;
+    }
 
     for (int i = 0; i < N_in; ++i) {
         const BusParam& p = ManifestNS::inputs[i];
@@ -77,8 +106,9 @@ void emit_base_parameters(_NT_parameter* dst) {
             .def = (int16_t)(13 + o), .unit = output_unit_for(p.kind),
             .scaling = 0, .enumStrings = nullptr,
         };
+        const char* mname = (o < kMaxOutputModeNames) ? mode_names[o] : "Output mode";
         dst[idx++] = _NT_parameter{
-            .name = "Output mode", .min = 0, .max = 1, .def = 1,
+            .name = mname, .min = 0, .max = 1, .def = 1,
             .unit = (uint8_t)kNT_unitOutputMode, .scaling = 0, .enumStrings = nullptr,
         };
     }
@@ -88,36 +118,36 @@ void emit_base_parameters(_NT_parameter* dst) {
 // Manifest input i feeds HS::frame.inputs[i] (CV/audio) or
 // HS::frame.clocked[i] + .gate_high[i] (gate). Output i drains
 // HS::frame.outputs[i].value to the bus selected by its parameter.
-
-inline int* last_cv_storage() {
-    static int last_cv[4] = { 0, 0, 0, 0 };
-    return last_cv;
-}
-
-inline bool& gate_prev(int channel) {
-    static bool prev[4] = { false, false, false, false };
-    return prev[channel];
-}
+//
+// PerInstanceState carries the per-applet input-edge state. Lives in
+// _AppletInstance (NOT file-scope) so two instances of the same applet
+// hosted side-by-side (e.g. Quadrants with two identical slots) keep
+// independent rising-edge and changed-cv tracking.
+struct PerInstanceState {
+    int  last_cv[4]   = { 0, 0, 0, 0 };
+    bool gate_prev[4] = { false, false, false, false };
+};
 
 template <typename ManifestNS>
-void populate_frame_from_bus(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
+void populate_frame_from_bus(_NT_algorithm* self,
+                             float* busFrames, int numFramesBy4,
+                             PerInstanceState& state) {
     int numFrames = numFramesBy4 * 4;
     const int16_t* v = self->v;
     constexpr int N_in = input_count<ManifestNS>();
-    int* lc = last_cv_storage();
 
     for (int i = 0; i < N_in; ++i) {
         const BusParam& p = ManifestNS::inputs[i];
         if (p.kind == BusKind::gate) {
-            auto g = hem_shim::read_gate(i, busFrames, numFrames, v, gate_prev(i));
+            auto g = hem_shim::read_gate(i, busFrames, numFrames, v, state.gate_prev[i]);
             HS::frame.clocked[i]   = g.rising;
             HS::frame.gate_high[i] = g.high;
         } else {
             hem_shim::copy_bus_to_frame(i, &HS::frame.inputs[i], busFrames, numFrames, v);
-            int delta = HS::frame.inputs[i] - lc[i];
+            int delta = HS::frame.inputs[i] - state.last_cv[i];
             if (delta < 0) delta = -delta;
             HS::frame.changed_cv[i] = (delta > 32);
-            if (HS::frame.changed_cv[i]) lc[i] = HS::frame.inputs[i];
+            if (HS::frame.changed_cv[i]) state.last_cv[i] = HS::frame.inputs[i];
         }
     }
 }
@@ -164,6 +194,21 @@ void run_controller_inner_ticks(Applet* applet, int numFramesBy4) {
         }
         applet->Controller();
     }
+}
+
+// render_view_with_offset: templated helper that sets HS::gfx_offset and
+// HS::gfx_offset_y before delegating to the applet's View(), then clears
+// both back to 0. Per-applet plug-ins wire inst->render_view to this
+// helper instead of writing their own render_view_impl. Hosts pass the
+// slot origin via origin_x / origin_y so a Quadrants 2x2 grid renders
+// each applet shifted on both axes.
+template <typename AppletInstance>
+inline void render_view_with_offset(_NT_algorithm* self, int origin_x, int origin_y) {
+    HS::gfx_offset   = origin_x;
+    HS::gfx_offset_y = origin_y;
+    static_cast<AppletInstance*>(self)->applet.View();
+    HS::gfx_offset   = 0;
+    HS::gfx_offset_y = 0;
 }
 
 // customUi routing through the HemiPluginInterface pointers populated by

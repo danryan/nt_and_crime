@@ -38,8 +38,9 @@ using simfloat = int32_t;
 
 #define ForEachChannel(ch) for (int_fast8_t ch = 0; (ch) < 2; ++(ch))
 #define ForAllChannels(ch) for (int_fast8_t ch = 0; (ch) < 4; ++(ch))
-namespace HS { extern int gfx_offset; }
+namespace HS { extern int gfx_offset; extern int gfx_offset_y; }
 using HS::gfx_offset;
+using HS::gfx_offset_y;
 #define BottomAlign(h) (62 - (h))
 #define io_offset 0                                             // shim's frame indexes from 0
 

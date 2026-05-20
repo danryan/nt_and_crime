@@ -117,11 +117,11 @@ build/arm/gain.o: vendor/distingNT_API/examples/gain.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS_VISIBLE_ENTRY) -c -o $@ $<
 
-build/arm/bus_probe.o: applets/bus_probe.cpp
+build/arm/bus_probe.o: plugins/probes/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
 
-build/arm/section_probe.o: applets/section_probe.cpp
+build/arm/section_probe.o: plugins/probes/section_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o build/arm/section_probe.raw.o $<
 	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/section_probe.raw.o $@
@@ -166,7 +166,7 @@ build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.c
 	mkdir -p $(@D)
 	$(ARM_CC) $(ARM_CFLAGS) -Ishim/src/compiler_rt -c -o $@ $<
 
-build/arm/aeabi_probe.o: applets/aeabi_probe.cpp $(COMPILER_RT_OBJS)
+build/arm/aeabi_probe.o: plugins/probes/aeabi_probe.cpp $(COMPILER_RT_OBJS)
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o build/arm/aeabi_probe.raw.o $<
 	$(ARM_LD) -r --strip-debug build/arm/aeabi_probe.raw.o $(COMPILER_RT_OBJS) -o build/arm/aeabi_probe.linked.o
@@ -226,6 +226,70 @@ endef
 $(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres,1,$(VARIANT1_DEP_OBJS)))
 $(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres2,2,$(VARIANT2_DEP_OBJS)))
 
+# ---------------------------------------------------------------------------
+# Per-applet pilot plug-ins.
+#
+# Pilot release ships one .o per applet (build/arm/<APPLET>.o). Each per-applet
+# .cpp lives at plugins/applets/<APPLET>.cpp and includes the manifest at
+# shim/include/applet_manifests/<APPLET>.h plus the per-applet runtime header
+# plugins/applets/_per_applet_runtime.h. Vendor dep linkage is per-applet via
+# VENDOR_DEPS_<APPLET>; all six pilots have empty dep lists (audit-corrected).
+# ---------------------------------------------------------------------------
+
+PILOT_APPLET_LIST := Compare ClockDivider VectorLFO Cumulus Relabi ProbabilityDivider
+
+VENDOR_DEPS_Compare            :=
+VENDOR_DEPS_ClockDivider       :=
+VENDOR_DEPS_VectorLFO          :=
+VENDOR_DEPS_Cumulus            :=
+VENDOR_DEPS_Relabi             :=
+VENDOR_DEPS_ProbabilityDivider :=
+
+# $(1) = applet name (e.g. Compare). $(2) = expanded VENDOR_DEPS_<applet>.
+define BUILD_PER_APPLET
+build/arm/$(1).o: plugins/applets/$(1).cpp shim/include/applet_manifests/$(1).h plugins/applets/_per_applet_runtime.h $$(SHIM_DEPS) $$(COMPILER_RT_OBJS) $(2)
+	mkdir -p build/arm
+	$$(ARM_CXX) $$(ARM_FLAGS) $$(SHIM_INCLUDE) $$(HEM_APPLET_INCLUDE) -c -o build/arm/$(1).raw.o $$<
+	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o $(2) $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
+	arm-none-eabi-objcopy --remove-section='.group' build/arm/$(1).merge1.o build/arm/$(1).nogroup.o
+	$$(ARM_LD) -r -T shim/merge_sections.lds build/arm/$(1).nogroup.o -o build/arm/$(1).linked.o
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/$(1).linked.o $$@
+endef
+
+$(foreach a,$(PILOT_APPLET_LIST),$(eval $(call BUILD_PER_APPLET,$(a),$(VENDOR_DEPS_$(a)))))
+
+PILOT_APPLET_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(PILOT_APPLET_LIST)))
+
+# ---------------------------------------------------------------------------
+# Host plug-ins (Hemispheres host, Quadrants host).
+#
+# Each host source includes shim/include/host_helpers.h and links against
+# shim/src/host_helpers.cpp. Hosts do not include per-applet runtime; they
+# call through HemiPluginInterface function pointers populated by each
+# per-applet plug-in's construct().
+# ---------------------------------------------------------------------------
+
+HOST_PLUGIN_LIST := Hemispheres_host Quadrants_host
+
+build/arm/shim_src/host_helpers.o: shim/src/host_helpers.cpp shim/include/host_helpers.h shim/include/HemiPluginInterface.h
+	mkdir -p $(@D)
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
+
+# $(1) = host name (Hemispheres_host or Quadrants_host).
+define BUILD_HOST_PLUGIN
+build/arm/$(1).o: plugins/hosts/$(1).cpp build/arm/shim_src/host_helpers.o $$(SHIM_DEPS) $$(COMPILER_RT_OBJS)
+	mkdir -p build/arm
+	$$(ARM_CXX) $$(ARM_FLAGS) $$(SHIM_INCLUDE) -c -o build/arm/$(1).raw.o $$<
+	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o build/arm/shim_src/host_helpers.o $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
+	arm-none-eabi-objcopy --remove-section='.group' build/arm/$(1).merge1.o build/arm/$(1).nogroup.o
+	$$(ARM_LD) -r -T shim/merge_sections.lds build/arm/$(1).nogroup.o -o build/arm/$(1).linked.o
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/$(1).linked.o $$@
+endef
+
+$(foreach h,$(HOST_PLUGIN_LIST),$(eval $(call BUILD_HOST_PLUGIN,$(h))))
+
+HOST_PLUGIN_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(HOST_PLUGIN_LIST)))
+
 build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
@@ -243,6 +307,29 @@ build/host/test_hemispheres: harness/tests/test_hemispheres.cpp harness/tests/ap
 .PHONY: test-applets
 test-applets: build/host/test_hemispheres
 	./build/host/test_hemispheres
+
+# Per-applet host test binaries (pilot release). Each binary loads the
+# matching plugins/applets/<APPLET>.cpp into the harness via plugin_loader
+# and runs the Catch2 cases in harness/tests/test_applet_<APPLET>.cpp.
+build/host/test_applet_%: harness/tests/test_applet_%.cpp plugins/applets/%.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS) $(VENDOR_DEP_HOST_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-applets-pilot
+test-applets-pilot: $(addprefix build/host/test_applet_, $(PILOT_APPLET_LIST))
+	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
+
+# Per-host test binaries. Each binary loads the matching
+# plugins/hosts/<HOST>.cpp into the harness and runs the Catch2 cases in
+# harness/tests/test_host_<HOST>.cpp. Host tests install fake
+# HemiPluginInterface stubs in slot positions and verify routing.
+build/host/test_host_%: harness/tests/test_host_%.cpp plugins/hosts/%.cpp shim/src/host_helpers.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+.PHONY: test-hosts-pilot
+test-hosts-pilot: $(addprefix build/host/test_host_, $(HOST_PLUGIN_LIST))
+	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
 # Per-dep tests. Each Catch2 binary builds against the same harness shim
 # as test_hemispheres but is standalone so a single dep test can run in
@@ -266,7 +353,7 @@ build/host/test_dep_%: harness/tests/test_dep_%.cpp $(SHIM_CORE_SRCS) $(HARNESS_
 test-deps: $(addprefix build/host/, $(DEP_TESTS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/Hemispheres.o build/arm/Hemispheres2.o
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/Hemispheres.o build/arm/Hemispheres2.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

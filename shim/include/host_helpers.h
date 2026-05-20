@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>            // for NULL (used by distingnt/slot.h)
 #include <distingnt/api.h>
 #include <distingnt/slot.h>
 #include "HemiPluginInterface.h"

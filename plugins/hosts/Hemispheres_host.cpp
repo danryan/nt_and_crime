@@ -19,6 +19,7 @@
 // include from re-firing when host_helpers.h is processed.
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <distingnt/api.h>
 #include <distingnt/slot.h>
 #include <new>
@@ -159,10 +160,17 @@ static void step_impl(_NT_algorithm* /*self*/,
 static bool draw_impl(_NT_algorithm* self) {
     auto* inst = static_cast<_HHInstance*>(self);
 
+    // Clear screen (firmware does not memset between draws; bundled host
+    // does the same explicit clear at hemispheres_shim.h:208).
+    std::memset(NT_screen, 0, 128 * 64);
+
     // Resolve both slots once for this draw cycle and cache the results.
     resolve_and_cache(inst);
 
-    static constexpr int origins[2] = { 0, 64 };
+    // Screen is 256 wide; each slot gets 128 px (matching bundled host layout).
+    // Vendor applets draw at x = 0..63 relative to HS::gfx_offset; the 128-step
+    // spacing leaves room for the applet's full draw plus any decoration.
+    static constexpr int origins[2] = { 0, 128 };
     for (int i = 0; i < 2; ++i) {
         HemiPluginInterface* p = inst->cached_slot[i];
         if (p && p->render_view) {

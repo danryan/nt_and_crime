@@ -63,21 +63,7 @@ void    qq_test_set_focused_slot(_NT_algorithm* self, uint8_t idx);
 }
 
 // ---------------------------------------------------------------------------
-// _NT_slot method stubs -- firmware symbols never called in host tests because
-// NT_getSlot (harness stub) always returns false.
-// ---------------------------------------------------------------------------
-// Pulled in via the _DISTINGNT_SLOT_INTERNAL trick to access the refCon ctor.
-#define _DISTINGNT_SLOT_INTERNAL 1
-#include <distingnt/slot.h>
-#undef _DISTINGNT_SLOT_INTERNAL
-
-const char*    _NT_slot::name() const             { return ""; }
-uint32_t       _NT_slot::guid() const             { return 0; }
-_NT_algorithm* _NT_slot::plugin() const           { return nullptr; }
-uint32_t       _NT_slot::numParameters() const    { return 0; }
-bool           _NT_slot::parameterInfo(_NT_parameter&, uint32_t) const { return false; }
-int16_t        _NT_slot::parameterPresetValue(uint32_t) const { return 0; }
-int16_t        _NT_slot::parameterValue(uint32_t) const       { return 0; }
+// _NT_slot stubs live in harness/src/nt_runtime.cpp (integration-owned).
 
 // ---------------------------------------------------------------------------
 // Stub HemiPluginInterface helpers

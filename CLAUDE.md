@@ -194,6 +194,23 @@ gcc emits one `.text._ZN<mangled>` COMDAT section per inline class method. `ld -
 
 Applets dropped from a variant get `make_applet<Empty>` stubs in `factory_table` and skipped `#include`. `kMaxAppletSize`/`kMaxAppletAlign` hardcoded to 1024/16 in variants 1-2 (cmax chain needs all types in scope, only available in variant 0). New applets choose variant by per-class `.text` size measured on the pre-merge `Hemispheres.raw.o` (`arm-none-eabi-readelf -W -S`); greedy-keep favors smallest text in primary to maximize on-device applet count.
 
+## Plugin directory layout (per-applet pilot release onward)
+
+`plugins/applets/`, `plugins/hosts/`, `plugins/probes/` are the canonical
+locations for new per-applet plug-ins, host plug-ins, and diagnostic
+probes. The top-level `applets/` directory is deprecated; its remaining
+contents (`Hemispheres.cpp`, `Hemispheres2.cpp`) will move or be removed
+in the cleanup release after the mass-port release ships. Probes
+(`aeabi_probe`, `bus_probe`, `section_probe`, `solo_probe`) moved to
+`plugins/probes/` during the pilot release setup commits.
+
+Per-applet plug-ins compile via the `BUILD_PER_APPLET` Makefile macro
+and the `PILOT_APPLET_LIST` variable. Each per-applet `.o` is small
+(16-20 KB `.text`), well under the firmware's ~82 KB per-`.o` cap.
+Hosts (`Hemispheres_host.o`, `Quadrants_host.o`) compose per-applet
+plug-ins at runtime through the firmware `_NT_slot` API plus the
+versioned `HemiPluginInterface` function-pointer-in-data ABI.
+
 ## Markdown discipline
 
 After editing any `.md` file, run `markdownlint <file>` and fix all errors. The repo's `.markdownlint.json` relaxes a small set of rules (long lines, HTML, sibling-only duplicate headings); the rest are enforced.

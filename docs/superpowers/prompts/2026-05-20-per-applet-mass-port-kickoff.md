@@ -168,14 +168,21 @@ struct <APPLET> {
 
 OR runtime concatenation into static storage (uses minimal heap-free assembly). Pick one; document in spec.
 
-### Layer 0.4: Host slot-selector UX rework
+### Layer 0.4: Host slot-selector UX rework + parameter proxying
 
-Replace the `Slot N index` uint8 parameter with an enum that scrolls through Hemi-prefix algorithms in the preset. Implementation:
+**Selector**: replace the `Slot N index` uint8 parameter with an enum that scrolls through Hemi-prefix algorithms in the preset.
 
 1. At each `draw()`, scan `NT_algorithmCount()` slots and build a list of `{slot_index, name}` for any algorithm with guid prefix `'Hm'`.
 2. Use `NT_updateParameterDefinition` to refresh the parameter's enum strings to that list.
 3. The parameter value is now an enum index into that list, not a raw slot index.
 4. `resolve_slot` is called with the actual slot_index resolved from the enum index.
+
+**Parameter proxying**: aggregate each watched slot's `_NT_parameter[]` table into the host's parameter page so the user can adjust per-applet bus mappings + applet-specific params from the host's algo view without navigating away.
+
+1. Host `calculateRequirements`: budget `numParameters = kNumSlotIndexParams + kMaxProxyParamsPerSlot * kNumSlots` (e.g. 2 selectors plus 16 proxies times 2 slots = 34 for Hemispheres host; 4 selectors plus 16 times 4 = 68 for Quadrants).
+2. Host `construct`: after slot indices known, call `NT_getSlot(slot, watched_idx)` for each watched slot, iterate `slot.numParameters()`, copy via `slot.parameterInfo(info, p)` into the host's parameter table starting at offset `kNumSlotIndexParams`. Prefix each proxy name with `"S0:"` / `"S1:"` so the user can tell which slot owns it.
+3. Host `parameterChanged(host_param_idx)`: if the changed parameter is a proxy, decode the `(slot_idx, slot_param_idx)` mapping and call `NT_setParameterFromUi(slot_idx, slot_param_idx, host->v[host_param_idx])` to forward the edit.
+4. Slot-index changes trigger a `NT_updateParameterDefinition` refresh so the proxy params re-resolve to the new slot's params.
 
 This applies to both Hemispheres host and Quadrants host. Quadrants ALSO requires the Y-offset shim work (Layer 0.5).
 

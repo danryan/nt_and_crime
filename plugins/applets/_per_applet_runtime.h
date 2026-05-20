@@ -1,0 +1,212 @@
+#pragma once
+
+#include <distingnt/api.h>
+#include <distingnt/serialisation.h>
+#include <cstdint>
+#include <cstring>
+#include <new>
+
+#include "../../shim/include/HemiPluginInterface.h"
+#include "../../shim/include/applet_manifest.h"
+#include "../../shim/include/HemisphereApplet.h"
+#include "../../shim/include/HSIOFrame.h"
+#include "../../shim/include/OC_core.h"
+#include "../../shim/include/HSClockManager.h"
+#include "../../shim/include/hem_shim.h"
+
+namespace per_applet_runtime {
+
+// Parameter table layout for a per-applet plug-in:
+//
+//   [0 .. N_in - 1]                              input bus selectors
+//   [N_in .. N_in + 2*N_out - 1]                 output bus + mode pairs
+//   [N_in + 2*N_out .. N_in + 2*N_out + N_app - 1] applet-specific params
+//
+// Each output gets two adjacent parameters: the bus selector (named per
+// the manifest) and a generic "Output mode" parameter. The UI shows them
+// in sequence so the relationship is visually obvious.
+
+template <typename ManifestNS>
+constexpr int input_count() {
+    return sizeof(ManifestNS::inputs) / sizeof(BusParam);
+}
+
+template <typename ManifestNS>
+constexpr int output_count() {
+    return sizeof(ManifestNS::outputs) / sizeof(BusParam);
+}
+
+template <typename ManifestNS>
+constexpr int base_parameter_count() {
+    return input_count<ManifestNS>() + 2 * output_count<ManifestNS>();
+}
+
+template <typename ManifestNS>
+constexpr int first_applet_param_index() {
+    return base_parameter_count<ManifestNS>();
+}
+
+inline uint8_t input_unit_for(BusKind kind) {
+    return (kind == BusKind::audio) ? (uint8_t)kNT_unitAudioInput
+                                    : (uint8_t)kNT_unitCvInput;
+}
+
+inline uint8_t output_unit_for(BusKind kind) {
+    return (kind == BusKind::audio) ? (uint8_t)kNT_unitAudioOutput
+                                    : (uint8_t)kNT_unitCvOutput;
+}
+
+template <typename ManifestNS>
+void emit_base_parameters(_NT_parameter* dst) {
+    int idx = 0;
+    constexpr int N_in  = input_count<ManifestNS>();
+    constexpr int N_out = output_count<ManifestNS>();
+
+    for (int i = 0; i < N_in; ++i) {
+        const BusParam& p = ManifestNS::inputs[i];
+        dst[idx++] = _NT_parameter{
+            .name = p.name, .min = 0, .max = kNT_lastBus,
+            .def = (int16_t)(1 + i), .unit = input_unit_for(p.kind),
+            .scaling = 0, .enumStrings = nullptr,
+        };
+    }
+    for (int o = 0; o < N_out; ++o) {
+        const BusParam& p = ManifestNS::outputs[o];
+        dst[idx++] = _NT_parameter{
+            .name = p.name, .min = 0, .max = kNT_lastBus,
+            .def = (int16_t)(13 + o), .unit = output_unit_for(p.kind),
+            .scaling = 0, .enumStrings = nullptr,
+        };
+        dst[idx++] = _NT_parameter{
+            .name = "Output mode", .min = 0, .max = 1, .def = 1,
+            .unit = (uint8_t)kNT_unitOutputMode, .scaling = 0, .enumStrings = nullptr,
+        };
+    }
+}
+
+// Standalone per-applet runs as a single hemisphere (channel_offset = 0).
+// Manifest input i feeds HS::frame.inputs[i] (CV/audio) or
+// HS::frame.clocked[i] + .gate_high[i] (gate). Output i drains
+// HS::frame.outputs[i].value to the bus selected by its parameter.
+
+inline int* last_cv_storage() {
+    static int last_cv[4] = { 0, 0, 0, 0 };
+    return last_cv;
+}
+
+inline bool& gate_prev(int channel) {
+    static bool prev[4] = { false, false, false, false };
+    return prev[channel];
+}
+
+template <typename ManifestNS>
+void populate_frame_from_bus(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
+    int numFrames = numFramesBy4 * 4;
+    const int16_t* v = self->v;
+    constexpr int N_in = input_count<ManifestNS>();
+    int* lc = last_cv_storage();
+
+    for (int i = 0; i < N_in; ++i) {
+        const BusParam& p = ManifestNS::inputs[i];
+        if (p.kind == BusKind::gate) {
+            auto g = hem_shim::read_gate(i, busFrames, numFrames, v, gate_prev(i));
+            HS::frame.clocked[i]   = g.rising;
+            HS::frame.gate_high[i] = g.high;
+        } else {
+            hem_shim::copy_bus_to_frame(i, &HS::frame.inputs[i], busFrames, numFrames, v);
+            int delta = HS::frame.inputs[i] - lc[i];
+            if (delta < 0) delta = -delta;
+            HS::frame.changed_cv[i] = (delta > 32);
+            if (HS::frame.changed_cv[i]) lc[i] = HS::frame.inputs[i];
+        }
+    }
+}
+
+template <typename ManifestNS>
+void write_outputs_to_bus(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
+    int numFrames = numFramesBy4 * 4;
+    const int16_t* v = self->v;
+    constexpr int N_in  = input_count<ManifestNS>();
+    constexpr int N_out = output_count<ManifestNS>();
+
+    for (int o = 0; o < N_out; ++o) {
+        int bus_param  = N_in + 2 * o;
+        int mode_param = N_in + 2 * o + 1;
+        hem_shim::write_frame_to_bus(bus_param, mode_param,
+                                     HS::frame.outputs[o].value,
+                                     busFrames, numFrames, v);
+    }
+}
+
+// Inner-tick loop matching the bundled host shim at
+// shim/include/hemispheres_shim.h:179. Honors hem_shim::inner_ticks_override
+// for the host-side time-injection helper used in tests.
+template <typename Applet>
+void run_controller_inner_ticks(Applet* applet, int numFramesBy4) {
+    int numFrames = numFramesBy4 * 4;
+    int ticks_this_step;
+    if (hem_shim::inner_ticks_override > 0) {
+        ticks_this_step = hem_shim::inner_ticks_override;
+        hem_shim::inner_ticks_override = 0;
+    } else {
+        ticks_this_step = numFrames / 3;
+        if (ticks_this_step < 1) ticks_this_step = 1;
+    }
+    for (int i = 0; i < ticks_this_step; ++i) {
+        OC::CORE::ticks += 1;
+        clock_m.advance_one_tick();
+        for (int ch = 0; ch < 4; ++ch) {
+            if (HS::frame.clock_countdown[ch] > 0) {
+                if (--HS::frame.clock_countdown[ch] == 0) {
+                    HS::frame.outputs[ch].set(0);
+                }
+            }
+        }
+        applet->Controller();
+    }
+}
+
+// customUi routing through the HemiPluginInterface pointers populated by
+// construct(). Standalone path is identical to what the host would do.
+inline void route_custom_ui(_NT_algorithm* self, const _NT_uiData& data) {
+    auto* p = static_cast<HemiPluginInterface*>(self);
+    if (data.encoders[0] != 0 && p->on_encoder_turn) {
+        p->on_encoder_turn(self, data.encoders[0]);
+    }
+    if ((data.controls & kNT_encoderButtonL) && !(data.lastButtons & kNT_encoderButtonL)) {
+        if (p->on_button_press) p->on_button_press(self);
+    }
+    if ((data.controls & kNT_button1) && !(data.lastButtons & kNT_button1)) {
+        if (p->on_aux_button) p->on_aux_button(self);
+    }
+}
+
+// serialise / deserialise wrappers around vendor Hemisphere
+// OnDataRequest / OnDataReceive. Packs/unpacks the uint64_t state under
+// the JSON members "hemi_hi" + "hemi_lo".
+template <typename Applet>
+void write_data_request(Applet* applet, _NT_jsonStream& stream) {
+    uint64_t state = applet->OnDataRequest();
+    stream.addMemberName("hemi_hi"); stream.addNumber((int)(uint32_t)(state >> 32));
+    stream.addMemberName("hemi_lo"); stream.addNumber((int)(uint32_t)(state & 0xFFFFFFFFu));
+}
+
+template <typename Applet>
+bool read_data_receive(Applet* applet, _NT_jsonParse& parse) {
+    int num_members = 0;
+    if (!parse.numberOfObjectMembers(num_members)) return false;
+    int hi = 0, lo = 0;
+    bool got_hi = false, got_lo = false;
+    for (int i = 0; i < num_members; ++i) {
+        if      (parse.matchName("hemi_hi")) { if (!parse.number(hi)) return false; got_hi = true; }
+        else if (parse.matchName("hemi_lo")) { if (!parse.number(lo)) return false; got_lo = true; }
+        else                                  { if (!parse.skipMember()) return false; }
+    }
+    if (got_hi && got_lo) {
+        uint64_t state = ((uint64_t)(uint32_t)hi << 32) | (uint64_t)(uint32_t)lo;
+        applet->OnDataReceive(state);
+    }
+    return true;
+}
+
+}  // namespace per_applet_runtime

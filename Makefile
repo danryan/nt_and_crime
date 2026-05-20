@@ -227,16 +227,31 @@ $(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres,1,$(VARIANT1_DEP_OBJS)))
 $(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres2,2,$(VARIANT2_DEP_OBJS)))
 
 # ---------------------------------------------------------------------------
-# Per-applet pilot plug-ins.
+# Per-applet plug-ins (mass-port release).
 #
-# Pilot release ships one .o per applet (build/arm/<APPLET>.o). Each per-applet
+# Mass-port ships one .o per applet (build/arm/<APPLET>.o). Each per-applet
 # .cpp lives at plugins/applets/<APPLET>.cpp and includes the manifest at
 # shim/include/applet_manifests/<APPLET>.h plus the per-applet runtime header
 # plugins/applets/_per_applet_runtime.h. Vendor dep linkage is per-applet via
-# VENDOR_DEPS_<APPLET>; all six pilots have empty dep lists (audit-corrected).
+# VENDOR_DEPS_<APPLET>; only applets needing vendor .cpp linkage (LowerRenz)
+# set a non-empty list. All others compile their deps as headers into the
+# per-applet TU.
 # ---------------------------------------------------------------------------
 
-PILOT_APPLET_LIST := Compare ClockDivider VectorLFO Cumulus Relabi ProbabilityDivider
+# 6 pilots + 49 mass-port = 55 total. Order: pilots first, then batches.
+ALL_APPLET_LIST := \
+  Compare ClockDivider VectorLFO Cumulus Relabi ProbabilityDivider \
+  AttenuateOffset Binary Button Logic Switch \
+  Brancher Burst Calculate EnvFollow GameOfLife GateDelay GatedVCA \
+  RndWalk Schmitt ShiftGate Slew Stairs TLNeuron Trending Voltage \
+  VectorEG VectorMod VectorMorph \
+  DualQuant OffsetQuant MultiScale ScaleDuet EnsOscKey Calibr8 Carpeggio \
+  Chordinator EnigmaJr Pigeons Squanch Shredder Strum \
+  Metronome ResetClock Shuffle Xfader Scope ClkToGate ClockSkip PolyDiv \
+  ADEG ADSREG RunglBook LowerRenz Combin8
+
+# Backwards-compat alias; existing rules still reference PILOT_APPLET_LIST.
+PILOT_APPLET_LIST := $(ALL_APPLET_LIST)
 
 VENDOR_DEPS_Compare            :=
 VENDOR_DEPS_ClockDivider       :=
@@ -244,6 +259,55 @@ VENDOR_DEPS_VectorLFO          :=
 VENDOR_DEPS_Cumulus            :=
 VENDOR_DEPS_Relabi             :=
 VENDOR_DEPS_ProbabilityDivider :=
+VENDOR_DEPS_AttenuateOffset    :=
+VENDOR_DEPS_Binary             :=
+VENDOR_DEPS_Button             :=
+VENDOR_DEPS_Logic              :=
+VENDOR_DEPS_Switch             :=
+VENDOR_DEPS_Brancher           :=
+VENDOR_DEPS_Burst              :=
+VENDOR_DEPS_Calculate          :=
+VENDOR_DEPS_EnvFollow          :=
+VENDOR_DEPS_GameOfLife         :=
+VENDOR_DEPS_GateDelay          :=
+VENDOR_DEPS_GatedVCA           :=
+VENDOR_DEPS_RndWalk            :=
+VENDOR_DEPS_Schmitt            :=
+VENDOR_DEPS_ShiftGate          :=
+VENDOR_DEPS_Slew               :=
+VENDOR_DEPS_Stairs             :=
+VENDOR_DEPS_TLNeuron           :=
+VENDOR_DEPS_Trending           :=
+VENDOR_DEPS_Voltage            :=
+VENDOR_DEPS_VectorEG           :=
+VENDOR_DEPS_VectorMod          :=
+VENDOR_DEPS_VectorMorph        :=
+VENDOR_DEPS_DualQuant          :=
+VENDOR_DEPS_OffsetQuant        :=
+VENDOR_DEPS_MultiScale         :=
+VENDOR_DEPS_ScaleDuet          :=
+VENDOR_DEPS_EnsOscKey          :=
+VENDOR_DEPS_Calibr8            :=
+VENDOR_DEPS_Carpeggio          :=
+VENDOR_DEPS_Chordinator        :=
+VENDOR_DEPS_EnigmaJr           :=
+VENDOR_DEPS_Pigeons            :=
+VENDOR_DEPS_Squanch            :=
+VENDOR_DEPS_Shredder           :=
+VENDOR_DEPS_Strum              :=
+VENDOR_DEPS_Metronome          :=
+VENDOR_DEPS_ResetClock         :=
+VENDOR_DEPS_Shuffle            :=
+VENDOR_DEPS_Xfader             :=
+VENDOR_DEPS_Scope              :=
+VENDOR_DEPS_ClkToGate          :=
+VENDOR_DEPS_ClockSkip          :=
+VENDOR_DEPS_PolyDiv            :=
+VENDOR_DEPS_ADEG               :=
+VENDOR_DEPS_ADSREG             :=
+VENDOR_DEPS_RunglBook          :=
+VENDOR_DEPS_LowerRenz          := build/arm/shim_src/lorenz/streams_resources.o build/arm/shim_src/lorenz/streams_lorenz_generator.o
+VENDOR_DEPS_Combin8            :=
 
 # $(1) = applet name (e.g. Compare). $(2) = expanded VENDOR_DEPS_<applet>.
 define BUILD_PER_APPLET
@@ -256,9 +320,16 @@ build/arm/$(1).o: plugins/applets/$(1).cpp shim/include/applet_manifests/$(1).h 
 	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/$(1).linked.o $$@
 endef
 
-$(foreach a,$(PILOT_APPLET_LIST),$(eval $(call BUILD_PER_APPLET,$(a),$(VENDOR_DEPS_$(a)))))
+# Only generate build rules for applets whose plugins/applets/<APPLET>.cpp
+# exists on disk. During mass-port fan-out, implementer worktrees create
+# the .cpp on their branch; the parent worktree generates rules dynamically
+# as the .cpp files land via cherry-picks.
+PRESENT_APPLETS := $(filter-out ,$(foreach a,$(ALL_APPLET_LIST),$(if $(wildcard plugins/applets/$(a).cpp),$(a),)))
 
-PILOT_APPLET_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(PILOT_APPLET_LIST)))
+$(foreach a,$(PRESENT_APPLETS),$(eval $(call BUILD_PER_APPLET,$(a),$(VENDOR_DEPS_$(a)))))
+
+PILOT_APPLET_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(PRESENT_APPLETS)))
+ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 
 # ---------------------------------------------------------------------------
 # Host plug-ins (Hemispheres host, Quadrants host).

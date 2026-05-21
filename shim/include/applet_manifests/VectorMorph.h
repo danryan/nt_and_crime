@@ -8,7 +8,7 @@
 namespace per_applet {
 
 struct VectorMorph {
-    static constexpr uint32_t      guid        = NT_MULTICHAR('H','m','V','m');
+    static constexpr uint32_t      guid        = NT_MULTICHAR('H','m','V','p');
     static constexpr const char*   name        = "VectorMorph";
     static constexpr const char*   description = "Dual vector-oscillator phase morpher.";
     static constexpr BusParam      inputs[]    = {

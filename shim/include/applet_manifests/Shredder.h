@@ -7,7 +7,7 @@
 
 namespace per_applet {
 struct Shredder {
-    static constexpr uint32_t      guid        = NT_MULTICHAR('H','m','S','h');
+    static constexpr uint32_t      guid        = NT_MULTICHAR('H','m','S','d');
     static constexpr const char*   name        = "Shredder";
     static constexpr const char*   description = "Cartesian sequencer: random voltage sequences on a 4x4 grid";
     static constexpr BusParam      inputs[]    = {

@@ -121,6 +121,10 @@ build/arm/bus_probe.o: plugins/probes/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
 
+build/arm/reentrancy_probe.o: plugins/probes/reentrancy_probe.cpp
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+
 build/arm/section_probe.o: plugins/probes/section_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o build/arm/section_probe.raw.o $<
@@ -424,7 +428,7 @@ build/host/test_dep_%: harness/tests/test_dep_%.cpp $(SHIM_CORE_SRCS) $(HARNESS_
 test-deps: $(addprefix build/host/, $(DEP_TESTS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/Hemispheres.o build/arm/Hemispheres2.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o build/arm/Hemispheres.o build/arm/Hemispheres2.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

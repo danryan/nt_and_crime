@@ -214,16 +214,23 @@ void run_controller_inner_ticks(Applet* applet, int numFramesBy4) {
 }
 
 // render_view_with_offset: templated helper that sets HS::gfx_offset and
-// HS::gfx_offset_y before delegating to the applet's View(), then clears
-// both back to 0. Per-applet plug-ins wire inst->render_view to this
-// helper instead of writing their own render_view_impl. Hosts pass the
-// slot origin via origin_x / origin_y so a Quadrants 2x2 grid renders
-// each applet shifted on both axes.
+// HS::gfx_offset_y, draws the applet header (mirrors bundled
+// hemispheres_shim's pre-View `DrawHeader()` call), then delegates to
+// the applet's View(). Clears both offsets back to 0 on exit.
+//
+// Per-applet plug-ins wire inst->render_view to this helper instead of
+// writing their own render_view_impl. Hosts pass the slot origin via
+// origin_x / origin_y; standalone use leaves both at 0. The header
+// call is required because vendor applet View() bodies do NOT render
+// their own name (the bundled Hemispheres host code draws it for them
+// at hemispheres_shim.h:210-213).
 template <typename AppletInstance>
 inline void render_view_with_offset(_NT_algorithm* self, int origin_x, int origin_y) {
     HS::gfx_offset   = origin_x;
     HS::gfx_offset_y = origin_y;
-    static_cast<AppletInstance*>(self)->applet.View();
+    auto* inst = static_cast<AppletInstance*>(self);
+    inst->applet.DrawHeader();
+    inst->applet.View();
     HS::gfx_offset   = 0;
     HS::gfx_offset_y = 0;
 }

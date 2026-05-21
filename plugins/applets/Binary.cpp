@@ -4,11 +4,6 @@
 //   Gate(0), Gate(1)  -> digital bits via frame.gate_high[0,1]
 //   In(0),   In(1)    -> analog bits via frame.inputs[0,1]
 //
-// populate_frame_from_bus writes gate_high[0,1] (correct) but writes the
-// CV bus values to inputs[2,3] (positions 2,3 in manifest). The custom
-// step_impl below copies inputs[2,3] to inputs[0,1] after populate so
-// Binary's In(0)/In(1) reads resolve correctly.
-//
 // SegmentDisplay::digit out-of-class definition lives in shim/src/globals.cpp;
 // no extra link step required.
 
@@ -76,13 +71,7 @@ static void parameterChanged_impl(_NT_algorithm*, int) {}
 
 static void step_impl(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
     auto* inst = static_cast<_AppletInstance*>(self);
-    // populate_frame_from_bus writes:
-    //   gate_high[0,1] from manifest inputs[0,1] (Gate A, Gate B) -- correct
-    //   inputs[2,3]    from manifest inputs[2,3] (CV A, CV B)
-    // Binary's Controller reads In(0)=inputs[0] and In(1)=inputs[1], so copy.
     per_applet_runtime::populate_frame_from_bus<ManifestNS>(self, busFrames, numFramesBy4, inst->input_state);
-    HS::frame.inputs[0] = HS::frame.inputs[2];
-    HS::frame.inputs[1] = HS::frame.inputs[3];
     per_applet_runtime::run_controller_inner_ticks(&inst->applet, numFramesBy4);
     per_applet_runtime::write_outputs_to_bus<ManifestNS>(self, busFrames, numFramesBy4);
 }

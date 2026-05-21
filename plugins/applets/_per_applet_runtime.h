@@ -115,9 +115,22 @@ void emit_base_parameters(_NT_parameter* dst) {
 }
 
 // Standalone per-applet runs as a single hemisphere (channel_offset = 0).
-// Manifest input i feeds HS::frame.inputs[i] (CV/audio) or
-// HS::frame.clocked[i] + .gate_high[i] (gate). Output i drains
-// HS::frame.outputs[i].value to the bus selected by its parameter.
+// Vendor HemisphereApplet base class reads Gate(ch) from
+// HS::frame.clocked[ch + channel_offset()] and In(ch) from
+// HS::frame.inputs[ch + channel_offset()]; both arrays are independent
+// of each other and addressable on the same ch index. To match this,
+// the runtime populates BOTH arrays for every manifest input,
+// regardless of declared kind. The kind only affects the parameter
+// unit (gate vs CV vs audio for the host UI) and the gate-edge state.
+//
+// Gate channels are assigned in manifest order across inputs of kind
+// gate (gate_ch[0] = first manifest gate position). CV channels are
+// assigned in manifest order across inputs of kind cv/audio (cv_ch[0]
+// = first manifest CV position). This means an applet with manifest
+// inputs [Gate, Gate, CV, CV] reads vendor Gate(0)/Gate(1) from the
+// two gate inputs and vendor In(0)/In(1) from the two CV inputs - both
+// indexed from 0 within their kind, mirroring the bundled Hemispheres
+// host's behavior.
 //
 // PerInstanceState carries the per-applet input-edge state. Lives in
 // _AppletInstance (NOT file-scope) so two instances of the same applet
@@ -136,18 +149,22 @@ void populate_frame_from_bus(_NT_algorithm* self,
     const int16_t* v = self->v;
     constexpr int N_in = input_count<ManifestNS>();
 
+    int gate_ch = 0;
+    int cv_ch   = 0;
     for (int i = 0; i < N_in; ++i) {
         const BusParam& p = ManifestNS::inputs[i];
         if (p.kind == BusKind::gate) {
-            auto g = hem_shim::read_gate(i, busFrames, numFrames, v, state.gate_prev[i]);
-            HS::frame.clocked[i]   = g.rising;
-            HS::frame.gate_high[i] = g.high;
+            auto g = hem_shim::read_gate(i, busFrames, numFrames, v, state.gate_prev[gate_ch]);
+            HS::frame.clocked[gate_ch]   = g.rising;
+            HS::frame.gate_high[gate_ch] = g.high;
+            ++gate_ch;
         } else {
-            hem_shim::copy_bus_to_frame(i, &HS::frame.inputs[i], busFrames, numFrames, v);
-            int delta = HS::frame.inputs[i] - state.last_cv[i];
+            hem_shim::copy_bus_to_frame(i, &HS::frame.inputs[cv_ch], busFrames, numFrames, v);
+            int delta = HS::frame.inputs[cv_ch] - state.last_cv[cv_ch];
             if (delta < 0) delta = -delta;
-            HS::frame.changed_cv[i] = (delta > 32);
-            if (HS::frame.changed_cv[i]) state.last_cv[i] = HS::frame.inputs[i];
+            HS::frame.changed_cv[cv_ch] = (delta > 32);
+            if (HS::frame.changed_cv[cv_ch]) state.last_cv[cv_ch] = HS::frame.inputs[cv_ch];
+            ++cv_ch;
         }
     }
 }

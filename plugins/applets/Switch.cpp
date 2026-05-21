@@ -60,36 +60,9 @@ static _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
 
 static void parameterChanged_impl(_NT_algorithm*, int) {}
 
-// Switch has a mixed 4-input manifest [Clock(gate), Gate(gate), CV1(cv), CV2(cv)].
-// populate_frame_from_bus maps manifest position i to frame.clocked[i]/gate_high[i]
-// for gate inputs and frame.inputs[i] for cv inputs. That would place the cv signals
-// at inputs[2] and inputs[3], but the vendor applet reads In(0)=inputs[0] and
-// In(1)=inputs[1]. We wire the mapping manually so each signal lands at the correct
-// frame index.
 static void step_impl(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
-    auto* inst        = static_cast<_AppletInstance*>(self);
-    const int16_t* v  = self->v;
-    int numFrames     = numFramesBy4 * 4;
-
-    // Manifest position 0 = Clock (gate) -> clocked[0] + gate_high[0]
-    {
-        auto g = hem_shim::read_gate(0, busFrames, numFrames, v,
-                                     inst->input_state.gate_prev[0]);
-        HS::frame.clocked[0]   = g.rising;
-        HS::frame.gate_high[0] = g.high;
-    }
-    // Manifest position 1 = Gate (gate) -> clocked[1] + gate_high[1]
-    {
-        auto g = hem_shim::read_gate(1, busFrames, numFrames, v,
-                                     inst->input_state.gate_prev[1]);
-        HS::frame.clocked[1]   = g.rising;
-        HS::frame.gate_high[1] = g.high;
-    }
-    // Manifest position 2 = CV1 (cv) -> inputs[0]   (vendor reads In(0))
-    hem_shim::copy_bus_to_frame(2, &HS::frame.inputs[0], busFrames, numFrames, v);
-    // Manifest position 3 = CV2 (cv) -> inputs[1]   (vendor reads In(1))
-    hem_shim::copy_bus_to_frame(3, &HS::frame.inputs[1], busFrames, numFrames, v);
-
+    auto* inst = static_cast<_AppletInstance*>(self);
+    per_applet_runtime::populate_frame_from_bus<ManifestNS>(self, busFrames, numFramesBy4, inst->input_state);
     per_applet_runtime::run_controller_inner_ticks(&inst->applet, numFramesBy4);
     per_applet_runtime::write_outputs_to_bus<ManifestNS>(self, busFrames, numFramesBy4);
 }

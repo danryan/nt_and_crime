@@ -129,7 +129,10 @@ public:
     }
 
     // gfx wrappers — all draw to the shim's graphics global, with offsets honored.
-    void gfxPos(int x, int y)                  { graphics.setPrintPos(x + gfx_offset, y); }
+    // Both axes use a shim global: gfx_offset (X) and gfx_offset_y (Y).
+    // Hosts set both before calling per-applet View(); standalone runs leave
+    // them at 0 so the applet draws to canonical coordinates.
+    void gfxPos(int x, int y)                  { graphics.setPrintPos(x + gfx_offset, y + gfx_offset_y); }
     void gfxPrint(const char* s)               { graphics.print(s); }
     void gfxPrint(int n)                       { graphics.print(n); }
     void gfxPrint(int x, int y, const char* s) { gfxPos(x, y); gfxPrint(s); }
@@ -140,32 +143,32 @@ public:
         gfxPrint(n);
     }
 
-    void gfxFrame(int x, int y, int w, int h)  { graphics.drawFrame(x + gfx_offset, y, w, h); }
+    void gfxFrame(int x, int y, int w, int h)  { graphics.drawFrame(x + gfx_offset, y + gfx_offset_y, w, h); }
     // Vendor 5-arg overload (HemisphereApplet.h, VectorLFO.h:206): dotted bool.
     // Shim ignores the dotted flag and falls through to solid frame; host
     // tests do not assert on dotted-vs-solid rendering.
     void gfxFrame(int x, int y, int w, int h, bool /*dotted*/) {
-        graphics.drawFrame(x + gfx_offset, y, w, h);
+        graphics.drawFrame(x + gfx_offset, y + gfx_offset_y, w, h);
     }
-    void gfxRect(int x, int y, int w, int h)   { graphics.drawRect(x + gfx_offset, y, w, h); }
-    void gfxInvert(int x, int y, int w, int h) { graphics.invertRect(x + gfx_offset, y, w, h); }
-    void gfxClear(int x, int y, int w, int h)  { graphics.clearRect(x + gfx_offset, y, w, h); }
-    void gfxLine(int x, int y, int x2, int y2) { graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2); }
+    void gfxRect(int x, int y, int w, int h)   { graphics.drawRect(x + gfx_offset, y + gfx_offset_y, w, h); }
+    void gfxInvert(int x, int y, int w, int h) { graphics.invertRect(x + gfx_offset, y + gfx_offset_y, w, h); }
+    void gfxClear(int x, int y, int w, int h)  { graphics.clearRect(x + gfx_offset, y + gfx_offset_y, w, h); }
+    void gfxLine(int x, int y, int x2, int y2) { graphics.drawLine(x + gfx_offset, y + gfx_offset_y, x2 + gfx_offset, y2 + gfx_offset_y); }
     void gfxLine(int x, int y, int x2, int y2, bool dashed) {
-        graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2, dashed ? 0xAA : 0xFF);
+        graphics.drawLine(x + gfx_offset, y + gfx_offset_y, x2 + gfx_offset, y2 + gfx_offset_y, dashed ? 0xAA : 0xFF);
     }
-    void gfxPixel(int x, int y)                { graphics.setPixel(x + gfx_offset, y); }
-    void gfxCircle(int x, int y, int r)        { graphics.drawCircle(x + gfx_offset, y, r); }
+    void gfxPixel(int x, int y)                { graphics.setPixel(x + gfx_offset, y + gfx_offset_y); }
+    void gfxCircle(int x, int y, int r)        { graphics.drawCircle(x + gfx_offset, y + gfx_offset_y, r); }
 
     void gfxBitmap(int x, int y, int w, const uint8_t* data) {
-        graphics.drawBitmap8(x + gfx_offset, y, w, data);
+        graphics.drawBitmap8(x + gfx_offset, y + gfx_offset_y, w, data);
     }
     void gfxIcon(int x, int y, const uint8_t* data, bool /*clearfirst*/ = false) {
         gfxBitmap(x, y, 8, data);
     }
 
     void gfxDottedLine(int x, int y, int x2, int y2) {
-        graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2, 0xAA);
+        graphics.drawLine(x + gfx_offset, y + gfx_offset_y, x2 + gfx_offset, y2 + gfx_offset_y, 0xAA);
     }
 
     // Mirrors upstream `gfxDottedLine(x, y, x2, y2, p)` (HSUtils.cpp). Vendor
@@ -177,7 +180,7 @@ public:
         if (p <= 1) pattern = 0xFF;
         else if (p == 2) pattern = 0xAA;
         else pattern = 0x88;
-        graphics.drawLine(x + gfx_offset, y, x2 + gfx_offset, y2, pattern);
+        graphics.drawLine(x + gfx_offset, y + gfx_offset_y, x2 + gfx_offset, y2 + gfx_offset_y, pattern);
     }
 
     // Phazerville-style header: applet name at top of hemisphere half with a
@@ -265,7 +268,7 @@ public:
                       const char* /*extra*/ = nullptr) {
         int w = graphics.getPrintPosX() - cursor_start_x_;
         if (w <= 0) w = 1;
-        if (is_cursor) gfxCursor(cursor_start_x_ - gfx_offset, cursor_start_y_ + 8, w);
+        if (is_cursor) gfxCursor(cursor_start_x_ - gfx_offset, cursor_start_y_ + 8 - gfx_offset_y, w);
     }
 
     // gfxPrint overloads for input map types. Vendor uses these to print

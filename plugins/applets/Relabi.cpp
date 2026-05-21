@@ -14,14 +14,8 @@ namespace { using ManifestNS = per_applet::Relabi_manifest; }
 
 struct _AppletInstance : public HemiPluginInterface {
     Relabi applet;
+    per_applet_runtime::PerInstanceState input_state;
 };
-
-static void render_view_impl(_NT_algorithm* self, int origin_x, int /*origin_y*/) {
-    HS::gfx_offset = origin_x;
-    auto* inst = static_cast<_AppletInstance*>(self);
-    inst->applet.View();
-    HS::gfx_offset = 0;
-}
 
 static void on_encoder_turn_impl(_NT_algorithm* self, int dir) {
     auto* inst = static_cast<_AppletInstance*>(self);
@@ -59,7 +53,7 @@ static _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
 
     inst->magic             = kHemiInterfaceMagic;
     inst->interface_version = kHemiInterfaceVersion;
-    inst->render_view             = render_view_impl;
+    inst->render_view             = per_applet_runtime::render_view_with_offset<_AppletInstance>;
     inst->on_encoder_turn         = on_encoder_turn_impl;
     inst->on_encoder_turn_shifted = on_encoder_turn_impl;
     inst->on_button_press         = on_button_press_impl;
@@ -77,7 +71,7 @@ static void parameterChanged_impl(_NT_algorithm* /*self*/, int /*p*/) {
 
 static void step_impl(_NT_algorithm* self, float* busFrames, int numFramesBy4) {
     auto* inst = static_cast<_AppletInstance*>(self);
-    per_applet_runtime::populate_frame_from_bus<ManifestNS>(self, busFrames, numFramesBy4);
+    per_applet_runtime::populate_frame_from_bus<ManifestNS>(self, busFrames, numFramesBy4, inst->input_state);
     per_applet_runtime::run_controller_inner_ticks(&inst->applet, numFramesBy4);
     per_applet_runtime::write_outputs_to_bus<ManifestNS>(self, busFrames, numFramesBy4);
 }

@@ -1,11 +1,14 @@
 // Quadrants Host plug-in.
 //
-// Composes 4 HemiPluginInterface applets in a 2x2 grid on the 128x64 screen.
+// Composes 4 HemiPluginInterface applets in a 1x4 row on the 256x64 screen.
 // Slot layout:
-//   Slot 0: origin (0,  0) - top-left  (64x32)
-//   Slot 1: origin (64, 0) - top-right (64x32)
-//   Slot 2: origin (0, 32) - bot-left  (64x32)
-//   Slot 3: origin (64,32) - bot-right (64x32)
+//   Slot 0: origin (  0, 0) - 64-px column 0
+//   Slot 1: origin ( 64, 0) - 64-px column 1
+//   Slot 2: origin (128, 0) - 64-px column 2
+//   Slot 3: origin (192, 0) - 64-px column 3
+// All slots share the full 64-row vertical range. HS::gfx_offset_y stays
+// 0 for this layout; the shim Y-offset machinery lives in the runtime
+// helper for future grid topologies.
 //
 // Focused-slot control (spec: 2026-05-19-per-applet-pilot-design.md):
 //   button1-4 edges set focused slot index (0-3).
@@ -56,9 +59,9 @@ static const _NT_parameter s_params[kNumParams] = {
     { "Slot 3 index", 0, 15, 3, kNT_unitNone, kNT_scalingNone, nullptr },
 };
 
-// Slot origin table (origin_x, origin_y).
-static constexpr int kSlotOriginX[4] = {  0, 64,  0, 64 };
-static constexpr int kSlotOriginY[4] = {  0,  0, 32, 32 };
+// Slot origin table (origin_x, origin_y). 1x4 layout on 256x64 screen.
+static constexpr int kSlotOriginX[4] = {  0, 64, 128, 192 };
+static constexpr int kSlotOriginY[4] = {  0,  0,   0,   0 };
 
 // ---------------------------------------------------------------------------
 // Algorithm instance
@@ -219,12 +222,13 @@ static bool draw_impl(_NT_algorithm* self) {
         }
     }
 
-    // Draw focused-slot border: 1px inverted box around the focused region.
+    // Draw focused-slot border: 1px inverted box around the focused region
+    // (64-wide column, full 64-row height).
     {
         int fi = inst->focused_slot_idx & 3;
         int ox = kSlotOriginX[fi];
         int oy = kSlotOriginY[fi];
-        NT_drawShapeI(kNT_box, ox, oy, ox + 63, oy + 31, 15);
+        NT_drawShapeI(kNT_box, ox, oy, ox + 63, oy + 63, 15);
     }
 
     return true;

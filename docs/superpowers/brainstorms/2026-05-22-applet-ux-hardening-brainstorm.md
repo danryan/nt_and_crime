@@ -56,6 +56,14 @@ Fix surface guess: host plug-in's parameter-table construction (`Hemispheres_hos
 
 Note: this contradicts the mass-port batch's "no host edits" exclusion. The exclusion was for behavioral changes; a name-string fix on unbound entries is cosmetic. Spec phase decides whether to lift the exclusion locally or defer Q3 to a separate phase.
 
+### Q4: Quadrants 4-button focus selector wastes buttons (added 2026-05-22)
+
+Quadrants Host's `customUi_impl` currently claims `kNT_button1 | kNT_button2 | kNT_button3 | kNT_button4` and uses each button as a direct-select for one of the four slots (button1 -> slot 0, ..., button4 -> slot 3). This obscures all four firmware buttons' default uses for the trivial benefit of single-press random access to any slot.
+
+Better mapping: claim only `kNT_button3` (advance focused slot forward) and `kNT_button4` (retreat focused slot). Buttons 1 and 2 stay unclaimed and firmware handles them per its defaults. Worst-case slot access is two presses instead of one; the benefit is freeing two firmware buttons.
+
+Fix surface guess: `plugins/hosts/Quadrants_host.cpp::hasCustomUi_impl` and `customUi_impl` only. Existing `qq_test_inject_slot` host test seam covers regression. Hemispheres host is out of scope (its button1/2 map to slot 0/1 aux-button forwarding, which IS functional and not wasteful).
+
 ### Discovery complete (2026-05-22)
 
 Sweep complete on hardware: three confirmed quirks (Q1 bleed, Q2 encoder-turn footer, Q3 unused-param labels). No additional quirks observed during the cycle through all 49 per-applet plug-ins under both Hemispheres and Quadrants hosts. The candidate list below remained unconfirmed and is dropped from this batch's scope (re-eligible for a future hardening pass if observed):

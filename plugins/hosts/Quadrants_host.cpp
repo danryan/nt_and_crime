@@ -339,26 +339,25 @@ static bool draw_impl(_NT_algorithm* self) {
 }
 
 static uint32_t hasCustomUi_impl(_NT_algorithm* /*self*/) {
+    // Q4 (2026-05-22): only claim buttons 3 and 4 for slot cycling.
+    // Button 3 advances focused_slot_idx forward; button 4 retreats. Buttons
+    // 1 and 2 stay unclaimed so the firmware handles them per its defaults.
     return kNT_encoderL | kNT_encoderR
          | kNT_encoderButtonL | kNT_encoderButtonR
-         | kNT_button1 | kNT_button2 | kNT_button3 | kNT_button4;
+         | kNT_button3 | kNT_button4;
 }
 
 static void customUi_impl(_NT_algorithm* self, const _NT_uiData& data) {
     auto* inst = static_cast<_QQInstance*>(self);
 
-    // Button edges set focused slot.
-    if ((data.controls & kNT_button1) && !(data.lastButtons & kNT_button1)) {
-        inst->focused_slot_idx = 0;
-    }
-    if ((data.controls & kNT_button2) && !(data.lastButtons & kNT_button2)) {
-        inst->focused_slot_idx = 1;
-    }
+    // Q4: button 3 advances focused slot forward; button 4 retreats.
+    // (Replaces the previous direct-select-per-button scheme, which claimed
+    // all four firmware buttons and obscured their default firmware uses.)
     if ((data.controls & kNT_button3) && !(data.lastButtons & kNT_button3)) {
-        inst->focused_slot_idx = 2;
+        inst->focused_slot_idx = (inst->focused_slot_idx + 1) & 3;
     }
     if ((data.controls & kNT_button4) && !(data.lastButtons & kNT_button4)) {
-        inst->focused_slot_idx = 3;
+        inst->focused_slot_idx = (inst->focused_slot_idx + 3) & 3;
     }
 
     // Ensure cached slots are populated (first customUi before draw is safe).

@@ -121,6 +121,22 @@ Q2 prereqs: existing `hasCustomUi_impl` and `customUi_impl` already live in both
 
 Q3 prereqs: existing `host_proxy.cpp` initialization paths already touched per host. No new tests-infrastructure required; `harness/tests/test_host_proxy.cpp` already exists.
 
+### Q4: Quadrants 4-button focus selector simplified to 2-button cycle
+
+Mitigation: drop `kNT_button1` and `kNT_button2` from `Quadrants_host::hasCustomUi_impl`'s return. Replace the direct-select handlers with a cycle: `kNT_button3` advances `focused_slot_idx` by 1 (mod 4); `kNT_button4` retreats by 1 (mod 4). Buttons 1 and 2 stay unclaimed and firmware handles them per its defaults.
+
+Affected files:
+
+- `plugins/hosts/Quadrants_host.cpp::hasCustomUi_impl`: drop button1/2 bits from the OR.
+- `plugins/hosts/Quadrants_host.cpp::customUi_impl`: replace the four direct-select if-branches with two cycle branches (forward on button3, backward on button4).
+- `harness/tests/test_host_Quadrants_host.cpp`: QH1a/QH1b now assert button1/2 events leave `focused_slot_idx` unchanged. QH1c/QH1d now verify the cycle semantics including 3->0 wrap-forward and 0->3 wrap-backward. QH10 mask test updated to assert button1/2 unclaimed, button3/4 claimed. QH11 retargeted from button1 to button3 for the no-rising-edge regression.
+
+Expected behavior: on hardware, in Quadrants Host, button3 advances which slot has the focus border and receives encoder/encoder-button events; button4 retreats. Buttons 1 and 2 perform their default firmware actions (whatever those are; likely algorithm-page navigation or no-op).
+
+Hemispheres host out of scope: its button1/2 forward to per-slot `on_aux_button` (functional, not a wasteful direct-select).
+
+Test plan: `make test-hosts-pilot` passes (108 assertions in Quadrants, up from 104); regression sweep green; `make arm` clean; hardware smoke confirms cycle direction matches expectation and unclaimed buttons no longer steal focus.
+
 ## Q2 spike outcome (2026-05-22)
 
 Both spikes ran on hardware. Result: Q2 deferred. Not shipping in this batch.

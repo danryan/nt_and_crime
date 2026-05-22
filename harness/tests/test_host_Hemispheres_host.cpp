@@ -186,8 +186,11 @@ TEST_CASE("HH2: calculateRequirements reports proxy-aware numParameters",
     REQUIRE(loaded != nullptr);
     _NT_algorithmRequirements req{};
     loaded->factory->calculateRequirements(req, nullptr);
+    // Hemispheres: K=2 lanes -> 2 selectors + 2*16 proxy params = 34.
+    constexpr int kHostSlots = 2;
     REQUIRE(req.numParameters ==
-            static_cast<uint32_t>(host_proxy::kMaxHostParams));
+            static_cast<uint32_t>(kHostSlots +
+                                  kHostSlots * host_proxy::kMaxProxyParamsPerSlot));
     REQUIRE(req.sram > 0u);
 }
 

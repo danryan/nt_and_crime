@@ -86,8 +86,9 @@ TEST_CASE("HP1: calculateRequirements reports proxy-aware numParameters",
     REQUIRE(loaded != nullptr);
     _NT_algorithmRequirements req{};
     loaded->factory->calculateRequirements(req, nullptr);
-    int expected = host_proxy::kMaxSlotsPerHost +
-                   host_proxy::kMaxSlotsPerHost * host_proxy::kMaxProxyParamsPerSlot;
+    // Hemispheres uses K = 2 lanes: 2 selectors + 2 * 16 proxy params = 34.
+    constexpr int kHostSlots = 2;
+    int expected = kHostSlots + kHostSlots * host_proxy::kMaxProxyParamsPerSlot;
     REQUIRE(req.numParameters == static_cast<uint32_t>(expected));
 }
 

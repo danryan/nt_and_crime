@@ -176,13 +176,12 @@ static void resolve_and_cache(_HHInstance* inst) {
 
 static void calculateRequirements_impl(_NT_algorithmRequirements& req,
                                        const int32_t* /*specifications*/) {
-    // Budget the full proxy table (kMaxSlotsPerHost selectors plus
-    // kMaxSlotsPerHost * kMaxProxyParamsPerSlot proxy entries). The
-    // Hemispheres host only uses the first 2 lanes, but the shared
-    // host_proxy state and parameter array are sized for the worst case
-    // (Quadrants), keeping the on-instance State::proxy_params[] backing
-    // store laid out consistently.
-    req.numParameters = host_proxy::kMaxHostParams;
+    // Hemispheres uses K = 2 lanes. Selectors live at proxy_params[0..1];
+    // proxy params at proxy_params[K + lane*kMaxProxyParamsPerSlot ..].
+    // Total used = K + K * kMaxProxyParamsPerSlot = 2 + 32 = 34.
+    // host_proxy::State sizes proxy_params[] to the worst case (Quadrants,
+    // 68); firmware must only see the valid 34 to avoid phantom params.
+    req.numParameters = kHostSlots + kHostSlots * host_proxy::kMaxProxyParamsPerSlot;
     req.sram  = sizeof(_HHInstance);
     req.dram  = 0;
     req.dtc   = 0;

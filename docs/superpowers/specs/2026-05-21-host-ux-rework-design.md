@@ -130,10 +130,10 @@ req.sram          = sizeof(_HHInstance);  // (or _QQInstance) which now includes
 `construct_impl`:
 
 1. `host_proxy::init(state, K)` — zeroes proxy fields, seeds "---" unbound enum.
-2. For each lane `i` in `[0, K)`, call `host_proxy::init_selector(state, i, "Slot <i>", i + 1)` to install the selector parameter and its default value (clamped against the current enum count).
-3. `host_proxy::refresh_enum_strings(state)` — populates real enum entries from the preset; the helper auto-updates each selector's `max` field.
+2. `host_proxy::refresh_enum_strings(state)` — populates real enum entries from the preset. MUST run before any `init_selector` call: `init_selector` clamps `def_value` against the current `enum_strs.count`, which would silently zero every selector's default if the enum table still held only "---".
+3. For each lane `i` in `[0, K)`, call `host_proxy::init_selector(state, i, "Slot <i>", i + 1)` to install the selector parameter and its default value.
 4. For each lane `i`, call `host_proxy::aggregate_slot(state, i, host_proxy::resolve_enum_to_slot(state, state.proxy_params[i].def))`. (`v[]` is not yet bound at construct on hardware; pass `def` directly as the canonical "initial enum value" for the lane.)
-5. Set `inst->parameters = state.proxy_params`.
+5. Set `inst->parameters = state.proxy_params`. Set `req.numParameters = K + K * kMaxProxyParamsPerSlot` (NOT `kMaxHostParams`): for K=2 the valid table ends at index 33; firmware reading past the valid range exposes zero-init phantom params with `name=nullptr`.
 
 `parameterChanged_impl(self, host_p)`:
 

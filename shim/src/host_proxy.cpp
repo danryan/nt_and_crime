@@ -16,7 +16,6 @@
 
 #include "host_proxy.h"
 
-#include <cstdio>
 #include <cstring>
 
 #ifndef NT_HEM_HOST_SIM
@@ -45,6 +44,23 @@ void clamp_copy(char* dst, size_t cap, const char* src) {
         ++n;
     }
     dst[n] = '\0';
+}
+
+// Inline two-digit unsigned formatter for 0..99. NT firmware does not
+// resolve snprintf (the documented newlib set covers memcpy/memset/etc
+// only); see CLAUDE.md "ARM unresolved-symbol surface". Returns number of
+// chars written (1 or 2). dst MUST have cap >= 3 to hold "99\0".
+size_t format_u2(char* dst, unsigned v) {
+    if (v >= 100) v = 99;
+    if (v >= 10) {
+        dst[0] = static_cast<char>('0' + (v / 10));
+        dst[1] = static_cast<char>('0' + (v % 10));
+        dst[2] = '\0';
+        return 2;
+    }
+    dst[0] = static_cast<char>('0' + v);
+    dst[1] = '\0';
+    return 1;
 }
 
 }  // namespace
@@ -208,13 +224,13 @@ bool refresh_enum_strings(State& s) {
         if (!test_get_name_guid(i, name, sizeof(name), &guid)) continue;
         if (!guid_is_hemi(guid)) continue;
         char* dst = next_storage[next_count];
-        char  prefix[6];
-        std::snprintf(prefix, sizeof(prefix), "%u ", static_cast<unsigned>(i));
+        char  digits[4];
+        size_t dlen = format_u2(digits, static_cast<unsigned>(i));
         size_t off = 0;
-        while (off + 1 < kEnumNameMax && prefix[off]) {
-            dst[off] = prefix[off];
-            ++off;
+        for (size_t k = 0; k < dlen && off + 1 < kEnumNameMax; ++k, ++off) {
+            dst[off] = digits[k];
         }
+        if (off + 1 < kEnumNameMax) dst[off++] = ' ';
         for (size_t k = 0; off + 1 < kEnumNameMax && name[k]; ++k, ++off) {
             dst[off] = name[k];
         }
@@ -278,13 +294,14 @@ uint32_t resolve_enum_to_slot(const State& s, int enum_value) {
 namespace {
 
 void format_proxy_name(char* dst, int lane, const char* vendor_name) {
-    char prefix[5];
-    std::snprintf(prefix, sizeof(prefix), "S%d ", lane);
     size_t off = 0;
-    while (off + 1 < kProxyNameMax && prefix[off]) {
-        dst[off] = prefix[off];
-        ++off;
+    if (off + 1 < kProxyNameMax) dst[off++] = 'S';
+    char digits[4];
+    size_t dlen = format_u2(digits, static_cast<unsigned>(lane < 0 ? 0 : lane));
+    for (size_t k = 0; k < dlen && off + 1 < kProxyNameMax; ++k, ++off) {
+        dst[off] = digits[k];
     }
+    if (off + 1 < kProxyNameMax) dst[off++] = ' ';
     if (vendor_name) {
         for (size_t k = 0; off + 1 < kProxyNameMax && vendor_name[k]; ++k, ++off) {
             dst[off] = vendor_name[k];

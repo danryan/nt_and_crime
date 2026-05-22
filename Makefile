@@ -87,6 +87,14 @@ build/host/test_params: harness/tests/test_params.cpp harness/src/plugin_loader.
 test-params: build/host/test_params
 	./build/host/test_params
 
+build/host/test_host_proxy: harness/tests/test_host_proxy.cpp shim/src/host_proxy.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+.PHONY: test-host-proxy
+test-host-proxy: build/host/test_host_proxy
+	./build/host/test_host_proxy
+
 build/host/test_loader: harness/tests/test_loader.cpp \
                         vendor/distingNT_API/examples/gainCustomUI.cpp \
                         $(HARNESS_SRCS)

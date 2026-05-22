@@ -167,7 +167,7 @@ TEST_CASE("aggregate_slot copies vendor params and prefixes names with \"S<lane>
 
     REQUIRE(s.maps[0].slot_idx == 5);
     REQUIRE(s.maps[0].slot_param_cnt == 3);
-    int base = 0;
+    int base = s.kNumSlotIndexParams;  // proxy region starts after K selectors
     REQUIRE(std::strncmp(s.proxy_params[base + 0].name, "S0 ", 3) == 0);
     REQUIRE(std::strstr(s.proxy_params[base + 0].name, "Trigger")   != nullptr);
     REQUIRE(std::strstr(s.proxy_params[base + 1].name, "Length")    != nullptr);
@@ -213,10 +213,66 @@ TEST_CASE("aggregate_slot lane 1 places params at offset K + 1*kMaxProxyParamsPe
 
     host_proxy::aggregate_slot(s, 1, 0);
 
-    int base = 1 * kMaxProxyParamsPerSlot;
+    int base = s.kNumSlotIndexParams + 1 * kMaxProxyParamsPerSlot;
     REQUIRE(s.maps[1].slot_idx == 0);
     REQUIRE(std::strncmp(s.proxy_params[base + 0].name, "S1 ", 3) == 0);
     REQUIRE(std::strstr(s.proxy_params[base + 0].name, "Trigger") != nullptr);
+}
+
+TEST_CASE("init_selector populates proxy_params[lane] with enum binding",
+          "[host_proxy][init_selector]") {
+    clear();
+    State s;
+    host_proxy::init(s, 2);
+    host_proxy::init_selector(s, 0, "Slot 0", 0);
+    host_proxy::init_selector(s, 1, "Slot 1", 0);
+
+    REQUIRE(std::string(s.proxy_params[0].name) == "Slot 0");
+    REQUIRE(std::string(s.proxy_params[1].name) == "Slot 1");
+    REQUIRE(s.proxy_params[0].min == 0);
+    REQUIRE(s.proxy_params[0].max == 0);  // only "---" entry yet
+    REQUIRE(s.proxy_params[0].def == 0);
+    REQUIRE(s.proxy_params[0].unit == kNT_unitEnum);
+    REQUIRE(s.proxy_params[0].enumStrings == s.enum_strs.table);
+}
+
+TEST_CASE("init_selector clamps def_value into [0, enum_strs.count - 1]",
+          "[host_proxy][init_selector]") {
+    clear();
+    State s;
+    host_proxy::init(s, 2);
+    host_proxy::hp_test_inject_slot(0, "Cumulus", kHemiGuid_Cu, 3, sample_params_3);
+    host_proxy::hp_test_inject_slot(1, "Stairs",  kHemiGuid_St, 3, sample_params_3);
+    host_proxy::refresh_enum_strings(s);  // enum_strs.count == 3 now
+
+    host_proxy::init_selector(s, 0, "Slot 0", 99);  // out-of-range high
+    REQUIRE(s.proxy_params[0].def == 2);            // clamped to count - 1
+
+    host_proxy::init_selector(s, 1, "Slot 1", -5);  // out-of-range low
+    REQUIRE(s.proxy_params[1].def == 0);
+}
+
+TEST_CASE("refresh_enum_strings auto-updates selector max",
+          "[host_proxy][refresh]") {
+    clear();
+    State s;
+    host_proxy::init(s, 2);
+    host_proxy::init_selector(s, 0, "Slot 0", 0);
+    host_proxy::init_selector(s, 1, "Slot 1", 0);
+
+    host_proxy::hp_test_inject_slot(0, "Cumulus", kHemiGuid_Cu, 3, sample_params_3);
+    host_proxy::hp_test_inject_slot(1, "Stairs",  kHemiGuid_St, 3, sample_params_3);
+    host_proxy::refresh_enum_strings(s);
+
+    REQUIRE(s.enum_strs.count == 3);
+    REQUIRE(s.proxy_params[0].max == 2);
+    REQUIRE(s.proxy_params[1].max == 2);
+
+    clear();
+    host_proxy::refresh_enum_strings(s);
+    REQUIRE(s.enum_strs.count == 1);
+    REQUIRE(s.proxy_params[0].max == 0);
+    REQUIRE(s.proxy_params[1].max == 0);
 }
 
 TEST_CASE("decode_forward maps a host parameter to (slot_idx, slot_param_idx)",

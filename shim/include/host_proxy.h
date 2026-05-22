@@ -41,6 +41,11 @@ inline constexpr uint32_t kInvalidSlotIdx           = 0xFFFFFFFFu;
 inline constexpr int      kProxyNameMax             = 24;
 inline constexpr int      kEnumNameMax              = 20;
 
+// Total parameter slots a host's table can hold: K selectors at
+// [0..K-1] then K * kMaxProxyParamsPerSlot proxy params at [K..].
+inline constexpr int      kMaxHostParams =
+    kMaxSlotsPerHost + kMaxSlotsPerHost * kMaxProxyParamsPerSlot;  // 68
+
 struct EnumStrings {
     char  storage[kMaxHemiPrefixEnumEntries][kEnumNameMax];
     const char* table[kMaxHemiPrefixEnumEntries];
@@ -56,8 +61,11 @@ struct State {
     int            num_slots;          // K
     int            kNumSlotIndexParams; // K, copied for readers
     EnumStrings    enum_strs;
-    _NT_parameter  proxy_params[kMaxSlotsPerHost * kMaxProxyParamsPerSlot];
-    char           proxy_names[kMaxSlotsPerHost * kMaxProxyParamsPerSlot][kProxyNameMax];
+    // Single contiguous table that firmware reads via inst->parameters.
+    //   [0..K-1]                                       : selector parameters
+    //   [K + lane * kMaxProxyParamsPerSlot ..]         : proxy parameters for `lane`
+    _NT_parameter  proxy_params[kMaxHostParams];
+    char           proxy_names[kMaxHostParams][kProxyNameMax];
     ProxyMap       maps[kMaxSlotsPerHost];
     uint32_t       draw_count;
 };
@@ -69,8 +77,18 @@ struct ForwardTarget {
 
 // Initialize a State for a host with K = num_slots selector lanes.
 // Zeros all proxy fields, sets num_slots / kNumSlotIndexParams, builds the
-// initial enum table containing only the "---" unbound entry.
+// initial enum table containing only the "---" unbound entry. The selector
+// parameters at proxy_params[0..K-1] are zeroed; the host must call
+// init_selector for each lane to install the visible name + default value.
 void init(State& s, int num_slots);
+
+// Install a selector parameter into proxy_params[lane]. Bind the parameter
+// to State::enum_strs.table; min = 0, max = enum_strs.count - 1, def =
+// def_value (0 = "---" unbound; 1.. = entry index in enum_strs.table).
+// refresh_enum_strings keeps max in sync with enum_strs.count - 1 across
+// subsequent rescans. visible_name copies into proxy_names[lane] and the
+// parameter's `name` field binds to that buffer.
+void init_selector(State& s, int lane, const char* visible_name, int def_value);
 
 // Rebuild State::enum_strs by scanning NT_algorithmCount() preset slots
 // for guid prefix 'Hm'. Index 0 is reserved for "---" (unbound).

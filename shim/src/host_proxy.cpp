@@ -165,7 +165,7 @@ void init(State& s, int num_slots) {
     clamp_copy(s.enum_strs.storage[0], kEnumNameMax, "---");
     s.enum_strs.count = 1;
 
-    for (int i = 0; i < kMaxSlotsPerHost * kMaxProxyParamsPerSlot; ++i) {
+    for (int i = 0; i < kMaxHostParams; ++i) {
         s.proxy_params[i] = { nullptr, 0, 0, 0, kNT_unitNone, 0, nullptr };
         s.proxy_names[i][0] = '\0';
     }
@@ -173,6 +173,24 @@ void init(State& s, int num_slots) {
         s.maps[lane].slot_idx       = kInvalidSlotIdx;
         s.maps[lane].slot_param_cnt = 0;
     }
+}
+
+void init_selector(State& s, int lane, const char* visible_name, int def_value) {
+    if (lane < 0 || lane >= kMaxSlotsPerHost) return;
+    clamp_copy(s.proxy_names[lane], kProxyNameMax, visible_name);
+    int16_t max_val = static_cast<int16_t>(
+        s.enum_strs.count > 0 ? s.enum_strs.count - 1 : 0);
+    if (def_value < 0) def_value = 0;
+    if (def_value > max_val) def_value = max_val;
+    s.proxy_params[lane] = {
+        s.proxy_names[lane],
+        /*min*/ static_cast<int16_t>(0),
+        /*max*/ max_val,
+        /*def*/ static_cast<int16_t>(def_value),
+        /*unit*/ kNT_unitEnum,
+        /*scaling*/ static_cast<uint8_t>(0),
+        /*enumStrings*/ s.enum_strs.table,
+    };
 }
 
 bool refresh_enum_strings(State& s) {
@@ -224,6 +242,13 @@ bool refresh_enum_strings(State& s) {
     for (int i = 0; i < kMaxHemiPrefixEnumEntries; ++i) {
         s.enum_strs.table[i] = s.enum_strs.storage[i];
     }
+    // Auto-maintain selector max so users cannot pick beyond the live
+    // enum table after a preset edit. Selectors live at proxy_params[lane]
+    // for lane < num_slots.
+    int16_t new_max = static_cast<int16_t>(next_count > 0 ? next_count - 1 : 0);
+    for (int lane = 0; lane < s.num_slots; ++lane) {
+        s.proxy_params[lane].max = new_max;
+    }
     // resolve_enum_to_slot re-scans the preset to map enum -> preset slot
     // idx; refresh + resolve walk the same preset-scan order so the Nth
     // Hemi-prefix algorithm corresponds to enum_value == N. No side table
@@ -272,7 +297,8 @@ void format_proxy_name(char* dst, int lane, const char* vendor_name) {
 
 void aggregate_slot(State& s, int lane, uint32_t slot_idx) {
     if (lane < 0 || lane >= kMaxSlotsPerHost) return;
-    int base = lane * kMaxProxyParamsPerSlot;
+    // Proxy params live after the K selectors: [K + lane*16 .. +16).
+    int base = s.kNumSlotIndexParams + lane * kMaxProxyParamsPerSlot;
 
     if (slot_idx == kInvalidSlotIdx) {
         s.maps[lane].slot_idx       = kInvalidSlotIdx;

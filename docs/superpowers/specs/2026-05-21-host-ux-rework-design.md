@@ -129,12 +129,11 @@ req.sram          = sizeof(_HHInstance);  // (or _QQInstance) which now includes
 
 `construct_impl`:
 
-1. Initialize `State` (zero all proxy params, set `kNumSlotIndexParams = K`).
-2. Populate the `K` selector entries: `state.proxy_params[i] = { "Slot N", 0, 0, 0, kNT_unitEnum, kNT_scalingNone, state.enum_strs.table }`. min/max set after first enum refresh.
-3. `host_proxy::refresh_enum_strings(state)`.
-4. For each lane `i` in `[0, K)`, set the default enum value: matching prior behavior, default `v[i] = i + 1` so first preset Hemi slot binds to lane 0 etc. (clamped to enum count).
-5. For each lane, `aggregate_slot(state, i, resolve_enum_to_slot(state, v[i]))`. (Note: `v[]` is not yet bound at construct on hardware; the helper is reentrant against the case where slot lookups return empty.)
-6. Set `inst->parameters = state.proxy_params`.
+1. `host_proxy::init(state, K)` — zeroes proxy fields, seeds "---" unbound enum.
+2. For each lane `i` in `[0, K)`, call `host_proxy::init_selector(state, i, "Slot <i>", i + 1)` to install the selector parameter and its default value (clamped against the current enum count).
+3. `host_proxy::refresh_enum_strings(state)` — populates real enum entries from the preset; the helper auto-updates each selector's `max` field.
+4. For each lane `i`, call `host_proxy::aggregate_slot(state, i, host_proxy::resolve_enum_to_slot(state, state.proxy_params[i].def))`. (`v[]` is not yet bound at construct on hardware; pass `def` directly as the canonical "initial enum value" for the lane.)
+5. Set `inst->parameters = state.proxy_params`.
 
 `parameterChanged_impl(self, host_p)`:
 

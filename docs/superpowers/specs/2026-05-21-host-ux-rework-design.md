@@ -88,7 +88,7 @@ struct State {
     char           proxy_names[kMaxSlotsPerHost * kMaxProxyParamsPerSlot][24];
     ProxyMap       maps[kMaxSlotsPerHost];
     int            kNumSlotIndexParams;                // K, copied for readers
-    bool           in_forward;                         // re-entry guard
+    uint32_t       draw_count;                         // increments per draw_impl entry
 };
 
 // Build/refresh the enum string table by scanning NT_algorithmCount() slots
@@ -155,14 +155,17 @@ if (host_p < s.kNumSlotIndexParams) {
     return;
 }
 
-if (s.in_forward) {
-    return;  // re-entry guard (if Task 1 probe says sync); harmless when async
-}
+// Construct-time guard: firmware fires parameterChanged for each param
+// during the algorithm's construct path, before the algorithm is fully
+// registered. Forwarding via NT_setParameterFromUi at that moment hard-
+// crashes the device (verified via reentrancy_probe). Only forward once
+// at least one draw() has run.
+if (s.draw_count == 0) return;
 auto t = host_proxy::decode_forward(s, host_p);
 if (t.slot_idx == host_proxy::kInvalidSlotIdx) return;
-s.in_forward = true;
 NT_setParameterFromUi(t.slot_idx, t.slot_param_idx, inst->v[host_p]);
-s.in_forward = false;
+// No re-entry guard: probe confirmed NEST == 0 (firmware defers the
+// downstream parameterChanged to a later frame).
 ```
 
 `draw_impl` continues to resolve cached slot pointers as before. After resolve, it also calls `host_proxy::refresh_enum_strings(s)` opportunistically once per draw to catch preset edits between draws; if the enum string set changed it issues `NT_updateParameterDefinition` for each selector. (Cheap — `refresh_enum_strings` is bounded by `NT_algorithmCount`, typically 4-8.)

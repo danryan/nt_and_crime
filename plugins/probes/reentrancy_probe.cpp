@@ -37,6 +37,9 @@ struct _ReentrancyProbe : public _NT_algorithm {
     uint32_t pc1_calls;
     uint32_t pc1_during_pc0;
     bool     pc0_in_flight;
+    bool     armed_for_forward;  // set by customUi just before its NT_setParameterFromUi;
+                                 // pc0 only forwards if true. Suppresses any construct-time
+                                 // parameterChanged spurious forward.
 };
 
 enum { kParamA, kParamB, kParamCount };
@@ -65,25 +68,32 @@ static _NT_algorithm* construct(const _NT_algorithmMemoryPtrs& ptrs,
     auto* alg = new (ptrs.sram) _ReentrancyProbe();
     alg->parameters      = parameters;
     alg->parameterPages  = &parameterPages;
-    alg->pc0_calls       = 0;
-    alg->pc1_calls       = 0;
-    alg->pc1_during_pc0  = 0;
-    alg->pc0_in_flight   = false;
+    alg->pc0_calls         = 0;
+    alg->pc1_calls         = 0;
+    alg->pc1_during_pc0    = 0;
+    alg->pc0_in_flight     = false;
+    alg->armed_for_forward = false;
     return alg;
 }
 
 static void parameterChanged(_NT_algorithm* self, int p) {
     auto* a = (_ReentrancyProbe*)self;
+    if (self->v == nullptr) return;
+    int32_t self_idx = NT_algorithmIndex(self);
+    if (self_idx < 0) return;
     if (p == kParamA) {
         a->pc0_calls++;
-        a->pc0_in_flight = true;
-        // Forward to self's param B. Use the documented self-call form:
-        // global index = local + NT_parameterOffset().
-        int16_t next = (int16_t)(a->v[kParamA]);
-        NT_setParameterFromUi((uint32_t)NT_algorithmIndex(self),
-                              (uint32_t)(kParamB + NT_parameterOffset()),
-                              next);
-        a->pc0_in_flight = false;
+        // Only forward when customUi armed us this turn. Suppresses any
+        // construct-time spurious parameterChanged so add-algorithm does
+        // not hit NT_setParameterFromUi against an unstable slot table.
+        if (a->armed_for_forward) {
+            a->pc0_in_flight = true;
+            int16_t next = (int16_t)(a->v[kParamA]);
+            NT_setParameterFromUi((uint32_t)self_idx,
+                                  (uint32_t)(kParamB + NT_parameterOffset()),
+                                  next);
+            a->pc0_in_flight = false;
+        }
     } else if (p == kParamB) {
         a->pc1_calls++;
         if (a->pc0_in_flight) {
@@ -115,15 +125,17 @@ static bool draw(_NT_algorithm* self) {
     buf[len] = 0;
     NT_drawText(40, 40, buf);
 
-    NT_drawText(0, 55, "A=");
-    len = NT_intToString(buf, (int)a->v[kParamA]);
-    buf[len] = 0;
-    NT_drawText(16, 55, buf);
+    if (self->v != nullptr) {
+        NT_drawText(0, 55, "A=");
+        len = NT_intToString(buf, (int)a->v[kParamA]);
+        buf[len] = 0;
+        NT_drawText(16, 55, buf);
 
-    NT_drawText(64, 55, "B=");
-    len = NT_intToString(buf, (int)a->v[kParamB]);
-    buf[len] = 0;
-    NT_drawText(80, 55, buf);
+        NT_drawText(64, 55, "B=");
+        len = NT_intToString(buf, (int)a->v[kParamB]);
+        buf[len] = 0;
+        NT_drawText(80, 55, buf);
+    }
 
     return true;
 }
@@ -133,13 +145,19 @@ static uint32_t hasCustomUi(_NT_algorithm* /*self*/) {
 }
 
 static void customUi(_NT_algorithm* self, const _NT_uiData& data) {
+    if (self->v == nullptr) return;
+    int32_t self_idx = NT_algorithmIndex(self);
+    if (self_idx < 0) return;
     if (data.encoders[0] != 0) {
+        auto* a = (_ReentrancyProbe*)self;
         int16_t next = (int16_t)(self->v[kParamA] + data.encoders[0]);
         if (next < 0) next = 0;
         if (next > 1000) next = 1000;
-        NT_setParameterFromUi((uint32_t)NT_algorithmIndex(self),
+        a->armed_for_forward = true;
+        NT_setParameterFromUi((uint32_t)self_idx,
                               (uint32_t)(kParamA + NT_parameterOffset()),
                               next);
+        a->armed_for_forward = false;
     }
 }
 

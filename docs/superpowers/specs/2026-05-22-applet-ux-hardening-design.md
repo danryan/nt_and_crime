@@ -18,30 +18,29 @@ No single recipe spans all three quirks. Each quirk gets its own per-entry recip
 
 ## Per-quirk entries
 
-### Q1: Quadrants right-edge bleed (host-set clip rect)
+### Q1: Quadrants right-edge bleed (per-applet runtime clip rect)
 
-Mitigation: B from brainstorm. Host plug-in writes a per-frame clip rect into shim globals; shim drawing helpers clamp to the rect.
+Mitigation: each per-applet plug-in's `render_view_with_offset` helper sets `HS::gfx_clip_w = 64; HS::gfx_clip_h = 64;` next to the existing `HS::gfx_offset` writes; the shim's `HemisphereApplet::gfx*` helpers clamp emits against the rect. Hosts do not touch the clip globals.
 
-Affected files (writable surface for Q1 implementer):
+Architectural rationale (corrected from initial spec): every per-applet plug-in TU privately aggregates `shim/src/globals.cpp` via the `_per_applet_runtime.h` → `hem_shim.h` → `hem_shim_impl.h` → `globals.cpp` include chain. Each ARM `.o` therefore has its own copy of every `HS::*` global. A write from the host's TU does NOT reach the per-applet plug-in's gfx helpers (different memory). The clip write MUST live in the same TU that reads it. Host plug-ins are no longer involved.
+
+Affected files:
 
 - `shim/include/HSUtils.h`: declare `extern int gfx_clip_w;` and `extern int gfx_clip_h;` in the `HS` namespace, beside the existing `gfx_offset` / `gfx_offset_y`.
 - `shim/src/globals.cpp`: define `HS::gfx_clip_w = 256;` and `HS::gfx_clip_h = 64;` as defaults (full screen, harness-safe).
-- `shim/include/HemisphereApplet.h`: clamp emitted pixels in the `gfx*` helpers (`gfxPixel`, `gfxLine`, `gfxFrame`, `gfxRect`, `gfxBitmap`, `gfxPrint`, etc.) against `[HS::gfx_offset, HS::gfx_offset + HS::gfx_clip_w)` x `[HS::gfx_offset_y, HS::gfx_offset_y + HS::gfx_clip_h)`. Pixels with x or y outside the rect are dropped silently. The clamp is per-emit; bounding-box culls (entire shape outside) short-circuit.
-- `plugins/hosts/Hemispheres_host.cpp`: before each `render_view` call, set `HS::gfx_clip_w = 64; HS::gfx_clip_h = 64;`. Restore prior values (or reset to default) after the call to avoid leaking the lane-sized clip to firmware UI.
-- `plugins/hosts/Quadrants_host.cpp`: same as Hemispheres host.
+- `shim/include/HemisphereApplet.h`: clamp emitted pixels in the `gfx*` helpers (`gfxPixel`, `gfxLine`, `gfxFrame`, `gfxRect`, `gfxBitmap`, `gfxPrint`, etc.) against `[HS::gfx_offset, HS::gfx_offset + HS::gfx_clip_w)` x `[HS::gfx_offset_y, HS::gfx_offset_y + HS::gfx_clip_h)`. Pixels with x or y outside the rect are dropped silently. Bounding-box culls go first; per-pixel clamp only for `gfxBitmap` and `gfxPrint`.
+- `plugins/applets/_per_applet_runtime.h`: `render_view_with_offset` sets `HS::gfx_clip_w = 64; HS::gfx_clip_h = 64;` right after the offset writes; restores defaults (256 / 64) on exit alongside the offset resets. This is the new integration-step edit (originally listed as forbidden surface; the spec was wrong about the TU layout).
 - `harness/tests/test_draw_clip.cpp`: new test file. Cases:
   - default rect (clip_w=256, clip_h=64): a pixel emit at (200, 30) is delivered to the framebuffer.
-  - host-set rect (clip_w=64, clip_h=64, offset=64): an emit at vendor coord (63, 30) lands at screen (127, 30); an emit at vendor coord (64, 30) is clipped.
-  - lower-edge clip: an emit at vendor (10, 64) is clipped; an emit at vendor (10, 63) lands.
-  - upper-edge clip: an emit at vendor (10, -1) (vendor draws above the lane) is clipped.
+  - host-set rect via test (clip_w=64, clip_h=64, offset=64): emit at vendor (63, 30) lands at screen (127, 30); emit at vendor (64, 30) is clipped.
+  - lower-edge clip: emit at vendor (10, 64) clipped; vendor (10, 63) lands.
+  - upper-edge clip: emit at vendor (10, -1) clipped.
 
-Forbidden surface for Q1 implementer: vendor source, applet `.cpp`/`.h` under `plugins/applets/`, `shim/src/host_proxy.cpp`, `shim/include/host_proxy.h`.
+Hosts revert to pre-Q1 state: no clip writes, no `HSUtils.h` include.
 
-Expected behavior change: in Quadrants Host with four applets, the rightmost column of each lane no longer bleeds into the neighbor's leftmost column. Visible verification on hardware: deploy `Quadrants_host.o` plus any per-applet plug-in that draws to `x = 63` (Calculate8, EuclidX, ProbabilityDivider with a tall display); cycle slots 1-4; observe no inter-lane pixel bleed at slot boundaries.
+Expected behavior change: in Quadrants Host with four applets, the rightmost column of each lane no longer bleeds into the neighbor's leftmost column. Hemispheres' 128-px lanes already absorbed the bleed in dead space; behavior there is unchanged at the user-visible level.
 
-Performance note: the clamp runs per draw call, not per pixel for line/frame primitives. Bounding-box culls go first (entire shape outside rect = early return). Per-pixel clamp only matters for `gfxBitmap` and `gfxPrint`. Measure no regression in host-test draw benchmarks.
-
-Test plan: `make test-draw` and `make test-draw-shape` plus new `make test-draw-clip` all green; ARM `.text` budget unchanged within ~100 bytes per host `.o`.
+Test plan: `make test-applets`, `make test-host-proxy`, `make test-draw-clip`, `make test-buses`, `make test-draw`, `make test-draw-shape`, `make test-hosts-pilot`, `make test-applets-pilot` all green; `make arm` clean; `arm-none-eabi-nm build/arm/Hemispheres_host.o` shows zero unresolved `HS::*` symbols.
 
 ### Q2: Encoder-turn footer overlay (claim pot controls; hardware spike)
 

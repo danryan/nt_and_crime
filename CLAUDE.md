@@ -172,6 +172,18 @@ NT firmware loader copies the canonical `.text` section verbatim into a fixed IT
 
 Practical consequence: there is no way to route cold methods to DRAM/OCRAM to dodge the per-`.o` `.text` cap. The cap is binding. Strategies that target it: aggressive code shrink (Q15 LUTs, kill `printf`, drop unused vendor deps) and `HEMI_VARIANT` splits across multiple `.o` files. The `section_probe.cpp` diagnostic stays in tree so future firmware updates can be re-verified.
 
+## Construct-time parameterChanged hazard
+
+Firmware fires `parameterChanged` for each parameter during the algorithm's construct path, before the algorithm is fully registered in the preset's slot table. Calling `NT_setParameterFromUi` back into self from inside that spurious `parameterChanged` hard-crashes the device on add-algorithm. Guards on `self->v != nullptr` and `NT_algorithmIndex(self) >= 0` are NOT sufficient; both return valid values during the construct-time fire. Confirmed via `plugins/probes/reentrancy_probe.cpp` (see `docs/superpowers/prompts/2026-05-20-host-ux-rework-kickoff.md` Reentrancy result).
+
+Mitigation pattern: a sentinel on the instance that flips true only after the algorithm is genuinely alive (e.g. `customUi` arming a flag just before forwarding, or `draw_count > 0` after `draw()` has run at least once). `parameterChanged` only forwards when the sentinel passes; construct-time spurious calls are dropped.
+
+Separate firmware result from the same probe (load-bearing for proxy design): `NT_setParameterFromUi` does NOT re-enter `parameterChanged` synchronously (NEST counter stays at 0). Firmware defers the downstream notify to a later call frame. No stack-safety re-entry guard required.
+
+## _NT_factory designated-initializer order
+
+`_NT_factory` field order matters with C++20 designated initializers. The struct orders `tags` BEFORE `hasCustomUi`/`customUi` (`vendor/distingNT_API/include/distingnt/api.h:468`). Initializing `.tags = ...` after `.customUi = ...` is ill-formed and the compiler rejects it. The canonical `plugins/probes/aeabi_probe.cpp` factory doubles as the reference for field order when adding a new factory.
+
 ## ARM unresolved-symbol surface (firmware contract)
 
 Firmware resolves at load: `NT_*` ABI (`NT_drawText`, `NT_screen`, `NT_jsonParse*`, `NT_intToString`), `_GLOBAL_OFFSET_TABLE_`, and newlib `memcpy`/`memset`/`memmove`/`strlen`/`logf`/`powf`. NOT resolved: `__aeabi_d2lz` (handled by compiler_rt `fixdfdi.c` + `fixunsdfdi.c` + `fp_lib.h` + `int_math.h` vendored under `shim/src/compiler_rt/` from llvm-project tag `llvmorg-19.1.0`, Apache-2.0; `fixdfdi.c` emits the EABI alias `__aeabi_d2lz` via its internal `AEABI_RTABI` macro when `__ARM_EABI__` is defined), `vsnprintf` (newlib-nano omits; inline integer format if needed, see `shim/src/graphics.cpp` for the precedent that supports vendor `Relabi.h`'s `%3d`/`%u.%u` formats without pulling vsnprintf). `arm-none-eabi-nm <plugin.o> | grep ' U '` enumerates.

@@ -87,6 +87,14 @@ build/host/test_params: harness/tests/test_params.cpp harness/src/plugin_loader.
 test-params: build/host/test_params
 	./build/host/test_params
 
+build/host/test_host_proxy: harness/tests/test_host_proxy.cpp shim/src/host_proxy.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+.PHONY: test-host-proxy
+test-host-proxy: build/host/test_host_proxy
+	./build/host/test_host_proxy
+
 build/host/test_loader: harness/tests/test_loader.cpp \
                         vendor/distingNT_API/examples/gainCustomUI.cpp \
                         $(HARNESS_SRCS)
@@ -118,6 +126,10 @@ build/arm/gain.o: vendor/distingNT_API/examples/gain.cpp
 	$(ARM_CXX) $(ARM_FLAGS_VISIBLE_ENTRY) -c -o $@ $<
 
 build/arm/bus_probe.o: plugins/probes/bus_probe.cpp
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+
+build/arm/reentrancy_probe.o: plugins/probes/reentrancy_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
 
@@ -346,12 +358,17 @@ build/arm/shim_src/host_helpers.o: shim/src/host_helpers.cpp shim/include/host_h
 	mkdir -p $(@D)
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
 
-# $(1) = host name (Hemispheres_host or Quadrants_host).
+build/arm/shim_src/host_proxy.o: shim/src/host_proxy.cpp shim/include/host_proxy.h
+	mkdir -p $(@D)
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
+
+# $(1) = host name (Hemispheres_host or Quadrants_host). Both hosts now
+# link the host_proxy aggregator unconditionally.
 define BUILD_HOST_PLUGIN
-build/arm/$(1).o: plugins/hosts/$(1).cpp build/arm/shim_src/host_helpers.o $$(SHIM_DEPS) $$(COMPILER_RT_OBJS)
+build/arm/$(1).o: plugins/hosts/$(1).cpp build/arm/shim_src/host_helpers.o build/arm/shim_src/host_proxy.o $$(SHIM_DEPS) $$(COMPILER_RT_OBJS)
 	mkdir -p build/arm
 	$$(ARM_CXX) $$(ARM_FLAGS) $$(SHIM_INCLUDE) -c -o build/arm/$(1).raw.o $$<
-	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o build/arm/shim_src/host_helpers.o $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
+	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o build/arm/shim_src/host_helpers.o build/arm/shim_src/host_proxy.o $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
 	arm-none-eabi-objcopy --remove-section='.group' build/arm/$(1).merge1.o build/arm/$(1).nogroup.o
 	$$(ARM_LD) -r -T shim/merge_sections.lds build/arm/$(1).nogroup.o -o build/arm/$(1).linked.o
 	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/$(1).linked.o $$@
@@ -394,9 +411,35 @@ test-applets-pilot: $(addprefix build/host/test_applet_, $(PILOT_APPLET_LIST))
 # plugins/hosts/<HOST>.cpp into the harness and runs the Catch2 cases in
 # harness/tests/test_host_<HOST>.cpp. Host tests install fake
 # HemiPluginInterface stubs in slot positions and verify routing.
-build/host/test_host_%: harness/tests/test_host_%.cpp plugins/hosts/%.cpp shim/src/host_helpers.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+#
+# Explicit rule for the Hemispheres host proxy test binary: links
+# shim/src/host_proxy.cpp in addition to host_helpers so the host's
+# proxy aggregator wiring can be exercised end-to-end. Explicit rules
+# beat the test_host_% pattern below.
+build/host/test_host_Hemispheres_host_proxy: harness/tests/test_host_Hemispheres_host_proxy.cpp plugins/hosts/Hemispheres_host.cpp shim/src/host_helpers.cpp shim/src/host_proxy.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+.PHONY: test-host-Hemispheres-proxy
+test-host-Hemispheres-proxy: build/host/test_host_Hemispheres_host_proxy
+	./build/host/test_host_Hemispheres_host_proxy
+
+# The test_host_% pattern links host_proxy.cpp because all hosts now
+# reference host_proxy:: after the stage-3 wiring.
+build/host/test_host_%: harness/tests/test_host_%.cpp plugins/hosts/%.cpp shim/src/host_helpers.cpp shim/src/host_proxy.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+# Proxy-aggregator host test (companion to test_host_Quadrants_host).
+# Drives Quadrants_host.cpp through the host_proxy injection seam to
+# verify parameterChanged forwarding and construct-time guard.
+build/host/test_host_Quadrants_host_proxy: harness/tests/test_host_Quadrants_host_proxy.cpp plugins/hosts/Quadrants_host.cpp shim/src/host_helpers.cpp shim/src/host_proxy.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+.PHONY: test-host-Quadrants-host-proxy
+test-host-Quadrants-host-proxy: build/host/test_host_Quadrants_host_proxy
+	./build/host/test_host_Quadrants_host_proxy
 
 .PHONY: test-hosts-pilot
 test-hosts-pilot: $(addprefix build/host/test_host_, $(HOST_PLUGIN_LIST))
@@ -424,7 +467,7 @@ build/host/test_dep_%: harness/tests/test_dep_%.cpp $(SHIM_CORE_SRCS) $(HARNESS_
 test-deps: $(addprefix build/host/, $(DEP_TESTS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/Hemispheres.o build/arm/Hemispheres2.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o build/arm/Hemispheres.o build/arm/Hemispheres2.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

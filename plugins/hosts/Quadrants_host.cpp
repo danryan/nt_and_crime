@@ -40,24 +40,25 @@
 
 #include "../../shim/include/HemiPluginInterface.h"
 #include "../../shim/include/host_helpers.h"
+#include "../../shim/include/host_proxy.h"
 
 // ---------------------------------------------------------------------------
 // Parameter table
 // ---------------------------------------------------------------------------
 //
-//   v[0] = slot index watched for slot 0 (top-left),  default 0
-//   v[1] = slot index watched for slot 1 (top-right), default 1
-//   v[2] = slot index watched for slot 2 (bot-left),  default 2
-//   v[3] = slot index watched for slot 3 (bot-right), default 3
-
-static constexpr int kNumParams = 4;
-
-static const _NT_parameter s_params[kNumParams] = {
-    { "Slot 0 index", 0, 15, 0, kNT_unitNone, kNT_scalingNone, nullptr },
-    { "Slot 1 index", 0, 15, 1, kNT_unitNone, kNT_scalingNone, nullptr },
-    { "Slot 2 index", 0, 15, 2, kNT_unitNone, kNT_scalingNone, nullptr },
-    { "Slot 3 index", 0, 15, 3, kNT_unitNone, kNT_scalingNone, nullptr },
-};
+// The host owns a host_proxy::State that builds the parameter table at
+// construct time:
+//
+//   v[0..3]  = Slot-N enum selectors. Each enum maps preset-order Hemi-
+//              prefix algorithms to a watched lane (0 = "---" / unbound).
+//   v[4..67] = Proxy params for each watched lane. Lane L occupies
+//              [4 + L*16 .. 4 + L*16 + 16). Names prefixed "S0 ".."S3 ".
+//
+// Editing a selector re-aggregates that lane and pushes updated parameter
+// definitions back to the firmware via NT_updateParameterDefinition.
+// Editing a proxy parameter forwards the value to the watched slot via
+// NT_setParameterFromUi after the first draw() (construct-time guard
+// suppresses the firmware's fan-out parameterChanged calls).
 
 // Slot origin table (origin_x, origin_y). 1x4 layout on 256x64 screen.
 static constexpr int kSlotOriginX[4] = {  0, 64, 128, 192 };
@@ -72,6 +73,9 @@ struct _QQInstance : public _NT_algorithm {
     // Cached slot-resolution results from the most recent draw() call.
     // Populated by resolve_all_slots(); consumed by customUi().
     HemiPluginInterface* cached_slot[4];
+    // Per-host proxy aggregator. Owns selector + proxy parameter table
+    // (inst->parameters = state.proxy_params).
+    host_proxy::State state;
 };
 
 // ---------------------------------------------------------------------------
@@ -160,11 +164,21 @@ static host_helpers::ResolvedSlot get_resolved(uint32_t slot_idx) {
 }
 
 // Resolve all 4 slots and cache the results on the instance.
+//
+// v[0..3] are enum selector values from host_proxy::State::enum_strs;
+// resolve each to its preset slot index before calling host_helpers.
+// During tests run before draw_count > 0 (or before v is bound on
+// hardware), fall back to the selector's def value.
 static void resolve_and_cache(_QQInstance* inst) {
     for (int i = 0; i < 4; ++i) {
-        uint32_t param_slot_idx = (inst->v != nullptr)
-            ? (uint32_t)inst->v[i]
-            : (uint32_t)i;
+        int enum_value = (inst->v != nullptr)
+            ? (int)inst->v[i]
+            : (int)inst->state.proxy_params[i].def;
+        uint32_t param_slot_idx = host_proxy::resolve_enum_to_slot(inst->state, enum_value);
+        if (param_slot_idx == host_proxy::kInvalidSlotIdx) {
+            inst->cached_slot[i] = nullptr;
+            continue;
+        }
         host_helpers::ResolvedSlot r = get_resolved(param_slot_idx);
         inst->cached_slot[i] = r.plugin;
     }
@@ -174,9 +188,13 @@ static void resolve_and_cache(_QQInstance* inst) {
 // _NT_factory hooks
 // ---------------------------------------------------------------------------
 
+static constexpr int kNumLanes = 4;
+
 static void calculateRequirements_impl(_NT_algorithmRequirements& req,
                                        const int32_t* /*specifications*/) {
-    req.numParameters = kNumParams;
+    // K selectors at [0..K-1] plus K * kMaxProxyParamsPerSlot proxy params
+    // at [K..]. For Quadrants K = 4, total = 68 (== host_proxy::kMaxHostParams).
+    req.numParameters = host_proxy::kMaxHostParams;
     req.sram  = sizeof(_QQInstance);
     req.dram  = 0;
     req.dtc   = 0;
@@ -187,15 +205,70 @@ static _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
                                      const _NT_algorithmRequirements& /*req*/,
                                      const int32_t* /*specifications*/) {
     auto* inst = new (ptrs.sram) _QQInstance();
-    inst->parameters     = s_params;
     inst->parameterPages = nullptr;
     const_cast<int16_t*&>(inst->v) = nullptr;
     inst->focused_slot_idx = 0;
     for (int i = 0; i < 4; ++i) inst->cached_slot[i] = nullptr;
+
+    // Initialize the proxy aggregator: 4 selector lanes. Scan the preset
+    // for Hemi-prefix algorithms first so the enum table is populated
+    // before init_selector clamps each default against enum_strs.count.
+    // Then install one selector per lane with default value (lane + 1)
+    // pointing to the Nth Hemi-prefix entry in preset-scan order.
+    host_proxy::State& s = inst->state;
+    host_proxy::init(s, kNumLanes);
+    host_proxy::refresh_enum_strings(s);
+    for (int lane = 0; lane < kNumLanes; ++lane) {
+        char name[8] = { 'S','l','o','t',' ',
+                         static_cast<char>('0' + lane), '\0', '\0' };
+        host_proxy::init_selector(s, lane, name, lane + 1);
+    }
+    for (int lane = 0; lane < kNumLanes; ++lane) {
+        // v[] is not yet bound at construct on hardware; aggregate against
+        // each selector's `def` as the canonical initial enum value.
+        uint32_t resolved = host_proxy::resolve_enum_to_slot(s, s.proxy_params[lane].def);
+        host_proxy::aggregate_slot(s, lane, resolved);
+    }
+    inst->parameters = s.proxy_params;
     return inst;
 }
 
-static void parameterChanged_impl(_NT_algorithm* /*self*/, int /*p*/) {}
+static void parameterChanged_impl(_NT_algorithm* self, int host_p) {
+    auto* inst = static_cast<_QQInstance*>(self);
+    host_proxy::State& s = inst->state;
+
+    if (host_p < s.kNumSlotIndexParams) {
+        int lane = host_p;
+        host_proxy::refresh_enum_strings(s);
+        int32_t alg_idx = NT_algorithmIndex(self);
+        if (alg_idx >= 0) {
+            NT_updateParameterDefinition((uint32_t)alg_idx, (uint32_t)host_p);
+        }
+        int enum_value = inst->v != nullptr ? inst->v[host_p] : s.proxy_params[host_p].def;
+        uint32_t new_slot = host_proxy::resolve_enum_to_slot(s, enum_value);
+        host_proxy::aggregate_slot(s, lane, new_slot);
+        int base = s.kNumSlotIndexParams + lane * host_proxy::kMaxProxyParamsPerSlot;
+        if (alg_idx >= 0) {
+            for (int p = 0; p < host_proxy::kMaxProxyParamsPerSlot; ++p) {
+                NT_updateParameterDefinition((uint32_t)alg_idx, (uint32_t)(base + p));
+            }
+        }
+        return;
+    }
+
+    // Construct-time guard: firmware fires parameterChanged for every
+    // parameter during construct, before the algorithm is fully registered.
+    // Forwarding via NT_setParameterFromUi at that moment hard-crashes the
+    // device (see CLAUDE.md "Construct-time parameterChanged hazard" and
+    // the reentrancy_probe report). Only forward once draw() has run at
+    // least once. NEST == 0 was measured on hardware, so no additional
+    // re-entry guard is required.
+    if (s.draw_count == 0) return;
+    host_proxy::ForwardTarget t = host_proxy::decode_forward(s, host_p);
+    if (t.slot_idx == host_proxy::kInvalidSlotIdx) return;
+    int16_t value = inst->v != nullptr ? inst->v[host_p] : 0;
+    NT_setParameterFromUi(t.slot_idx, (uint32_t)t.slot_param_idx, value);
+}
 
 static void step_impl(_NT_algorithm* /*self*/,
                       float* /*busFrames*/,
@@ -206,6 +279,33 @@ static void step_impl(_NT_algorithm* /*self*/,
 
 static bool draw_impl(_NT_algorithm* self) {
     auto* inst = static_cast<_QQInstance*>(self);
+    // Increment first: the construct-time guard in parameterChanged
+    // looks for draw_count > 0 as the signal that the algorithm has
+    // completed its registration and synchronous forwarding is safe.
+    ++inst->state.draw_count;
+
+    // Opportunistic enum rescan once per draw to catch preset edits.
+    // If the enum set changed, push fresh definitions for each selector
+    // and re-aggregate every lane (its enum-to-slot resolution may have
+    // moved, even if its enum value did not).
+    if (host_proxy::refresh_enum_strings(inst->state)) {
+        int32_t alg_idx = NT_algorithmIndex(self);
+        for (int lane = 0; lane < kNumLanes; ++lane) {
+            int enum_value = inst->v != nullptr
+                ? inst->v[lane]
+                : inst->state.proxy_params[lane].def;
+            uint32_t resolved = host_proxy::resolve_enum_to_slot(inst->state, enum_value);
+            host_proxy::aggregate_slot(inst->state, lane, resolved);
+            if (alg_idx >= 0) {
+                NT_updateParameterDefinition((uint32_t)alg_idx, (uint32_t)lane);
+                int base = inst->state.kNumSlotIndexParams +
+                           lane * host_proxy::kMaxProxyParamsPerSlot;
+                for (int p = 0; p < host_proxy::kMaxProxyParamsPerSlot; ++p) {
+                    NT_updateParameterDefinition((uint32_t)alg_idx, (uint32_t)(base + p));
+                }
+            }
+        }
+    }
 
     // Resolve all 4 slots once for this draw cycle and cache the results.
     resolve_and_cache(inst);

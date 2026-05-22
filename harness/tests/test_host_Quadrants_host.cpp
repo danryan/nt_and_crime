@@ -49,6 +49,7 @@
 
 #include <distingnt/api.h>
 #include "HemiPluginInterface.h"
+#include "host_proxy.h"
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -149,10 +150,29 @@ void inject_all_valid_stubs(uint32_t guid_base = NT_MULTICHAR('H','m','X','x')) 
 // Test fixture helpers
 // ---------------------------------------------------------------------------
 
+// Pre-populated guids for host_proxy's preset-scan injection seam. The
+// existing Quadrants host tests use `qq_test_inject_slot` to install
+// stub HemiPluginInterface instances at preset positions 0..3. Those
+// tests pre-date the host_proxy aggregator, which separately scans the
+// preset via host_proxy::hp_test_inject_slot for the Slot-N enum
+// selectors. setup_host() seeds matching entries in host_proxy's table
+// so the host's enum-to-slot resolution maps lane i -> preset slot i
+// (the same convention the legacy tests assumed). A subsequent draw()
+// call lets the proxy aggregator pick up the entries via the
+// per-draw refresh path.
+static constexpr uint32_t kHemiGuid_QQ = NT_MULTICHAR('H','m','X','x');
+
 static nt::LoadedPlugin* setup_host() {
     nt::reset_plugin_loader();
     qq_test_clear_slots();
+    host_proxy::hp_test_clear_slots();
     reset_counters();
+    // Inject 4 Hemi-prefix entries so the host's selectors resolve to
+    // preset slots 0..3 (lane i's default selector == i + 1, which maps
+    // to the i-th Hemi-prefix entry == preset slot i).
+    for (int i = 0; i < 4; ++i) {
+        host_proxy::hp_test_inject_slot((uint32_t)i, "Stub", kHemiGuid_QQ, 0, nullptr);
+    }
     nt::LoadedPlugin* loaded = nt::load_plugin();
     REQUIRE(loaded != nullptr);
     REQUIRE(loaded->factory != nullptr);

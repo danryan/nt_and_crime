@@ -362,7 +362,8 @@ build/arm/shim_src/host_proxy.o: shim/src/host_proxy.cpp shim/include/host_proxy
 	mkdir -p $(@D)
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
 
-# $(1) = host name (Hemispheres_host or Quadrants_host).
+# $(1) = host name (Hemispheres_host or Quadrants_host). Both hosts now
+# link the host_proxy aggregator unconditionally.
 define BUILD_HOST_PLUGIN
 build/arm/$(1).o: plugins/hosts/$(1).cpp build/arm/shim_src/host_helpers.o build/arm/shim_src/host_proxy.o $$(SHIM_DEPS) $$(COMPILER_RT_OBJS)
 	mkdir -p build/arm
@@ -411,11 +412,10 @@ test-applets-pilot: $(addprefix build/host/test_applet_, $(PILOT_APPLET_LIST))
 # harness/tests/test_host_<HOST>.cpp. Host tests install fake
 # HemiPluginInterface stubs in slot positions and verify routing.
 #
-# Explicit rule for the Hemispheres host proxy test binary (stage 3a host-ux
-# rework): links shim/src/host_proxy.cpp in addition to host_helpers so the
-# host's proxy aggregator wiring can be exercised end-to-end. Explicit rules
-# beat the test_host_% pattern below, so the Quadrants_host build path is
-# untouched (stage 3b owns that change).
+# Explicit rule for the Hemispheres host proxy test binary: links
+# shim/src/host_proxy.cpp in addition to host_helpers so the host's
+# proxy aggregator wiring can be exercised end-to-end. Explicit rules
+# beat the test_host_% pattern below.
 build/host/test_host_Hemispheres_host_proxy: harness/tests/test_host_Hemispheres_host_proxy.cpp plugins/hosts/Hemispheres_host.cpp shim/src/host_helpers.cpp shim/src/host_proxy.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
@@ -424,9 +424,22 @@ build/host/test_host_Hemispheres_host_proxy: harness/tests/test_host_Hemispheres
 test-host-Hemispheres-proxy: build/host/test_host_Hemispheres_host_proxy
 	./build/host/test_host_Hemispheres_host_proxy
 
+# The test_host_% pattern links host_proxy.cpp because all hosts now
+# reference host_proxy:: after the stage-3 wiring.
 build/host/test_host_%: harness/tests/test_host_%.cpp plugins/hosts/%.cpp shim/src/host_helpers.cpp shim/src/host_proxy.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+# Proxy-aggregator host test (companion to test_host_Quadrants_host).
+# Drives Quadrants_host.cpp through the host_proxy injection seam to
+# verify parameterChanged forwarding and construct-time guard.
+build/host/test_host_Quadrants_host_proxy: harness/tests/test_host_Quadrants_host_proxy.cpp plugins/hosts/Quadrants_host.cpp shim/src/host_helpers.cpp shim/src/host_proxy.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+.PHONY: test-host-Quadrants-host-proxy
+test-host-Quadrants-host-proxy: build/host/test_host_Quadrants_host_proxy
+	./build/host/test_host_Quadrants_host_proxy
 
 .PHONY: test-hosts-pilot
 test-hosts-pilot: $(addprefix build/host/test_host_, $(HOST_PLUGIN_LIST))

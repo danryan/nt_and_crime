@@ -358,12 +358,16 @@ build/arm/shim_src/host_helpers.o: shim/src/host_helpers.cpp shim/include/host_h
 	mkdir -p $(@D)
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
 
+build/arm/shim_src/host_proxy.o: shim/src/host_proxy.cpp shim/include/host_proxy.h
+	mkdir -p $(@D)
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
+
 # $(1) = host name (Hemispheres_host or Quadrants_host).
 define BUILD_HOST_PLUGIN
-build/arm/$(1).o: plugins/hosts/$(1).cpp build/arm/shim_src/host_helpers.o $$(SHIM_DEPS) $$(COMPILER_RT_OBJS)
+build/arm/$(1).o: plugins/hosts/$(1).cpp build/arm/shim_src/host_helpers.o build/arm/shim_src/host_proxy.o $$(SHIM_DEPS) $$(COMPILER_RT_OBJS)
 	mkdir -p build/arm
 	$$(ARM_CXX) $$(ARM_FLAGS) $$(SHIM_INCLUDE) -c -o build/arm/$(1).raw.o $$<
-	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o build/arm/shim_src/host_helpers.o $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
+	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o build/arm/shim_src/host_helpers.o build/arm/shim_src/host_proxy.o $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
 	arm-none-eabi-objcopy --remove-section='.group' build/arm/$(1).merge1.o build/arm/$(1).nogroup.o
 	$$(ARM_LD) -r -T shim/merge_sections.lds build/arm/$(1).nogroup.o -o build/arm/$(1).linked.o
 	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/$(1).linked.o $$@
@@ -406,7 +410,21 @@ test-applets-pilot: $(addprefix build/host/test_applet_, $(PILOT_APPLET_LIST))
 # plugins/hosts/<HOST>.cpp into the harness and runs the Catch2 cases in
 # harness/tests/test_host_<HOST>.cpp. Host tests install fake
 # HemiPluginInterface stubs in slot positions and verify routing.
-build/host/test_host_%: harness/tests/test_host_%.cpp plugins/hosts/%.cpp shim/src/host_helpers.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+#
+# Explicit rule for the Hemispheres host proxy test binary (stage 3a host-ux
+# rework): links shim/src/host_proxy.cpp in addition to host_helpers so the
+# host's proxy aggregator wiring can be exercised end-to-end. Explicit rules
+# beat the test_host_% pattern below, so the Quadrants_host build path is
+# untouched (stage 3b owns that change).
+build/host/test_host_Hemispheres_host_proxy: harness/tests/test_host_Hemispheres_host_proxy.cpp plugins/hosts/Hemispheres_host.cpp shim/src/host_helpers.cpp shim/src/host_proxy.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+.PHONY: test-host-Hemispheres-proxy
+test-host-Hemispheres-proxy: build/host/test_host_Hemispheres_host_proxy
+	./build/host/test_host_Hemispheres_host_proxy
+
+build/host/test_host_%: harness/tests/test_host_%.cpp plugins/hosts/%.cpp shim/src/host_helpers.cpp shim/src/host_proxy.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
 

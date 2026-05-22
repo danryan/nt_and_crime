@@ -31,6 +31,7 @@
 #include "plugin_loader.h"
 #include <distingnt/api.h>
 #include "HemiPluginInterface.h"
+#include "host_proxy.h"
 #include <cstdint>
 #include <cstring>
 
@@ -139,6 +140,16 @@ Setup make_setup() {
     nt::reset_runtime();
     hh_test_clear_slots();
     reset_stub_counters();
+    // Pre-seed two Hm-prefix slots in the host_proxy enum-scan table BEFORE
+    // construct, so the selectors' default enum values (1 and 2) resolve to
+    // preset slot indices 0 and 1. Plugin pointers are filled in later by
+    // each test via hh_test_inject_slot, which overwrites these entries with
+    // the test's specific stub plugins. Without these pre-seeds the host's
+    // construct path scans an empty enum table, init_selector clamps def to
+    // 0 (only "---" exists), and all lanes resolve to kInvalidSlotIdx for
+    // the rest of the test's lifetime.
+    host_proxy::hp_test_inject_slot(0, "Pre0", kValidGuid0, 0, nullptr);
+    host_proxy::hp_test_inject_slot(1, "Pre1", kValidGuid1, 0, nullptr);
     auto* loaded = nt::load_plugin();
     REQUIRE(loaded != nullptr);
     REQUIRE(loaded->algorithm != nullptr);
@@ -162,17 +173,21 @@ TEST_CASE("HH1: pluginEntry returns factory with guid HmHh and correct name",
 }
 
 // ---------------------------------------------------------------------------
-// HH2: calculateRequirements reports 2 parameters.
+// HH2: calculateRequirements reports the full proxy-aware parameter budget.
+//
+// Updated for the stage 3a host-ux rework: the host now reserves
+// host_proxy::kMaxHostParams entries (K selectors + K * proxy-params-per-slot).
 // ---------------------------------------------------------------------------
 
-TEST_CASE("HH2: calculateRequirements reports numParameters == 2",
+TEST_CASE("HH2: calculateRequirements reports proxy-aware numParameters",
           "[host][hemispheres_host]") {
     nt::reset_runtime();
     auto* loaded = nt::load_plugin();
     REQUIRE(loaded != nullptr);
     _NT_algorithmRequirements req{};
     loaded->factory->calculateRequirements(req, nullptr);
-    REQUIRE(req.numParameters == 2u);
+    REQUIRE(req.numParameters ==
+            static_cast<uint32_t>(host_proxy::kMaxHostParams));
     REQUIRE(req.sram > 0u);
 }
 

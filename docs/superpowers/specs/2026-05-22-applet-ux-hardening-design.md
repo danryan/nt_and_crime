@@ -121,3 +121,24 @@ Q1 prereqs: existing `HS::gfx_offset` and `gfx_offset_y` already live (host UX r
 Q2 prereqs: existing `hasCustomUi_impl` and `customUi_impl` already live in both hosts (host UX rework). Pot-control bits already defined in `vendor/distingNT_API/include/distingnt/api.h:347-356`. No new API surface.
 
 Q3 prereqs: existing `host_proxy.cpp` initialization paths already touched per host. No new tests-infrastructure required; `harness/tests/test_host_proxy.cpp` already exists.
+
+## Q2 spike outcome (2026-05-22)
+
+Both spikes ran on hardware. Result: Q2 deferred. Not shipping in this batch.
+
+Spike 1 (claim `kNT_potL | kNT_potC | kNT_potR | kNT_potButtonL | kNT_potButtonC | kNT_potButtonR`):
+
+- The "push: params" / "push: snap" helper text was suppressed.
+- A different footer remained: algorithm name plus pot-button softkey labels ("Mapping", "Help"). These are firmware-level softkey hints.
+- Regression: pushing the pot-buttons no longer escaped the host GUI to the algorithms overview, because claiming the pot-button bits routes those events to `customUi` which dropped them silently.
+
+Spike 2 (narrow to `kNT_potL | kNT_potC | kNT_potR` only; no pot-button bits):
+
+- The "push: params" / "push: snap" helper text returned. Pot-rotation claim alone does not suppress the helper footer.
+- Softkey nav and escape gestures restored (pot-buttons no longer claimed).
+
+Conclusion: footer suppression is keyed on the pot-button claim, not the pot-rotation claim. The two outcomes are mutually exclusive at the `hasCustomUi` level. Trading softkey navigation and overview escape for footer text suppression is a worse UX than the original quirk. Q2 deferred.
+
+Follow-up: file an Expert Sleepers firmware feature request for an algorithm-level footer-suppression flag in `_NT_factory` (or a `customUi` variant that suppresses default firmware overlays without claiming the underlying control events). Track in a separate issue/email; out of scope for this batch.
+
+The Q2 implementer branch `ux-hardening/q2-footer-spike` (commit `ececeba`, narrowed-mask spike 2) stays on its branch for reference but is not cherry-picked into the feature branch.

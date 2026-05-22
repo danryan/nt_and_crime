@@ -44,6 +44,8 @@ Provisional root cause: firmware-level UI overlay. Likely triggered by encoder-t
 
 Fix surface guess: host plug-in `customUi` flag, or none (firmware-side).
 
+**2026-05-22 spike outcome: deferred.** Two hardware spikes ran (`ux-hardening/q2-footer-spike` commits `fe31a7c` then narrowed to `ececeba`). Suppression is keyed on the pot-button claim (`kNT_potButtonL/C/R`), which doubles as the firmware softkey-nav input. Claiming pot-buttons hides the helper footer text but breaks the user's ability to escape the host GUI to the algorithms overview and removes Mapping/Help navigation. The trade-off is worse than the original quirk. Pot-rotation-only claims have no effect on the footer. Outcome: Q2 deferred to a firmware feature request (algorithm-level footer-suppress flag in `_NT_factory`). See spec footer for the full spike record.
+
 ### Q3: Unused parameter rows show garbage label ("-OFhW")
 
 In the algorithm's parameter page, parameter slots that are not currently bound to a proxied vendor parameter display the label "-OFhW" (or similar garbage). Should read something obviously inert like `--unused--`.

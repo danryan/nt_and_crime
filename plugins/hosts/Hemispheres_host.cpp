@@ -41,6 +41,7 @@
 #include "../../shim/include/HemiPluginInterface.h"
 #include "../../shim/include/host_helpers.h"
 #include "../../shim/include/host_proxy.h"
+#include "../../shim/include/HSUtils.h"  // HS::gfx_clip_w / gfx_clip_h
 
 // ---------------------------------------------------------------------------
 // Algorithm instance
@@ -314,8 +315,19 @@ static bool draw_impl(_NT_algorithm* self) {
     // Screen is 256 wide; each slot gets 128 px (matching bundled host layout).
     // Vendor applets draw at x = 0..63 relative to HS::gfx_offset; the 128-step
     // spacing leaves room for the applet's full draw plus any decoration.
+    //
+    // Clip rect (Q1): each lane is 128 wide x 64 tall on Hemispheres.
+    // Hemispheres has plenty of slack between vendor draws (max x=63) and
+    // the next lane origin (x=128) so the on-hardware bleed is invisible;
+    // the host still writes the clip per-lane for consistency with the
+    // Quadrants host and to harden against future vendor draws that
+    // overshoot the 64-wide column.
     static constexpr int origins[2] = { 0, 128 };
+    const int prior_clip_w = HS::gfx_clip_w;
+    const int prior_clip_h = HS::gfx_clip_h;
     for (int i = 0; i < 2; ++i) {
+        HS::gfx_clip_w = 128;
+        HS::gfx_clip_h = 64;
         HemiPluginInterface* p = inst->cached_slot[i];
         if (p && p->render_view) {
             p->render_view(p, origins[i], 0);
@@ -323,6 +335,10 @@ static bool draw_impl(_NT_algorithm* self) {
             host_helpers::render_incompatible_stub(origins[i], 0);
         }
     }
+    // Restore prior clip rect so firmware UI passes (parameter strip,
+    // popups) see a full-screen rect rather than the lane-sized one.
+    HS::gfx_clip_w = prior_clip_w;
+    HS::gfx_clip_h = prior_clip_h;
 
     // Return true to suppress the default parameter strip.
     return true;

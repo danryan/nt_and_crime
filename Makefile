@@ -71,6 +71,17 @@ build/host/test_draw_shape: harness/tests/test_draw_shape.cpp $(HARNESS_SRCS)
 test-draw-shape: build/host/test_draw_shape
 	./build/host/test_draw_shape
 
+# Q1 host-set clip rect tests. Driven via a HemisphereApplet probe subclass
+# in the test file; the shim's gfx wrappers clamp emits to a screen-space
+# rect bounded by HS::gfx_clip_w / HS::gfx_clip_h.
+build/host/test_draw_clip: harness/tests/test_draw_clip.cpp shim/src/globals.cpp shim/src/graphics.cpp shim/src/icons.cpp shim/src/quant/braids_quantizer.cpp shim/src/quant/OC_scales.cpp shim/src/quant/q_engine.cpp shim/src/cv_map/bjorklund.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-draw-clip
+test-draw-clip: build/host/test_draw_clip
+	./build/host/test_draw_clip
+
 build/host/test_json: harness/tests/test_json.cpp $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^

@@ -26,6 +26,11 @@ int cursor_countdown[HS::APPLET_CURSOR_COUNT] = { 0 };
 EncoderEditor enc_edit[HS::APPLET_CURSOR_COUNT] = {{ false }};
 int gfx_offset = 0;
 int gfx_offset_y = 0;
+// Defaults are full screen (256 wide, 64 tall) so the harness, standalone
+// runs, and probes see no clamp. Hosts overwrite per-frame before each
+// per-applet render_view call.
+int gfx_clip_w = 256;
+int gfx_clip_h = 64;
 // Popup-state globals. Mirrors vendor HSUtils.cpp:23-31. Host tests do
 // not exercise popups; PokePopup is a no-op.
 uint8_t qview = 0;

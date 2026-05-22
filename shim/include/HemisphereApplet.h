@@ -132,6 +132,42 @@ public:
     // Both axes use a shim global: gfx_offset (X) and gfx_offset_y (Y).
     // Hosts set both before calling per-applet View(); standalone runs leave
     // them at 0 so the applet draws to canonical coordinates.
+    //
+    // Q1 clip rect: HS::gfx_clip_w / gfx_clip_h bound emissions to the
+    // screen-space rectangle [gfx_offset, gfx_offset+clip_w) x
+    // [gfx_offset_y, gfx_offset_y+clip_h). Defaults are full screen
+    // (256x64). Hosts overwrite per-frame to their slot's column so
+    // vendor over-draws past x=63 do not bleed into the neighboring lane.
+    // The clamp is per-emit for pixels and bitmaps; rect-shaped primitives
+    // (gfxRect, gfxInvert, gfxClear, gfxFrame) intersect the bounding box
+    // with the rect and short-circuit when fully outside.
+private:
+    // True if screen-space pixel (sx, sy) is inside the clip rect.
+    static bool clip_contains(int sx, int sy) {
+        return sx >= HS::gfx_offset
+            && sx <  HS::gfx_offset + HS::gfx_clip_w
+            && sy >= HS::gfx_offset_y
+            && sy <  HS::gfx_offset_y + HS::gfx_clip_h;
+    }
+    // Intersect rect (sx, sy, sw, sh) [screen coords] with the clip rect.
+    // Returns false if the result is empty; otherwise updates the args
+    // in place to the intersected rect.
+    static bool clip_intersect_rect(int& sx, int& sy, int& sw, int& sh) {
+        int x0 = sx, y0 = sy;
+        int x1 = sx + sw, y1 = sy + sh;
+        int cx0 = HS::gfx_offset;
+        int cy0 = HS::gfx_offset_y;
+        int cx1 = HS::gfx_offset + HS::gfx_clip_w;
+        int cy1 = HS::gfx_offset_y + HS::gfx_clip_h;
+        if (x0 < cx0) x0 = cx0;
+        if (y0 < cy0) y0 = cy0;
+        if (x1 > cx1) x1 = cx1;
+        if (y1 > cy1) y1 = cy1;
+        if (x0 >= x1 || y0 >= y1) return false;
+        sx = x0; sy = y0; sw = x1 - x0; sh = y1 - y0;
+        return true;
+    }
+public:
     void gfxPos(int x, int y)                  { graphics.setPrintPos(x + gfx_offset, y + gfx_offset_y); }
     void gfxPrint(const char* s)               { graphics.print(s); }
     void gfxPrint(int n)                       { graphics.print(n); }
@@ -143,32 +179,117 @@ public:
         gfxPrint(n);
     }
 
-    void gfxFrame(int x, int y, int w, int h)  { graphics.drawFrame(x + gfx_offset, y + gfx_offset_y, w, h); }
+    void gfxFrame(int x, int y, int w, int h)  {
+        // Bounding-box short-circuit, then delegate to 4 clipped lines.
+        // (graphics.drawFrame is the unclipped 4-line draw; reimplementing
+        // via gfxLine ensures edges that exit the clip rect are dropped
+        // per-pixel rather than drawn into the neighboring lane.)
+        int bx = x + gfx_offset, by = y + gfx_offset_y, bw = w, bh = h;
+        if (!clip_intersect_rect(bx, by, bw, bh)) return;
+        gfxLine(x,         y,         x + w - 1, y);
+        gfxLine(x + w - 1, y,         x + w - 1, y + h - 1);
+        gfxLine(x,         y + h - 1, x + w - 1, y + h - 1);
+        gfxLine(x,         y,         x,         y + h - 1);
+    }
     // Vendor 5-arg overload (HemisphereApplet.h, VectorLFO.h:206): dotted bool.
     // Shim ignores the dotted flag and falls through to solid frame; host
     // tests do not assert on dotted-vs-solid rendering.
     void gfxFrame(int x, int y, int w, int h, bool /*dotted*/) {
-        graphics.drawFrame(x + gfx_offset, y + gfx_offset_y, w, h);
+        gfxFrame(x, y, w, h);
     }
-    void gfxRect(int x, int y, int w, int h)   { graphics.drawRect(x + gfx_offset, y + gfx_offset_y, w, h); }
-    void gfxInvert(int x, int y, int w, int h) { graphics.invertRect(x + gfx_offset, y + gfx_offset_y, w, h); }
-    void gfxClear(int x, int y, int w, int h)  { graphics.clearRect(x + gfx_offset, y + gfx_offset_y, w, h); }
-    void gfxLine(int x, int y, int x2, int y2) { graphics.drawLine(x + gfx_offset, y + gfx_offset_y, x2 + gfx_offset, y2 + gfx_offset_y); }
+    void gfxRect(int x, int y, int w, int h)   {
+        int sx = x + gfx_offset, sy = y + gfx_offset_y, sw = w, sh = h;
+        if (!clip_intersect_rect(sx, sy, sw, sh)) return;
+        graphics.drawRect(sx, sy, sw, sh);
+    }
+    void gfxInvert(int x, int y, int w, int h) {
+        int sx = x + gfx_offset, sy = y + gfx_offset_y, sw = w, sh = h;
+        if (!clip_intersect_rect(sx, sy, sw, sh)) return;
+        graphics.invertRect(sx, sy, sw, sh);
+    }
+    void gfxClear(int x, int y, int w, int h)  {
+        int sx = x + gfx_offset, sy = y + gfx_offset_y, sw = w, sh = h;
+        if (!clip_intersect_rect(sx, sy, sw, sh)) return;
+        graphics.clearRect(sx, sy, sw, sh);
+    }
+    void gfxLine(int x, int y, int x2, int y2) {
+        // Bresenham with per-pixel clip. Cheap enough that the rare case
+        // of a line entirely inside the rect still pays a single compare
+        // per pixel.
+        int x0 = x + gfx_offset, y0 = y + gfx_offset_y;
+        int x1 = x2 + gfx_offset, y1 = y2 + gfx_offset_y;
+        int dx =  std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+        int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+        int err = dx + dy;
+        for (;;) {
+            if (clip_contains(x0, y0)) graphics.setPixel(x0, y0);
+            if (x0 == x1 && y0 == y1) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
+        }
+    }
     void gfxLine(int x, int y, int x2, int y2, bool dashed) {
-        graphics.drawLine(x + gfx_offset, y + gfx_offset_y, x2 + gfx_offset, y2 + gfx_offset_y, dashed ? 0xAA : 0xFF);
+        // Per-pixel clip with a dashed-bitmask pattern (matches
+        // graphics.drawLine's pattern semantics; we re-do the walk to
+        // honor the clip rect).
+        const uint8_t pattern = dashed ? 0xAA : 0xFF;
+        int x0 = x + gfx_offset, y0 = y + gfx_offset_y;
+        int x1 = x2 + gfx_offset, y1 = y2 + gfx_offset_y;
+        int dx =  std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+        int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+        int err = dx + dy;
+        int step = 0;
+        for (;;) {
+            if ((pattern & (1u << (step & 7))) && clip_contains(x0, y0))
+                graphics.setPixel(x0, y0);
+            if (x0 == x1 && y0 == y1) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
+            ++step;
+        }
     }
-    void gfxPixel(int x, int y)                { graphics.setPixel(x + gfx_offset, y + gfx_offset_y); }
-    void gfxCircle(int x, int y, int r)        { graphics.drawCircle(x + gfx_offset, y + gfx_offset_y, r); }
+    void gfxPixel(int x, int y) {
+        int sx = x + gfx_offset, sy = y + gfx_offset_y;
+        if (!clip_contains(sx, sy)) return;
+        graphics.setPixel(sx, sy);
+    }
+    void gfxCircle(int x, int y, int r) {
+        // Bounding-box short-circuit. The circle's full bounding box is
+        // [x-r, x+r] x [y-r, y+r] in vendor coords; after offset, check
+        // against the clip rect. If entirely outside, drop. Otherwise
+        // delegate; the framebuffer's own [0,256) x [0,64) bounds in
+        // graphics.setPixel still apply so off-screen pixels do not
+        // corrupt memory, and the visible bleed pattern that Q1 targets
+        // (vendor draws at x=64..68) never lands when the bounding box
+        // is fully outside the clip rect.
+        int bx = x + gfx_offset - r, by = y + gfx_offset_y - r;
+        int bw = 2 * r + 1, bh = 2 * r + 1;
+        if (!clip_intersect_rect(bx, by, bw, bh)) return;
+        graphics.drawCircle(x + gfx_offset, y + gfx_offset_y, r);
+    }
 
     void gfxBitmap(int x, int y, int w, const uint8_t* data) {
-        graphics.drawBitmap8(x + gfx_offset, y + gfx_offset_y, w, data);
+        // Per-pixel clip; the loop body mirrors shim::Graphics::drawBitmap8
+        // but tests each pixel against the clip rect before emitting.
+        const int sx0 = x + gfx_offset;
+        const int sy0 = y + gfx_offset_y;
+        for (int col = 0; col < w; ++col) {
+            uint8_t bits = data[col];
+            for (int row = 0; row < 8; ++row) {
+                if (!(bits & (1u << row))) continue;
+                int px = sx0 + col, py = sy0 + row;
+                if (clip_contains(px, py)) graphics.setPixel(px, py);
+            }
+        }
     }
     void gfxIcon(int x, int y, const uint8_t* data, bool /*clearfirst*/ = false) {
         gfxBitmap(x, y, 8, data);
     }
 
     void gfxDottedLine(int x, int y, int x2, int y2) {
-        graphics.drawLine(x + gfx_offset, y + gfx_offset_y, x2 + gfx_offset, y2 + gfx_offset_y, 0xAA);
+        gfxLine(x, y, x2, y2, true);
     }
 
     // Mirrors upstream `gfxDottedLine(x, y, x2, y2, p)` (HSUtils.cpp). Vendor
@@ -176,11 +297,26 @@ public:
     // drawLine takes a literal 8-bit pattern, so we translate density to a
     // sensible bitmask: p=1 solid, p=2 half-on (default), p=3 sparse.
     void gfxDottedLine(int x, int y, int x2, int y2, uint8_t p) {
-        uint8_t pattern = 0xAA;
+        uint8_t pattern;
         if (p <= 1) pattern = 0xFF;
         else if (p == 2) pattern = 0xAA;
         else pattern = 0x88;
-        graphics.drawLine(x + gfx_offset, y + gfx_offset_y, x2 + gfx_offset, y2 + gfx_offset_y, pattern);
+        // Inlined walk to honor the per-step pattern with clip.
+        int x0 = x + gfx_offset, y0 = y + gfx_offset_y;
+        int x1 = x2 + gfx_offset, y1 = y2 + gfx_offset_y;
+        int dx =  std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+        int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+        int err = dx + dy;
+        int step = 0;
+        for (;;) {
+            if ((pattern & (1u << (step & 7))) && clip_contains(x0, y0))
+                graphics.setPixel(x0, y0);
+            if (x0 == x1 && y0 == y1) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
+            ++step;
+        }
     }
 
     // Phazerville-style header: applet name at top of hemisphere half with a

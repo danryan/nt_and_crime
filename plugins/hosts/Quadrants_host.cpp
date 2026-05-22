@@ -41,6 +41,7 @@
 #include "../../shim/include/HemiPluginInterface.h"
 #include "../../shim/include/host_helpers.h"
 #include "../../shim/include/host_proxy.h"
+#include "../../shim/include/HSUtils.h"  // HS::gfx_clip_w / gfx_clip_h
 
 // ---------------------------------------------------------------------------
 // Parameter table
@@ -311,9 +312,20 @@ static bool draw_impl(_NT_algorithm* self) {
     resolve_and_cache(inst);
 
     // Render each slot.
+    //
+    // Clip rect (Q1): each lane is 64 wide x 64 tall on Quadrants. Vendor
+    // applet headers sometimes draw past x=63 (e.g. dotted underlines at
+    // x=62 plus shadow strokes); without a clip rect those emits bleed
+    // into the leftmost column of the neighboring lane. The clip rect
+    // bounds emissions to the screen-space rectangle
+    // [ox, ox+64) x [oy, oy+64).
+    const int prior_clip_w = HS::gfx_clip_w;
+    const int prior_clip_h = HS::gfx_clip_h;
     for (int i = 0; i < 4; ++i) {
         int ox = kSlotOriginX[i];
         int oy = kSlotOriginY[i];
+        HS::gfx_clip_w = 64;
+        HS::gfx_clip_h = 64;
         HemiPluginInterface* p = inst->cached_slot[i];
         if (p && p->render_view) {
             p->render_view(p, ox, oy);
@@ -321,6 +333,11 @@ static bool draw_impl(_NT_algorithm* self) {
             host_helpers::render_incompatible_stub(ox, oy);
         }
     }
+    // Restore prior clip rect so the focused-slot border (drawn via
+    // NT_drawShapeI below, which does not use the HS:: gfx wrappers) and
+    // any later firmware UI passes see a full-screen rect.
+    HS::gfx_clip_w = prior_clip_w;
+    HS::gfx_clip_h = prior_clip_h;
 
     // Draw focused-slot border: 1px inverted box around the focused region
     // (64-wide column, full 64-row height).

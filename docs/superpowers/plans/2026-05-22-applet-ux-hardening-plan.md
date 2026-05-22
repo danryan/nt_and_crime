@@ -86,10 +86,14 @@ PR body: list of quirks fixed, before/after screenshots if useful, link to brain
 
 If multiple quirks dispatch in parallel:
 
-1. Confirm feature branch HEAD has stage 2 committed.
-2. For each implementer: `git worktree add .worktrees/ux-hardening-<quirk-id> -b ux-hardening/<quirk-id> <feature-branch>`.
-3. Verify spec doc reachable; init submodules in each worktree.
+1. Confirm feature branch HEAD has stage 2 committed. Current feature branch: `dr/ux-hardening-batch`.
+2. For each implementer: `git worktree add .worktrees/ux-hardening-<quirk-id> -b ux-hardening/<quirk-id> dr/ux-hardening-batch`.
+3. Verify spec doc reachable; init submodules in each worktree (`git submodule update --init --recursive --depth=1`).
 4. Constrain writable surface per quirk in the implementer prompt.
+5. Pre-commit hook enforcement: the project pre-commit hook at `.git/hooks/pre-commit` has cases for the three Stage 3 branches that hard-reject staged files outside each implementer's writable surface. The hook also rejects commits on branches not derived from `dr/ux-hardening-batch`. Surfaces (regex from the hook):
+    - `ux-hardening/q1-clip-rect`: `shim/include/HSUtils.h`, `shim/src/globals.cpp`, `shim/include/HemisphereApplet.h`, `plugins/hosts/Hemispheres_host.cpp`, `plugins/hosts/Quadrants_host.cpp`, `harness/tests/test_draw_clip.cpp`, `Makefile`.
+    - `ux-hardening/q2-footer-spike`: `plugins/hosts/Hemispheres_host.cpp`, `plugins/hosts/Quadrants_host.cpp`.
+    - `ux-hardening/q3-unused-label`: `shim/src/host_proxy.cpp`, `harness/tests/test_host_proxy.cpp` or `harness/tests/test_host_proxy_unused.cpp`, `Makefile`.
 
 ## Pre-PR quality gate
 

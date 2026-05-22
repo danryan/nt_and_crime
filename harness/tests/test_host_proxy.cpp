@@ -329,3 +329,77 @@ TEST_CASE("decode_forward returns invalid for host_p beyond the lane's slot_para
     REQUIRE(t.slot_idx == kInvalidSlotIdx);
     REQUIRE(t.slot_param_idx == -1);
 }
+
+// Q3 regression: unbound proxy parameters must carry a non-null placeholder
+// name so firmware never reads from a null `.name` and prints uninitialized
+// memory ("-OFhW" garbage). The placeholder is the static string literal
+// "--unused--". Three injection sites in host_proxy.cpp share this contract:
+// init() seeds the entire table, aggregate_slot(..., kInvalidSlotIdx) clears
+// a lane, and aggregate_slot(..., valid) zero-fills the tail past the slot's
+// real param count.
+
+TEST_CASE("init labels every proxy param entry with the --unused-- placeholder",
+          "[host_proxy][q3-unused]") {
+    clear();
+    State s;
+    host_proxy::init(s, 2);
+    int base = s.kNumSlotIndexParams;  // proxy region starts after K selectors
+    for (int p = 0; p < kMaxSlotsPerHost * kMaxProxyParamsPerSlot; ++p) {
+        REQUIRE(s.proxy_params[base + p].name != nullptr);
+        REQUIRE(std::strcmp(s.proxy_params[base + p].name, "--unused--") == 0);
+    }
+}
+
+TEST_CASE("aggregate_slot(kInvalidSlotIdx) labels every lane entry --unused--",
+          "[host_proxy][q3-unused]") {
+    clear();
+    State s;
+    host_proxy::init(s, 2);
+    host_proxy::hp_test_inject_slot(0, "Cumulus", kHemiGuid_Cu, 3, sample_params_3);
+    host_proxy::aggregate_slot(s, 0, 0);
+
+    host_proxy::aggregate_slot(s, 0, kInvalidSlotIdx);
+
+    int base = s.kNumSlotIndexParams;
+    for (int p = 0; p < kMaxProxyParamsPerSlot; ++p) {
+        REQUIRE(s.proxy_params[base + p].name != nullptr);
+        REQUIRE(std::strcmp(s.proxy_params[base + p].name, "--unused--") == 0);
+    }
+}
+
+TEST_CASE("aggregate_slot labels trailing entries past slot_param_cnt --unused--",
+          "[host_proxy][q3-unused]") {
+    clear();
+    State s;
+    host_proxy::init(s, 2);
+    host_proxy::hp_test_inject_slot(0, "Cumulus", kHemiGuid_Cu, 3, sample_params_3);
+
+    host_proxy::aggregate_slot(s, 0, 0);
+
+    int base = s.kNumSlotIndexParams;
+    REQUIRE(s.maps[0].slot_param_cnt == 3);
+    for (int p = 3; p < kMaxProxyParamsPerSlot; ++p) {
+        REQUIRE(s.proxy_params[base + p].name != nullptr);
+        REQUIRE(std::strcmp(s.proxy_params[base + p].name, "--unused--") == 0);
+    }
+}
+
+TEST_CASE("bind then unbind a lane reverts every entry to --unused--",
+          "[host_proxy][q3-unused]") {
+    clear();
+    State s;
+    host_proxy::init(s, 2);
+    host_proxy::hp_test_inject_slot(0, "Big", kHemiGuid_Re, 20, sample_params_20);
+
+    host_proxy::aggregate_slot(s, 1, 0);
+    int base = s.kNumSlotIndexParams + 1 * kMaxProxyParamsPerSlot;
+    // Sanity: lane 1 fully populated to its cap.
+    REQUIRE(s.maps[1].slot_param_cnt == kMaxProxyParamsPerSlot);
+    REQUIRE(std::strstr(s.proxy_params[base + 0].name, "P0") != nullptr);
+
+    host_proxy::aggregate_slot(s, 1, kInvalidSlotIdx);
+    for (int p = 0; p < kMaxProxyParamsPerSlot; ++p) {
+        REQUIRE(s.proxy_params[base + p].name != nullptr);
+        REQUIRE(std::strcmp(s.proxy_params[base + p].name, "--unused--") == 0);
+    }
+}

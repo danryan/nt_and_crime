@@ -180,13 +180,25 @@ Mitigation pattern: a sentinel on the instance that flips true only after the al
 
 Separate firmware result from the same probe (load-bearing for proxy design): `NT_setParameterFromUi` does NOT re-enter `parameterChanged` synchronously (NEST counter stays at 0). Firmware defers the downstream notify to a later call frame. No stack-safety re-entry guard required.
 
+## numParameters must match actual valid table range
+
+Firmware reads `inst->parameters[i]` for `i` in `[0, numParameters)` and does not validate each entry. If `numParameters` is set to a buffer's max capacity but only `M` entries are populated, entries `[M, numParameters)` are zero-init `_NT_parameter{nullptr, 0, 0, 0, kNT_unitNone, 0, nullptr}` and become phantom parameters on the algo page (blank name, unsettable). For hosts with a dynamic parameter table sized to a worst-case Quadrants budget but K = 2 lanes used, the correct value is `K + K * kMaxProxyParamsPerSlot`, NOT `kMaxHostParams`. See `plugins/hosts/Hemispheres_host.cpp::calculateRequirements_impl` for the canonical formulation.
+
+## Host-test seam: *_test_inject_slot
+
+Three injection tables exist for host tests: `hh_test_inject_slot` (Hemispheres host), `qq_test_inject_slot` (Quadrants host), `host_proxy::hp_test_inject_slot` (shared aggregator). All gate on `NT_HEM_HOST_SIM` (set in `HOST_FLAGS`). Tests populate the table; the host's slot-resolution path reads from it instead of firmware `NT_getSlot`. Production code is unchanged. New host plug-in tests reuse the matching seam; do not invent a fourth.
+
+## Catch2 main lives in harness/src/catch_main.cpp
+
+Test files must not `#define CATCH_CONFIG_MAIN` or define `int main()`. The shared `harness/src/catch_main.cpp` (linked via `HARNESS_SRCS`) supplies Catch2's main entry point. Defining a second main causes a linker collision. Test files include `"catch.hpp"` and declare `TEST_CASE(...)` only.
+
 ## _NT_factory designated-initializer order
 
 `_NT_factory` field order matters with C++20 designated initializers. The struct orders `tags` BEFORE `hasCustomUi`/`customUi` (`vendor/distingNT_API/include/distingnt/api.h:468`). Initializing `.tags = ...` after `.customUi = ...` is ill-formed and the compiler rejects it. The canonical `plugins/probes/aeabi_probe.cpp` factory doubles as the reference for field order when adding a new factory.
 
 ## ARM unresolved-symbol surface (firmware contract)
 
-Firmware resolves at load: `NT_*` ABI (`NT_drawText`, `NT_screen`, `NT_jsonParse*`, `NT_intToString`), `_GLOBAL_OFFSET_TABLE_`, and newlib `memcpy`/`memset`/`memmove`/`strlen`/`logf`/`powf`. NOT resolved: `__aeabi_d2lz` (handled by compiler_rt `fixdfdi.c` + `fixunsdfdi.c` + `fp_lib.h` + `int_math.h` vendored under `shim/src/compiler_rt/` from llvm-project tag `llvmorg-19.1.0`, Apache-2.0; `fixdfdi.c` emits the EABI alias `__aeabi_d2lz` via its internal `AEABI_RTABI` macro when `__ARM_EABI__` is defined), `vsnprintf` (newlib-nano omits; inline integer format if needed, see `shim/src/graphics.cpp` for the precedent that supports vendor `Relabi.h`'s `%3d`/`%u.%u` formats without pulling vsnprintf). `arm-none-eabi-nm <plugin.o> | grep ' U '` enumerates.
+Firmware resolves at load: `NT_*` ABI (`NT_drawText`, `NT_screen`, `NT_jsonParse*`, `NT_intToString`), `_GLOBAL_OFFSET_TABLE_`, and newlib `memcpy`/`memset`/`memmove`/`strlen`/`strcmp`/`logf`/`powf`. NOT resolved: `__aeabi_d2lz` (handled by compiler_rt `fixdfdi.c` + `fixunsdfdi.c` + `fp_lib.h` + `int_math.h` vendored under `shim/src/compiler_rt/` from llvm-project tag `llvmorg-19.1.0`, Apache-2.0; `fixdfdi.c` emits the EABI alias `__aeabi_d2lz` via its internal `AEABI_RTABI` macro when `__ARM_EABI__` is defined), `snprintf` AND `vsnprintf` (newlib-nano omits both; inline integer format. `shim/src/graphics.cpp` and `shim/src/host_proxy.cpp::format_u2` are the precedents for two-digit unsigned formatting without pulling either). `arm-none-eabi-nm <plugin.o> | grep ' U '` enumerates.
 
 ## Vendor dep cpps must link into ARM plug-in
 

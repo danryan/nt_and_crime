@@ -64,6 +64,12 @@ Better mapping: claim only `kNT_button3` (advance focused slot forward) and `kNT
 
 Fix surface guess: `plugins/hosts/Quadrants_host.cpp::hasCustomUi_impl` and `customUi_impl` only. Existing `qq_test_inject_slot` host test seam covers regression. Hemispheres host is out of scope (its button1/2 map to slot 0/1 aux-button forwarding, which IS functional and not wasteful).
 
+### Q5: Standalone per-applet customUi routes button1 to aux (added 2026-05-22)
+
+When a per-applet plug-in is loaded standalone (no Hemispheres/Quadrants host), `_per_applet_runtime.h::route_custom_ui` maps `kNT_button1` to the applet's `on_aux_button`. For many vendor applets the aux button toggles a param-edit mode, so pressing hardware button 1 effectively starts changing parameters. The user does not want this behavior in the standalone (singular) applet view; the firmware default for button 1 is preferable.
+
+Fix surface guess: drop `kNT_button1` from every per-applet `hasCustomUi_impl` (49 plug-ins, identical mask `kNT_encoderL | kNT_encoderButtonL | kNT_button1`) and remove the button1 handler from `_per_applet_runtime.h::route_custom_ui`. Update mask + behavioral tests. Hosts unchanged: Hemispheres still claims button1/2 and forwards to per-slot aux; Quadrants's Q4 mapping unchanged.
+
 ### Discovery complete (2026-05-22)
 
 Sweep complete on hardware: three confirmed quirks (Q1 bleed, Q2 encoder-turn footer, Q3 unused-param labels). No additional quirks observed during the cycle through all 49 per-applet plug-ins under both Hemispheres and Quadrants hosts. The candidate list below remained unconfirmed and is dropped from this batch's scope (re-eligible for a future hardening pass if observed):

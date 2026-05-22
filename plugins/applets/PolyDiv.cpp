@@ -70,7 +70,7 @@ static bool draw_impl(_NT_algorithm* self) {
 }
 
 static uint32_t hasCustomUi_impl(_NT_algorithm* /*self*/) {
-    return kNT_encoderL | kNT_encoderButtonL | kNT_button1;
+    return kNT_encoderL | kNT_encoderButtonL;
 }
 
 static void customUi_impl(_NT_algorithm* self, const _NT_uiData& data) {

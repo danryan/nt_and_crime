@@ -137,6 +137,22 @@ Hemispheres host out of scope: its button1/2 forward to per-slot `on_aux_button`
 
 Test plan: `make test-hosts-pilot` passes (108 assertions in Quadrants, up from 104); regression sweep green; `make arm` clean; hardware smoke confirms cycle direction matches expectation and unclaimed buttons no longer steal focus.
 
+### Q5: Standalone per-applet button1 no longer routes to aux
+
+Mitigation: drop `kNT_button1` from every per-applet plug-in's `hasCustomUi_impl` and remove the button1 handler from `_per_applet_runtime.h::route_custom_ui`. The applet's `on_aux_button` is no longer reachable from a standalone per-applet plug-in's customUi; firmware handles button 1 per its default (which is what the user wants).
+
+Affected files:
+
+- `plugins/applets/*.cpp` (49 files): `hasCustomUi_impl` returns `kNT_encoderL | kNT_encoderButtonL` instead of `kNT_encoderL | kNT_encoderButtonL | kNT_button1`. Mechanical sed.
+- `plugins/applets/_per_applet_runtime.h::route_custom_ui`: the `if ((data.controls & kNT_button1) ...) { p->on_aux_button(self); }` block is removed. Comment block updated to document Q5.
+- `harness/tests/test_applet_*.cpp`: mask assertions sed-updated to drop `kNT_button1` from expected masks. Two behavioral tests required hand fixes (their assertions reflected the aux-button side-effect): `test_applet_ScaleDuet.cpp::SD8` (mask bit toggle) and `test_applet_Xfader.cpp::XF7` (center_reset_enable toggle) — both flipped to assert no side-effect on button1 press. `test_applet_Scope.cpp::SC8` flipped its mask assertion to require `kNT_button1` is NOT claimed. Remaining smoke tests (~46 files) still pass without changes (their `REQUIRE(true)` assertions confirm customUi doesn't crash on button1; Q5 just means the call is a no-op).
+
+Hosts unchanged: Hemispheres's `kNT_button1`/`kNT_button2` mapping to per-slot `on_aux_button` remains intact (functional, intentional). Quadrants's Q4 cycle mapping is unaffected.
+
+Expected behavior change: in singular applet view (per-applet plug-in loaded as the algorithm), pressing hardware button 1 invokes the firmware default (likely algorithm-page navigation) instead of the applet's aux button. The applet's aux-button behavior is still reachable when the applet is hosted by Hemispheres (via button1/2) or Quadrants (via encoderButtonR).
+
+Test plan: `make test-applets-pilot` passes; full regression sweep green; `make arm` clean. Hardware smoke: load any per-applet plug-in standalone; press button 1; confirm no param-edit mode activates and firmware default is observed.
+
 ## Q2 spike outcome (2026-05-22)
 
 Both spikes ran on hardware. Result: Q2 deferred. Not shipping in this batch.

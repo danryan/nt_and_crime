@@ -249,7 +249,12 @@ inline void render_view_with_offset(_NT_algorithm* self, int origin_x, int origi
 }
 
 // customUi routing through the HemiPluginInterface pointers populated by
-// construct(). Standalone path is identical to what the host would do.
+// construct(). Standalone path covers encoder turn + encoder button press
+// only. Q5 (2026-05-22): aux button is NOT reachable from the standalone
+// per-applet plug-in's customUi; users wanted firmware default behavior
+// for hardware button 1 instead of the applet's aux-button (which in many
+// vendor applets toggles param-edit mode). Hosts (Hemispheres/Quadrants)
+// remain free to route their own controls to on_aux_button as before.
 inline void route_custom_ui(_NT_algorithm* self, const _NT_uiData& data) {
     auto* p = static_cast<HemiPluginInterface*>(self);
     if (data.encoders[0] != 0 && p->on_encoder_turn) {
@@ -257,9 +262,6 @@ inline void route_custom_ui(_NT_algorithm* self, const _NT_uiData& data) {
     }
     if ((data.controls & kNT_encoderButtonL) && !(data.lastButtons & kNT_encoderButtonL)) {
         if (p->on_button_press) p->on_button_press(self);
-    }
-    if ((data.controls & kNT_button1) && !(data.lastButtons & kNT_button1)) {
-        if (p->on_aux_button) p->on_aux_button(self);
     }
 }
 

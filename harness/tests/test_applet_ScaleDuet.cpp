@@ -199,8 +199,10 @@ TEST_CASE("ScaleDuet SD7: encoder button press toggles mask bit via customUi", "
     REQUIRE((scaleduet_applet_get_mask(loaded->algorithm, 0) & 0x001) == 0u);
 }
 
-TEST_CASE("ScaleDuet SD8: aux button press toggles mask bit via customUi", "[scaleduet]") {
-    // on_aux_button is wired to OnButtonPress(). Same toggle behavior as SD7.
+TEST_CASE("ScaleDuet SD8: button1 in standalone customUi has no effect (Q5)", "[scaleduet]") {
+    // Q5: standalone per-applet customUi no longer routes button1 to
+    // on_aux_button. Mask bit stays at its initial value across a
+    // button1 rising-edge customUi call.
     nt::reset_runtime();
     nt::LoadedPlugin* loaded = nt::load_plugin();
     REQUIRE(loaded != nullptr);
@@ -213,5 +215,5 @@ TEST_CASE("ScaleDuet SD8: aux button press toggles mask bit via customUi", "[sca
     ui.lastButtons  = 0;  // rising edge
     loaded->factory->customUi(loaded->algorithm, ui);
 
-    REQUIRE((scaleduet_applet_get_mask(loaded->algorithm, 0) & 0x001) == 0u);
+    REQUIRE((scaleduet_applet_get_mask(loaded->algorithm, 0) & 0x001) == 1u);
 }

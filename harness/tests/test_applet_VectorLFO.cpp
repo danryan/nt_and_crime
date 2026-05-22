@@ -340,7 +340,7 @@ TEST_CASE("VectorLFO VL7: hasCustomUi returns standard claim mask",
     REQUIRE(alg != nullptr);
     REQUIRE(loaded->factory->hasCustomUi != nullptr);
     uint32_t mask = loaded->factory->hasCustomUi(alg);
-    REQUIRE(mask == (kNT_encoderL | kNT_encoderButtonL | kNT_button1));
+    REQUIRE(mask == (kNT_encoderL | kNT_encoderButtonL));
 }
 
 // ---------------------------------------------------------------------------

@@ -336,7 +336,7 @@ TEST_CASE("RunglBook RB10: hasCustomUi returns expected bitmask", "[per-applet][
     REQUIRE(loaded != nullptr);
     REQUIRE(loaded->factory->hasCustomUi != nullptr);
     uint32_t mask = loaded->factory->hasCustomUi(loaded->algorithm);
-    REQUIRE(mask == (kNT_encoderL | kNT_encoderButtonL | kNT_button1));
+    REQUIRE(mask == (kNT_encoderL | kNT_encoderButtonL));
 }
 
 // ---------------------------------------------------------------------------

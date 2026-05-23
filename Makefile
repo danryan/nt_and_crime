@@ -389,23 +389,17 @@ $(foreach h,$(HOST_PLUGIN_LIST),$(eval $(call BUILD_HOST_PLUGIN,$(h))))
 
 HOST_PLUGIN_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(HOST_PLUGIN_LIST)))
 
-build/host/Hemispheres.host.o: applets/Hemispheres.cpp $(SHIM_DEPS)
-	mkdir -p build/host
-	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -c -o $@ $<
-
 # Vendor dep cpp sources linked into the host test binary. Per-dep Catch2
 # binaries #include these .cpp files directly inline; for the applet host
 # build the same code is compiled as separate TUs and linked in.
 VENDOR_DEP_HOST_SRCS := shim/src/lorenz/streams_resources.cpp \
                        shim/src/lorenz/streams_lorenz_generator.cpp
 
-build/host/test_hemispheres: harness/tests/test_hemispheres.cpp harness/tests/applet_test_helpers.cpp build/host/Hemispheres.host.o $(HARNESS_SRCS) $(VENDOR_DEP_HOST_SRCS)
-	mkdir -p build/host
-	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
-
+# `make test-applets` is preserved as an alias for the per-applet test
+# runner. The bundled-host test binary that this target originally drove
+# was retired in the cleanup release.
 .PHONY: test-applets
-test-applets: build/host/test_hemispheres
-	./build/host/test_hemispheres
+test-applets: test-applets-pilot
 
 # Per-applet host test binaries (pilot release). Each binary loads the
 # matching plugins/applets/<APPLET>.cpp into the harness via plugin_loader
@@ -457,15 +451,15 @@ test-hosts-pilot: $(addprefix build/host/test_host_, $(HOST_PLUGIN_LIST))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
 # Per-dep tests. Each Catch2 binary builds against the same harness shim
-# as test_hemispheres but is standalone so a single dep test can run in
-# isolation. test-deps runs all 6.
+# as the per-applet tests but is standalone so a single dep test can run
+# in isolation. test-deps runs all 6.
 DEP_TESTS := test_dep_vec_osc test_dep_lorenz test_dep_tideslite \
              test_dep_clock_mgr test_dep_quant test_dep_cv_map
 
 # Shim core sources (globals, graphics, icons, cxx runtime stubs). Linked
-# into dep tests in place of Hemispheres.host.o so dep tests do not pull
-# vendor copies of vec_osc / lorenz dep headers (which would collide with
-# the shim copies the dep tests already include).
+# into dep tests so dep tests do not pull vendor copies of vec_osc /
+# lorenz dep headers (which would collide with the shim copies the dep
+# tests already include).
 SHIM_CORE_SRCS := shim/src/globals.cpp shim/src/graphics.cpp shim/src/icons.cpp \
                   shim/src/quant/braids_quantizer.cpp shim/src/quant/OC_scales.cpp \
                   shim/src/quant/q_engine.cpp shim/src/cv_map/bjorklund.cpp

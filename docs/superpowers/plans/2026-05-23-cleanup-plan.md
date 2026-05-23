@@ -13,7 +13,7 @@ Lowest-risk first. Each phase is its own commit (per Conventional Commits rule i
 
 | Phase | Title | Files | Risk | Parallel? |
 |-------|-------|-------|------|-----------|
-| A | Deprecated `applets/` + cascade | `applets/*.cpp`, `Makefile`, `docs/hardware-deploy.md`, `harness/tests/test_hemispheres.cpp` (relocate seam), `harness/tests/applet_test_helpers.{h,cpp}`, `plugins/applets/ProbabilityDivider.cpp`, `plugins/probes/solo_probe.cpp` (audit) | Medium | Sequential |
+| A | Deprecated `applets/` + cascade | `applets/*.cpp`, `Makefile`, `docs/hardware-deploy.md`, `harness/tests/test_hemispheres.cpp` (deleted), `harness/tests/applet_test_helpers.{h,cpp}` (deleted), `plugins/applets/ProbabilityDivider.cpp`, `plugins/probes/solo_probe.cpp` | Medium | Sequential |
 | B | Superseded shim headers | `shim/include/hemispheres_shim.h`, `HemispheresFactory.h`, `applet_indices.h`, `Empty.h`, `OC_ADC.h` | Low | Sequential (B1 -> B2 -> B3 -> B4; B5 independent) |
 | C | Compiler_rt to `vendor/llvm-project` submodule | `.gitmodules`, `bootstrap.sh`, `Makefile`, CLAUDE.md, `shim/src/compiler_rt/` (deleted) | Medium | Sequential |
 | D | Docs sprawl consolidation | `docs/superpowers/{brainstorms,specs,plans}/`, `docs/superpowers/archived/` (new) | Low | Parallel by phase |
@@ -29,7 +29,7 @@ Interpretation A confirmed 2026-05-23. Phase A executes the full cascade (delete
 
 ### A.2 Order of commits
 
-1. `chore(harness): drop test_hemispheres binary and seam (per A2b)`. Deletes `harness/tests/test_hemispheres.cpp`, removes the seam declaration plus inline wrapper at `harness/tests/applet_test_helpers.h:52-58`, deletes `build/host/Hemispheres.host.o` rule (`Makefile:392-394`) and `build/host/test_hemispheres` rule (`Makefile:402-404`), retargets `test-applets:` (`Makefile:406-408`) to alias `test-applets-pilot`. Same commit updates the `CLAUDE.md` "Build and test commands" row for `test-applets` plus the "Architecture" paragraph for `harness/` to remove `test_hemispheres` mentions. Verify `make test-applets` runs the per-applet binaries to completion.
+1. `chore(harness): drop test_hemispheres binary plus applet_test_helpers (per A2b)`. Deletes `harness/tests/test_hemispheres.cpp` (5157 lines), `harness/tests/applet_test_helpers.h` (564 lines), `harness/tests/applet_test_helpers.cpp` (661 lines). Deletes `build/host/Hemispheres.host.o` rule (`Makefile:392-394`) and `build/host/test_hemispheres` rule (`Makefile:402-404`). Retargets `test-applets:` (`Makefile:406-408`) to alias `test-applets-pilot`. Same commit updates the `CLAUDE.md` "Build and test commands" row for `test-applets` plus the "Architecture" paragraph for `harness/` to remove `test_hemispheres` plus `applet_test_helpers` mentions. Verify `make test-applets` runs the per-applet binaries to completion.
 2. `refactor(applets): migrate ProbabilityDivider off hemispheres_shim.h` (per spec A3). Touches `plugins/applets/ProbabilityDivider.cpp` only. Verify `./build/host/test_applet_ProbabilityDivider` green.
 3. `refactor(probes): migrate solo_probe off hemispheres_shim.h` (per spec A4, A4=migrate decided 2026-05-23). Replace the `#include "hemispheres_shim.h"` at `plugins/probes/solo_probe.cpp:12` with the direct base set (`HemisphereApplet.h` plus `HSUtils.h` for `LEFT_HEMISPHERE`). Replace `hem_shim::make_applet<APPLET_NAME>(sram)` at line 28 with `new(sram) APPLET_NAME()` (placement new; equivalent). Verify `make build/arm/solo_probe.o` builds.
 4a. `chore(applets): remove deprecated Hemispheres.cpp and Hemispheres2.cpp`. Deletes `applets/Hemispheres.cpp`, `applets/Hemispheres2.cpp`, and the now-empty `applets/` directory.
@@ -265,7 +265,7 @@ One commit per logical change. All commits follow `<type>(<scope>): <subject>`. 
 
 Phase A:
 
-- `chore(harness): drop test_hemispheres binary and seam`
+- `chore(harness): drop test_hemispheres binary plus applet_test_helpers`
 - `refactor(applets): migrate ProbabilityDivider off hemispheres_shim.h`
 - `refactor(probes): migrate solo_probe off hemispheres_shim.h`
 - `chore(applets): remove deprecated Hemispheres.cpp and Hemispheres2.cpp`

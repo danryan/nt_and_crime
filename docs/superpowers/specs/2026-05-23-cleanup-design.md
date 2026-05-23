@@ -122,12 +122,13 @@ A1. `applets/Hemispheres.cpp` plus `applets/Hemispheres2.cpp` removal.
 - Verification: `make test-applets`, `make arm`, `make test`. The two bundled `.o` files no longer build; the per-applet plus host plug-ins continue.
 - Risk: medium. Several Makefile sections touched.
 
-A2. `harness/tests/test_hemispheres.cpp` deletion (A2b, decided 2026-05-23).
+A2. `harness/tests/test_hemispheres.cpp` plus helper deletion (A2b, decided 2026-05-23).
 
-- Action: delete `harness/tests/test_hemispheres.cpp` in full. Delete `hem_test::get_applet_impl` declaration plus the inline `get_applet` wrapper at `harness/tests/applet_test_helpers.h:52-58`. Delete the `build/host/Hemispheres.host.o` rule (`Makefile:392-394`) and the `build/host/test_hemispheres` rule (`Makefile:402-404`). Retarget the `test-applets:` target (`Makefile:406-408`) to depend on `test-applets-pilot` so `make test-applets` continues to work as an alias for the per-applet test run.
-- Files touched: `harness/tests/test_hemispheres.cpp` (deleted), `harness/tests/applet_test_helpers.h` (seam declaration plus wrapper removed; pack helpers retained), `Makefile` (three rules edited as above), `CLAUDE.md` ("Build and test commands" table row for `test-applets`; "Architecture" paragraph for `harness/`).
+- Action: delete `harness/tests/test_hemispheres.cpp` (5157 lines), `harness/tests/applet_test_helpers.h` (564 lines), and `harness/tests/applet_test_helpers.cpp` (661 lines) in full. Delete the `build/host/Hemispheres.host.o` rule (`Makefile:392-394`) and the `build/host/test_hemispheres` rule (`Makefile:402-404`). Retarget the `test-applets:` target (`Makefile:406-408`) to depend on `test-applets-pilot` so `make test-applets` continues to work as an alias for the per-applet test run.
+- Files touched: `harness/tests/test_hemispheres.cpp` (deleted), `harness/tests/applet_test_helpers.h` (deleted), `harness/tests/applet_test_helpers.cpp` (deleted), `Makefile` (three rules edited), `CLAUDE.md` ("Build and test commands" table row for `test-applets`; "Architecture" paragraph for `harness/`).
+- Verified scope: `applet_test_helpers.{h,cpp}` consumed only by `test_hemispheres.cpp:5`. Per-applet tests reimplement pack helpers locally (see comments at `test_applet_Cumulus.cpp:31-32`, `test_applet_Relabi.cpp:12,39`, `test_applet_VectorLFO.cpp:64-65`, `test_applet_ClockDivider.cpp:122-127`). Removing the helper files breaks no per-applet binary.
 - Coverage delta: 282 TEST_CASEs plus 2596 assertions removed. Per-applet suite (508 TEST_CASEs across 55 files) becomes the only applet coverage. Cross-applet bus-interaction cases are not migrated; the user accepts the loss.
-- Verification: `make test-applets` builds (now an alias for `test-applets-pilot`) and runs all 55 per-applet test binaries to completion. `grep -rn 'test_hemispheres' Makefile harness/ docs/` returns zero hits after the commit.
+- Verification: `make test-applets` builds (now an alias for `test-applets-pilot`) and runs all 55 per-applet test binaries to completion. `grep -rn 'test_hemispheres\|applet_test_helpers' Makefile harness/ docs/` returns zero hits after the commit (other than historical comments inside per-applet test sources, which describe a pattern that is now self-contained).
 - Risk: low to medium. The deletion is mechanical; the residual risk is that a hidden cross-applet regression slips past the per-applet suite. No way to mitigate inside the cleanup release.
 
 A3. `plugins/applets/ProbabilityDivider.cpp` migration off `hemispheres_shim.h`.

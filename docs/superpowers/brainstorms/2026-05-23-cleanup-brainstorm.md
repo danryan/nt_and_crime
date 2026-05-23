@@ -90,11 +90,13 @@ Decision: delete everything tied to the original bundled Hemispheres plug-in, in
 Scope:
 
 - `harness/tests/test_hemispheres.cpp` (5157 lines, 282 TEST_CASEs, 2596 assertions) deleted.
-- `hem_test::get_applet_impl` declaration plus its inline wrapper at `harness/tests/applet_test_helpers.h:52-58` deleted.
-- `harness/tests/applet_test_helpers.{h,cpp}` retained (per-applet tests use the `pack_<applet>` helpers; verified by grep across `test_applet_*.cpp`).
+- `harness/tests/applet_test_helpers.h` (564 lines) deleted.
+- `harness/tests/applet_test_helpers.cpp` (661 lines) deleted.
 - `build/host/Hemispheres.host.o` rule (`Makefile:392-394`) deleted.
 - `build/host/test_hemispheres` rule (`Makefile:402-404`) deleted.
 - `test-applets:` Makefile target (`Makefile:406-408`) retargeted to depend on `test-applets-pilot` (`Makefile:417-419`). The verb `make test-applets` is preserved as an alias for per-applet test runs; the body switches.
+
+Verified via grep: `applet_test_helpers.{h,cpp}` is consumed only by `test_hemispheres.cpp:5`. No `test_applet_*.cpp` includes the helper header. Per-applet tests reimplement pack helpers locally per the pattern documented in `harness/tests/test_applet_Cumulus.cpp:31-32`, `harness/tests/test_applet_Relabi.cpp:12,39`, `harness/tests/test_applet_VectorLFO.cpp:64-65`, `harness/tests/test_applet_ClockDivider.cpp:122-127`. Helper file deletion is safe.
 
 Coverage delta: 282 TEST_CASEs go. Per-applet tests at 508 TEST_CASEs across 55 files become the only applet coverage. Cross-applet bus-interaction cases in `test_hemispheres.cpp` are not migrated. User accepts the loss.
 

@@ -173,3 +173,31 @@ Conclusion: footer suppression is keyed on the pot-button claim, not the pot-rot
 Follow-up: file an Expert Sleepers firmware feature request for an algorithm-level footer-suppression flag in `_NT_factory` (or a `customUi` variant that suppresses default firmware overlays without claiming the underlying control events). Track in a separate issue/email; out of scope for this batch.
 
 The Q2 implementer branch `ux-hardening/q2-footer-spike` (commit `ececeba`, narrowed-mask spike 2) stays on its branch for reference but is not cherry-picked into the feature branch.
+
+## Q2 overdraw outcome (2026-05-23)
+
+Q2 reopened and fixed via a `step()`-side framebuffer overdraw. Ships on `dr/q2-spike-overdraw` (PR pending).
+
+Mechanism: the firmware paints its helper-text overlay onto `NT_screen` after the algorithm's `draw()` returns. `step()` runs at audio rate, AFTER the firmware overlay pass and BEFORE the next display flush. Writing to `NT_screen` from `step()` reaches the display.
+
+Implementation:
+
+- `_HHInstance` and `_QQInstance` each gain a `uint8_t footer_cache[kFooterRows * 128]` buffer plus a `uint32_t steps_since_draw` counter. Both held in per-instance SRAM.
+- `kFooterRows = 16`. The firmware overlay is taller than the bottom 8 rows; 16 rows fully covers it on the hardware tested.
+- At the end of `draw_impl`, the host snapshots `NT_screen + (64 - 16) * 128` for `16 * 128` bytes into `footer_cache` and resets `steps_since_draw = 0`.
+- `step_impl` checks `steps_since_draw < kFooterRestoreSteps` (constant `100`). If true, it memcpys `footer_cache` back into `NT_screen + (64 - 16) * 128` and increments the counter. Otherwise it does nothing.
+
+The counter guard is the navigate-away safety net. `step()` runs for every algorithm in the preset regardless of which one is displayed; without the guard, a backgrounded Hemispheres host would keep overwriting the framebuffer with stale cache bytes while a different algorithm tried to render. At a 32-frame audio buffer at 48 kHz, 100 step calls is ~67 ms, comfortably above one display refresh period (~16 ms at 60 Hz). When the user is viewing the host, `draw()` runs faster than the guard expires; when they navigate away, the guard expires before the next `draw()` and the host stops touching the framebuffer.
+
+Affected files (writable surface for this batch):
+
+- `plugins/hosts/Hemispheres_host.cpp`: `_HHInstance` gets cache + counter; `construct_impl` initializes counter to `UINT32_MAX`; `draw_impl` end snapshots; `step_impl` restores under the guard.
+- `plugins/hosts/Quadrants_host.cpp`: identical changes to `_QQInstance`.
+
+Hardware-deploy gotcha (load-bearing for anyone reproducing this): enlarging the instance struct requires a power cycle on the NT before the new build behaves correctly. The firmware caches the algorithm's SRAM requirement at scan time; deploying a build with a larger `sizeof(_HHInstance)` without a power cycle leaves the runtime allocating the prior (smaller) size. Construct then writes past the allocation, the cache buffer ends up partially in adjacent memory, and the `step()` restore reads garbage that often looks indistinguishable from the firmware footer it was supposed to overwrite. Power-cycle and the new requirement is re-read; the fix then works as designed.
+
+Expected behavior change: on both Hemispheres and Quadrants hosts, the firmware's "push: params" / "push: snap" / algo-name / softkey-label overlay is invisibly overwritten with the host's own bottom-16-row content within one audio buffer of the overlay paint. Lane content is preserved (the cache snapshot captures whatever the per-applet plug-in rendered). Softkey navigation continues to work because we do NOT claim any new controls in `hasCustomUi`; the overlay is suppressed visually, not functionally.
+
+Test plan: full host-test sweep (`make test-applets`, `make test-host-proxy`, `make test-hosts-pilot`, `make test-draw-clip`, `make test-buses`, `make test-draw`) green. `make arm` clean. Hardware smoke confirmed on both hosts after a power cycle.
+
+The upstream feature request (`docs/q2-upstream-request.md` draft) is still worth filing for the cleaner long-term solution, but is no longer load-bearing for this project.

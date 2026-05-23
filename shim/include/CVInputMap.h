@@ -29,7 +29,7 @@
 // need ClkDivMult should include "util/clkdivmult.h" explicitly.
 
 // Number of ADC input channels provided by the shim (T4.1 layout).
-static constexpr int CVMAP_ADC_LAST = 4; // ADC_CHANNEL_LAST from OC_ADC.h
+static constexpr int CVMAP_ADC_LAST = 4;
 
 // Atten: mirrors vendor util/util_math.h:55. Given a bipolar param value
 // from -127..+128, returns a scalar in units of 0.1% (60 -> 1000 = 100%).

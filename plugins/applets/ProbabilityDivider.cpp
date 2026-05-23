@@ -1,11 +1,7 @@
-// hemispheres_shim.h is included first: it brings in HemisphereApplet and
-// all vendor applet headers (via HemispheresFactory.h). The vendor
-// ProbabilityDivider.h must NOT be included again — vendor applet headers
-// carry no include guards and would cause class redefinitions.
-#include "../../shim/include/hemispheres_shim.h"
 #include "../../shim/include/HemiPluginInterface.h"
 #include "../../shim/include/applet_manifests/ProbabilityDivider.h"
 #include "_per_applet_runtime.h"
+#include "../../vendor/O_C-Phazerville/software/src/applets/ProbabilityDivider.h"
 
 // ManifestNS aliases the manifest struct (not the vendor class ProbabilityDivider).
 namespace { using ManifestNS = per_applet::ProbabilityDivider; }

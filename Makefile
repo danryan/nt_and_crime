@@ -159,9 +159,9 @@ HEM_APPLET_INCLUDE := -Ivendor/O_C-Phazerville/software/src/applets
 SHIM_DEPS := $(wildcard shim/include/*.h) $(wildcard shim/include/*/*.h) $(wildcard shim/src/*.cpp)
 
 # compiler-rt builtins compiled with -fPIC to match plug-in PIC code model.
-# Toolchain ships no PIC libgcc multilib for v7e-m+dp/hard, so we vendor
-# compiler-rt sources directly. Sources under shim/src/compiler_rt/ are
-# verbatim from llvm-project tag llvmorg-19.1.0.
+# Toolchain ships no PIC libgcc multilib for v7e-m+dp/hard, so the build
+# sources compiler-rt directly from the vendor/llvm-project submodule
+# (sparse-checkout of compiler-rt/lib/builtins/, pinned at llvmorg-19.1.0).
 ARM_LD := arm-none-eabi-ld
 ARM_CC := arm-none-eabi-gcc
 # compiler-rt files compiled as C (not C++) so symbols are not name-mangled.
@@ -171,23 +171,24 @@ ARM_CC := arm-none-eabi-gcc
 ARM_CFLAGS := -std=c99 -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard \
               -mthumb -Os -fPIC -Wall -I$(NT_API_INCLUDE)
 
+COMPILER_RT_DIR := vendor/llvm-project/compiler-rt/lib/builtins
 COMPILER_RT_SRCS := \
-    shim/src/compiler_rt/divdi3.c \
-    shim/src/compiler_rt/udivdi3.c \
-    shim/src/compiler_rt/divmoddi4.c \
-    shim/src/compiler_rt/udivmoddi4.c \
-    shim/src/compiler_rt/fixdfdi.c \
-    shim/src/compiler_rt/fixunsdfdi.c \
-    shim/src/compiler_rt/arm/aeabi_div0.c \
-    shim/src/compiler_rt/arm/aeabi_ldivmod.S \
-    shim/src/compiler_rt/arm/aeabi_uldivmod.S
+    $(COMPILER_RT_DIR)/divdi3.c \
+    $(COMPILER_RT_DIR)/udivdi3.c \
+    $(COMPILER_RT_DIR)/divmoddi4.c \
+    $(COMPILER_RT_DIR)/udivmoddi4.c \
+    $(COMPILER_RT_DIR)/fixdfdi.c \
+    $(COMPILER_RT_DIR)/fixunsdfdi.c \
+    $(COMPILER_RT_DIR)/arm/aeabi_div0.c \
+    $(COMPILER_RT_DIR)/arm/aeabi_ldivmod.S \
+    $(COMPILER_RT_DIR)/arm/aeabi_uldivmod.S
 COMPILER_RT_OBJS := \
-    $(patsubst shim/src/compiler_rt/%.c,build/arm/compiler_rt/%.o,$(filter %.c,$(COMPILER_RT_SRCS))) \
-    $(patsubst shim/src/compiler_rt/%.S,build/arm/compiler_rt/%.o,$(filter %.S,$(COMPILER_RT_SRCS)))
+    $(patsubst $(COMPILER_RT_DIR)/%.c,build/arm/compiler_rt/%.o,$(filter %.c,$(COMPILER_RT_SRCS))) \
+    $(patsubst $(COMPILER_RT_DIR)/%.S,build/arm/compiler_rt/%.o,$(filter %.S,$(COMPILER_RT_SRCS)))
 
-build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.c
+build/arm/compiler_rt/%.o: $(COMPILER_RT_DIR)/%.c
 	mkdir -p $(@D)
-	$(ARM_CC) $(ARM_CFLAGS) -Ishim/src/compiler_rt -c -o $@ $<
+	$(ARM_CC) $(ARM_CFLAGS) -I$(COMPILER_RT_DIR) -c -o $@ $<
 
 build/arm/aeabi_probe.o: plugins/probes/aeabi_probe.cpp $(COMPILER_RT_OBJS)
 	mkdir -p build/arm
@@ -195,9 +196,9 @@ build/arm/aeabi_probe.o: plugins/probes/aeabi_probe.cpp $(COMPILER_RT_OBJS)
 	$(ARM_LD) -r --strip-debug build/arm/aeabi_probe.raw.o $(COMPILER_RT_OBJS) -o build/arm/aeabi_probe.linked.o
 	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/aeabi_probe.linked.o $@
 
-build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.S
+build/arm/compiler_rt/%.o: $(COMPILER_RT_DIR)/%.S
 	mkdir -p $(@D)
-	$(ARM_CC) $(ARM_CFLAGS) -Ishim/src/compiler_rt -c -o $@ $<
+	$(ARM_CC) $(ARM_CFLAGS) -I$(COMPILER_RT_DIR) -c -o $@ $<
 
 # Pattern rule for vendor dep .cpp implementations under shim/src/.
 # Used by per-applet plug-ins that pull vendor dep objects via

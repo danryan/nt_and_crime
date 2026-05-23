@@ -55,6 +55,22 @@ struct _HHInstance : public _NT_algorithm {
     // table that inst->parameters points at, plus the enum string table
     // shared by both selectors.
     host_proxy::State state;
+
+    // Q2 footer overdraw: cache of the bottom kFooterRows of the
+    // framebuffer as the host rendered them, copied at the end of draw().
+    // step() restores these bytes after every audio buffer, overwriting
+    // the firmware's helper-text overlay that fires on encoder turn.
+    // Guard: only restore while steps_since_draw < kFooterRestoreSteps so
+    // we do not corrupt another algorithm's display after the user
+    // navigates away from the host.
+    //
+    // Row count tuning: 8 rows left a sliver of the firmware footer
+    // visible; firmware overlay extends higher than y=56. 16 rows covers
+    // the full overlay on Dan's hardware (verified 2026-05-22).
+    static constexpr int      kFooterRows         = 16;
+    static constexpr uint32_t kFooterRestoreSteps = 100;
+    uint8_t  footer_cache[kFooterRows * 128];
+    uint32_t steps_since_draw;
 };
 
 static constexpr int kHostSlots = 2;
@@ -196,6 +212,7 @@ static _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
     const_cast<int16_t*&>(inst->v) = nullptr;
     inst->cached_slot[0] = nullptr;
     inst->cached_slot[1] = nullptr;
+    inst->steps_since_draw = UINT32_MAX;  // do not restore until first draw caches a frame
 
     // Stage proxy state: 2 selector lanes, blank enum table, blank proxy params.
     host_proxy::init(inst->state, kHostSlots);
@@ -225,11 +242,26 @@ static _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
     return inst;
 }
 
-static void step_impl(_NT_algorithm* /*self*/,
+static void step_impl(_NT_algorithm* self,
                       float* /*busFrames*/,
                       int /*numFramesBy4*/) {
     // Host owns no audio. Per-applet plug-ins loaded in their own NT slots
     // handle bus I/O when the firmware calls their step() directly.
+    //
+    // Q2 footer overdraw: step() runs at audio rate, after the firmware's
+    // helper-text overlay has been painted on top of our draw() output for
+    // the current frame. Restoring the cached bottom kFooterRows rows from
+    // here overwrites the overlay before the next display flush. The guard
+    // (steps_since_draw < kFooterRestoreSteps) avoids corrupting another
+    // algorithm's display once the user navigates away from this host.
+    auto* inst = static_cast<_HHInstance*>(self);
+    if (inst->steps_since_draw < _HHInstance::kFooterRestoreSteps) {
+        constexpr int rows = _HHInstance::kFooterRows;
+        uint8_t* dst = NT_screen + (64 - rows) * 128;
+        const uint8_t* src = inst->footer_cache;
+        for (int i = 0; i < rows * 128; ++i) dst[i] = src[i];
+        ++inst->steps_since_draw;
+    }
 }
 
 static void parameterChanged_impl(_NT_algorithm* self, int p) {
@@ -324,6 +356,18 @@ static bool draw_impl(_NT_algorithm* self) {
         } else {
             host_helpers::render_incompatible_stub(origins[i], 0);
         }
+    }
+
+    // Q2 footer overdraw: snapshot the bottom kFooterRows of our
+    // just-rendered frame so step() can restore them after the firmware
+    // paints its helper-text overlay. Reset the step counter so step()
+    // will restore for the next kFooterRestoreSteps audio buffers.
+    {
+        constexpr int rows = _HHInstance::kFooterRows;
+        const uint8_t* src = NT_screen + (64 - rows) * 128;
+        uint8_t* dst = inst->footer_cache;
+        for (int i = 0; i < rows * 128; ++i) dst[i] = src[i];
+        inst->steps_since_draw = 0;
     }
 
     // Return true to suppress the default parameter strip.

@@ -76,6 +76,18 @@ struct _QQInstance : public _NT_algorithm {
     // Per-host proxy aggregator. Owns selector + proxy parameter table
     // (inst->parameters = state.proxy_params).
     host_proxy::State state;
+
+    // Q2 footer overdraw: cache of the bottom kFooterRows of the
+    // framebuffer as the host rendered them, snapshotted at the end of
+    // draw(). step() restores these bytes after every audio buffer,
+    // overwriting the firmware's helper-text overlay that fires on
+    // encoder/pot interaction. Guard: only restore while
+    // steps_since_draw < kFooterRestoreSteps so we do not corrupt
+    // another algorithm's display after the user navigates away.
+    static constexpr int      kFooterRows         = 16;
+    static constexpr uint32_t kFooterRestoreSteps = 100;
+    uint8_t  footer_cache[kFooterRows * 128];
+    uint32_t steps_since_draw;
 };
 
 // ---------------------------------------------------------------------------
@@ -209,6 +221,7 @@ static _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
     const_cast<int16_t*&>(inst->v) = nullptr;
     inst->focused_slot_idx = 0;
     for (int i = 0; i < 4; ++i) inst->cached_slot[i] = nullptr;
+    inst->steps_since_draw = UINT32_MAX;  // do not restore until first draw caches a frame
 
     // Initialize the proxy aggregator: 4 selector lanes. Scan the preset
     // for Hemi-prefix algorithms first so the enum table is populated
@@ -270,11 +283,26 @@ static void parameterChanged_impl(_NT_algorithm* self, int host_p) {
     NT_setParameterFromUi(t.slot_idx, (uint32_t)t.slot_param_idx, value);
 }
 
-static void step_impl(_NT_algorithm* /*self*/,
+static void step_impl(_NT_algorithm* self,
                       float* /*busFrames*/,
                       int /*numFramesBy4*/) {
     // Host owns no audio. Per-applet plug-ins loaded in their own NT slots
     // handle bus I/O when the firmware calls their step() directly.
+    //
+    // Q2 footer overdraw: step() runs at audio rate, after the firmware's
+    // helper-text overlay has been painted on top of our draw() output for
+    // the current frame. Restoring the cached bottom rows from here
+    // overwrites the overlay before the next display flush. The guard
+    // (steps_since_draw < kFooterRestoreSteps) avoids corrupting another
+    // algorithm's display once the user navigates away from this host.
+    auto* inst = static_cast<_QQInstance*>(self);
+    if (inst->steps_since_draw < _QQInstance::kFooterRestoreSteps) {
+        constexpr int rows = _QQInstance::kFooterRows;
+        uint8_t* dst = NT_screen + (64 - rows) * 128;
+        const uint8_t* src = inst->footer_cache;
+        for (int i = 0; i < rows * 128; ++i) dst[i] = src[i];
+        ++inst->steps_since_draw;
+    }
 }
 
 static bool draw_impl(_NT_algorithm* self) {
@@ -333,6 +361,18 @@ static bool draw_impl(_NT_algorithm* self) {
         int ox = kSlotOriginX[fi];
         int oy = kSlotOriginY[fi];
         NT_drawShapeI(kNT_box, ox, oy, ox + 63, oy + 63, 15);
+    }
+
+    // Q2 footer overdraw: snapshot the bottom kFooterRows of our
+    // just-rendered frame so step() can restore them after the firmware
+    // paints its helper-text overlay. Reset the step counter so step()
+    // will restore for the next kFooterRestoreSteps audio buffers.
+    {
+        constexpr int rows = _QQInstance::kFooterRows;
+        const uint8_t* src = NT_screen + (64 - rows) * 128;
+        uint8_t* dst = inst->footer_cache;
+        for (int i = 0; i < rows * 128; ++i) dst[i] = src[i];
+        inst->steps_since_draw = 0;
     }
 
     return true;

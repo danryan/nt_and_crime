@@ -9,11 +9,22 @@
 // overrides + transitive shim/vendor code). Compare per applet to find the
 // fat ones.
 
-#include "hemispheres_shim.h"
+#include <new>
+#include "HemisphereApplet.h"
+#include "HSUtils.h"
 
 #ifndef APPLET_NAME
 #error "APPLET_NAME must be defined to the applet class name"
 #endif
+
+// Pull in the specific vendor applet header named by APPLET_NAME. The build
+// caller must add -Ivendor/O_C-Phazerville/software/src/applets so the file
+// resolves. Vendor applet headers carry no include guards; each solo_probe
+// build is a single TU and includes exactly one.
+#define SOLO_PROBE_STRINGIFY_INNER(x) #x
+#define SOLO_PROBE_STRINGIFY(x) SOLO_PROBE_STRINGIFY_INNER(x)
+#define SOLO_PROBE_INCLUDE_X(name) SOLO_PROBE_STRINGIFY(name.h)
+#include SOLO_PROBE_INCLUDE_X(APPLET_NAME)
 
 // Force the compiler to keep the applet's full vtable + virtual method bodies.
 // Without these explicit calls, -Os would eliminate everything not reachable
@@ -25,7 +36,7 @@ struct SoloProbeApplet : public APPLET_NAME {
 
 extern "C" __attribute__((visibility("default"), used, noinline))
 void measure_solo(uint8_t* sram) {
-    HemisphereApplet* a = hem_shim::make_applet<APPLET_NAME>(sram);
+    HemisphereApplet* a = new(sram) APPLET_NAME();
     a->BaseStart(LEFT_HEMISPHERE);
     a->Controller();
     a->View();

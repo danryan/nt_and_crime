@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A compatibility shim that lets unmodified Phazerville Hemisphere applet sources compile and run as Expert Sleepers disting NT C++ plug-ins. Vendor source is pinned via git submodules and never edited. Everything project-specific lives in `shim/` and `applets/`.
+A compatibility shim that lets unmodified Phazerville Hemisphere applet sources compile and run as Expert Sleepers disting NT C++ plug-ins. Vendor source is pinned via git submodules and never edited. Everything project-specific lives in `shim/` and `plugins/`. The top-level `applets/` directory and the bundled-host build were removed in the 2026-05-23 cleanup release; per-applet plug-ins under `plugins/applets/` plus composer hosts under `plugins/hosts/` are the only on-device shape.
 
 ## Bootstrap
 
 ```sh
-./bootstrap.sh        # verifies host toolchain + arm-none-eabi-c++ + python deps
-make vendor           # initializes the two pinned submodules
+./bootstrap.sh        # verifies toolchain + python deps, provisions all submodules
+make vendor           # runs ./bootstrap.sh (canonical submodule provisioning entry)
 ```
 
-Required tools: `arm-none-eabi-c++` (for the NT target), `clang++` or `g++` (host), `python3`. `bootstrap.sh` contains OS-specific install hints for macOS and Debian/Ubuntu. Submodules: `vendor/distingNT_API` (Expert Sleepers SDK) and `vendor/O_C-Phazerville` (Hemisphere applet sources, currently pinned at SHA `7800d929`; verify with `git ls-tree HEAD vendor/O_C-Phazerville`).
+Required tools: `arm-none-eabi-c++` (for the NT target), `clang++` or `g++` (host), `python3`. `bootstrap.sh` contains OS-specific install hints for macOS and Debian/Ubuntu. Three submodules: `vendor/distingNT_API` (Expert Sleepers SDK), `vendor/O_C-Phazerville` (Hemisphere applet sources, pinned at SHA `7800d929`; verify with `git ls-tree HEAD vendor/O_C-Phazerville`), and `vendor/llvm-project` (compiler-rt builtins, pinned at tag `llvmorg-19.1.0`, sparse-checkout limited to `compiler-rt/lib/builtins/`). `make vendor` delegates to `bootstrap.sh` because the sparse-checkout config for `vendor/llvm-project` is NOT carried by a plain `git submodule update`; the bootstrap block clones it sparsely and re-applies sparse config on every run. See "Adding a sparse-checkout vendor submodule" below.
 
 ## Build and test commands
 
@@ -27,7 +27,7 @@ Required tools: `arm-none-eabi-c++` (for the NT target), `clang++` or `g++` (hos
 | `make test-buses`, `test-draw`, `test-draw-shape`, `test-json`, `test-params`, `test-loader` | Per-subsystem host tests |
 | `make test` | Run host build + applet tests + a scripted scenario |
 | `make deploy DEVICE=/Volumes/NT` | Copy `build/arm/*.o` to a mounted NT in USB disk mode |
-| `make deploy-sysex SYSEX_PLUGIN=build/arm/Hemispheres.o SYSEX_ID=0` | Push a built plug-in over USB-MIDI sysex (NT firmware v1.13+, no reboot) |
+| `make deploy-sysex SYSEX_PLUGIN=build/arm/Hemispheres_host.o SYSEX_ID=0` | Push a built plug-in over USB-MIDI sysex (NT firmware v1.13+, no reboot) |
 | `make clean` | Remove `build/` |
 
 To run a single Catch2 test case, pass a tag to the matching per-applet binary directly: `./build/host/test_applet_Cumulus '[cumulus]'` (build first via `make build/host/test_applet_Cumulus`).
@@ -43,9 +43,13 @@ vendor/O_C-Phazerville/      vendor/distingNT_API/
    shim/include/                       │
    (HemisphereApplet,                  │
     HSUtils, HSicons,                  ▼
-    Phzicons, bus I/O)  ──►  applets/Hemispheres.cpp
-                              (NT_HEMISPHERES_PLUGIN
-                               pair-applet host)
+    Phzicons, bus I/O)  ──►  plugins/applets/<APPLET>.cpp
+                              (one per-applet .o each)
+                                       │
+                              plugins/hosts/*_host.cpp
+                              (composer hosts load
+                               per-applet plug-ins at
+                               runtime via HemiPluginInterface)
                                        │
                                        ▼
                               harness/  or  device
@@ -55,13 +59,13 @@ vendor/O_C-Phazerville/      vendor/distingNT_API/
                                              USB disk)
 ```
 
-The project has three layers and one applet host.
+The project has three layers (vendor, shim, plugins) plus the harness.
 
 **`vendor/` (read-only):** Submodules. `vendor/distingNT_API` provides the NT plug-in ABI (`_NT_algorithm`, `_NT_parameter`, factory entry points). `vendor/O_C-Phazerville/software/src/applets/*.h` provides Hemisphere applet sources, vendored unmodified. The shim's contract is that any applet header you find in `vendor/O_C-Phazerville/software/src/applets/` must compile against `shim/include/` without edits to the vendor source.
 
 **`shim/include/` (the translation layer):** Headers that satisfy what Hemisphere applets reference (`HemisphereApplet` base class, `HSUtils.h` macros, `HSicons.h` shared icons, `PhzIcons.h` applet-specific icons, `HSClockManager.h`, `HSIOFrame.h`, `OC_core.h`, `OC_DAC.h`, `Arduino.h` stubs, the bus I/O API: `In`, `Out`, `Clock`, `Gate`, `ClockOut`, `GateOut`). Implementation in `shim/src/` (globals, graphics, icon bitmaps). `docs/shim-additions.md` is the per-applet ledger of what each port required beyond the previous baseline, audited so the shim surface stays minimized.
 
-**`applets/Hemispheres.cpp` (the host):** A single NT plug-in (`NT_HEMISPHERES_PLUGIN`) that hosts two Hemisphere applets simultaneously (left and right side), with runtime selectors. Its parameter table maps gate inputs A-D, CV inputs A-D, and CV outputs A-D to the standard Phazerville Hemisphere bus layout. `shim/include/HemispheresFactory.h` holds the registration table (applet enum, name strings, `kMaxAppletSize`/`kMaxAppletAlign` `cmax` chains, `applet_factory()` table); `shim/include/applet_indices.h` is the slim enum-only header. To add an applet, the integration step touches both plus `shim/include/PhzIcons.h` and `shim/src/icons.cpp` for icon stubs.
+**`plugins/` (the deployable units):** Each `plugins/applets/<APPLET>.cpp` is one NT plug-in compiling to one small `.o` (16-20 KB `.text`); it includes its manifest at `shim/include/applet_manifests/<APPLET>.h`, the per-applet runtime header `plugins/applets/_per_applet_runtime.h`, and the vendor applet header directly. `plugins/hosts/Hemispheres_host.cpp` (GUID `HmHh`, 2 lanes) and `plugins/hosts/Quadrants_host.cpp` (GUID `QdHh`, 4 lanes) are composer hosts that load per-applet plug-ins at runtime through the firmware `_NT_slot` API plus the versioned `HemiPluginInterface` function-pointer-in-data ABI. To add an applet, create its `plugins/applets/<APPLET>.cpp` plus `shim/include/applet_manifests/<APPLET>.h`, add it to `ALL_APPLET_LIST` in the Makefile, and add icon stubs in `shim/include/PhzIcons.h` plus `shim/src/icons.cpp` if needed. (The bundled `NT_HEMISPHERES_PLUGIN` host, `HemispheresFactory.h`, `applet_indices.h`, `Empty.h`, and `hemispheres_shim.h` were removed in the 2026-05-23 cleanup release.)
 
 **`harness/` (host test infrastructure):** `harness/src/nt_runtime.cpp` simulates the NT's audio frame loop in-process. `harness/src/plugin_loader.cpp` loads plug-ins through the same factory path as the device. `harness/tests/test_applet_<APPLET>.cpp` is the per-applet Catch2 binary used for applet behavior coverage; each file carries its own local `pack_<applet>` helper that mirrors the vendor `OnDataRequest` byte-by-byte (see "Pack helper convention" below). `harness/tests/test_buses.cpp`, `test_draw_text.cpp`, etc. cover non-applet subsystems. `harness/scripts/run_scenario.py` runs YAML-driven integration scenarios from `tests/scenarios/`.
 
@@ -147,30 +151,32 @@ Standard sequence for any non-trivial change:
 
 PIC plug-in builds require all-PIC linkage. The NT firmware applies relocations at on-device link time and treats `-fPIC` plug-ins as the expected shape. Mixing PIC plug-in code with non-PIC ARM asm (e.g., from `libgcc.a` extraction) produces "relocation of non-loaded section" warnings on every load. Stock `arm-none-eabi-gcc` ships no PIC `libgcc` multilib for `v7e-m+dp/hard` (verify with `arm-none-eabi-gcc -fPIC -print-libgcc-file-name` returning the same path as without `-fPIC`). Solution: source compiler-rt builtins from `vendor/llvm-project/compiler-rt/lib/builtins/` (submodule pinned at `llvmorg-19.1.0`, sparse-checkout limited to that tree), compile each `.c` file with `arm-none-eabi-gcc` (NOT `c++` — C++ name-mangles EABI symbol names), and partial-link via `ld -r --strip-debug`. Apache-2.0 with LLVM exception licensing avoids GPL drag. `cxx_runtime_stubs.cpp` handles the C++ ABI symbols the runtime doesn't link: `__aeabi_atexit` (no-op), `__dso_handle` (nullptr), operator `new` (returns nullptr, arm-only), `std::__throw_bad_function_call` (spin, arm-only). NT firmware also doesn't provide certain vendor static class members: `SegmentDisplay::digit` is declared `static constexpr uint8_t digit[10]` but never defined out-of-class (C++11/14 odr-use bug); shim provides the out-of-class definition in `shim/src/globals.cpp`. `applets/aeabi_probe.cpp` is the permanent diagnostic for confirming which firmware symbols are unresolved after toolchain or vendor updates: deploy it via `make deploy-sysex SYSEX_PLUGIN=build/arm/aeabi_probe_stripped.o` and read the NT screen's first unresolved-symbol error.
 
-Diagnostic discipline beats guessing. When stripping sections in sequence doesn't fix a "non-loaded section" error, the next move is `arm-none-eabi-objdump -r build/arm/Hemispheres.o | awk '$2 ~ /^R_ARM/ {print $2}' | sort | uniq -c` to enumerate actual relocation types, not another strip flag. The relocation table tells you what's wrong: `R_ARM_GOT32`/`R_ARM_GOTPC` reveal PIC code, `R_ARM_ABS32` reveals direct addressing. Mixed in a single `.o` is the failure pattern. Hardware deploys are slow; one minute reading `objdump -r` saves an hour of strip-and-redeploy cycles.
+Diagnostic discipline beats guessing. When stripping sections in sequence doesn't fix a "non-loaded section" error, the next move is `arm-none-eabi-objdump -r build/arm/Hemispheres_host.o | awk '$2 ~ /^R_ARM/ {print $2}' | sort | uniq -c` to enumerate actual relocation types, not another strip flag. The relocation table tells you what's wrong: `R_ARM_GOT32`/`R_ARM_GOTPC` reveal PIC code, `R_ARM_ABS32` reveals direct addressing. Mixed in a single `.o` is the failure pattern. Hardware deploys are slow; one minute reading `objdump -r` saves an hour of strip-and-redeploy cycles.
 
 ## NT firmware .text budget (~82KB per .o, scan-time)
 
-NT firmware refuses to register a plug-in whose `.text` exceeds approximately 82KB. Misc > Plug-ins > View Info shows "Not enough memory for .text : <name>" and the entry as Failed. Empirically: 50KB loads, 81566 B loads, 83448 B fails. Section count is NOT the cap; the same firmware accepted a 12-section build at 81KB and refused a 14-section build at 83KB. Each `.o` is checked independently. If a single applet set exceeds the cap, ship it across multiple plug-ins via `HEMI_VARIANT`.
+NT firmware refuses to register a plug-in whose `.text` exceeds approximately 82KB. Misc > Plug-ins > View Info shows "Not enough memory for .text : <name>" and the entry as Failed. Empirically: 50KB loads, 81566 B loads, 83448 B fails. Section count is NOT the cap; the same firmware accepted a 12-section build at 81KB and refused a 14-section build at 83KB. Each `.o` is checked independently. The per-applet model keeps every plug-in small (16-20 KB `.text`), so the cap is no longer pressing for the shipped set; it matters when adding a heavy single applet or growing a composer host.
 
 ## Runtime ITC pool is shared across loaded slots
 
 Two limits, not one:
 
 - Scan-time cap (~82KB `.text` per `.o`): described above.
-- Run-time pool (shared across all loaded algorithm instances): each slot loads its own copy of plug-in `.text` into ITC RAM. Total ITC across slots must fit a hardware budget (empirically ~100KB; one Hemispheres at ~65KB ITC alongside one Hemispheres2 at ~52KB ITC overflows). Error path is identical: "Not enough memory for .text : <name>" when adding the second algorithm to a preset.
+- Run-time pool (shared across all loaded algorithm instances): each slot loads its own copy of plug-in `.text` into ITC RAM. Total ITC across slots must fit a hardware budget (empirically ~100KB). With the per-applet model each loaded applet contributes only its own 16-20 KB, so many applets coexist; the limit is reached only by loading many slots at once. Error path is identical: "Not enough memory for .text : <name>" when adding an algorithm to a preset.
 
-NT API has no mechanism to share `.text` across plug-ins (`calculateStaticRequirements` shares DATA only). Hemispheres.o + Hemispheres2.o are alternates; users pick one set per preset.
+NT API has no mechanism to share `.text` across plug-ins (`calculateStaticRequirements` shares DATA only).
 
 ## Diagnosing failed plug-in loads
 
-Misc > Plug-ins > View Info shows pass/fail per `.o` with ITC/DTC/DRAM stats. Press a button on a Failed entry to see the detailed reason. Use `mcp__nt_helper__show_screen` to capture screen state in-session after `make deploy-sysex`; bisect plug-in size against the .text cap by iterating builds and screenshotting. `aeabi_probe.cpp` remains the diagnostic for unresolved-symbol errors.
+Misc > Plug-ins > View Info shows pass/fail per `.o` with ITC/DTC/DRAM stats. It does NOT expand a per-plugin failure reason on a Failed entry (the screen stays at the summary); bisect plug-in size against the `.text` cap by iterating builds and screenshotting instead. Use `mcp__nt_helper__show_screen` to capture screen state in-session after `make deploy-sysex`. `aeabi_probe.cpp` remains the diagnostic for unresolved-symbol errors.
+
+To confirm a plug-in REGISTERED (vs silently rejected), enumerate over sysex rather than reading the screen: command `0x30` returns the algorithm count, `0x31 <index>` returns name, 4-byte GUID, and an `isPlugin` byte (see the upstream `thorinside/nt_helper` `docs/SYSEX_REFERENCE.md`, distilled locally in `docs/nt-sysex-protocol.md`). Match your GUID (e.g. `HmHh`, `QdHh`) in the enumeration. There is NO sysex opcode that returns a scan-failure reason; a rejected plug-in simply does not appear in the `0x31` list.
 
 ## Loader does not honor custom code sections
 
 NT firmware loader copies the canonical `.text` section verbatim into a fixed ITC buffer at registration. It does NOT recognize non-canonical executable section names (e.g., `.code_dram`, `.text.cold`). Functions tagged with `__attribute__((section(".code_dram")))` end up at unmapped addresses; the plug-in may register but adding it to a preset hard-faults the device when `step()` jumps into the unmapped region. Confirmed empirically with `applets/section_probe.cpp`: probe registered cleanly, hard-crashed on algorithm add. Power-cycle to recover; remove the bad `.o` via USB disk mode before next boot.
 
-Practical consequence: there is no way to route cold methods to DRAM/OCRAM to dodge the per-`.o` `.text` cap. The cap is binding. Strategies that target it: aggressive code shrink (Q15 LUTs, kill `printf`, drop unused vendor deps) and `HEMI_VARIANT` splits across multiple `.o` files. The `section_probe.cpp` diagnostic stays in tree so future firmware updates can be re-verified.
+Practical consequence: there is no way to route cold methods to DRAM/OCRAM to dodge the per-`.o` `.text` cap. The cap is binding. Strategies that target it: aggressive code shrink (Q15 LUTs, kill `printf`, drop unused vendor deps) and, for a single applet that overflows, splitting its work. The per-applet model already keeps each `.o` small. The `section_probe.cpp` diagnostic stays in tree so future firmware updates can be re-verified.
 
 ## Construct-time parameterChanged hazard
 
@@ -202,38 +208,53 @@ Firmware resolves at load: `NT_*` ABI (`NT_drawText`, `NT_screen`, `NT_jsonParse
 
 ## Vendor dep cpps must link into ARM plug-in
 
-Vendor non-header-only `.cpp` files (not just headers) must compile into the ARM plug-in `.o`. Per-dep host tests cover them, but ARM-side calls only resolve if the cpps are linked into Hemispheres.{,2}.o. The current additions are `shim/src/lorenz/streams_{resources,lorenz_generator}.cpp`, listed in `VENDOR_DEP_ARM_OBJS` and pulled into the `BUILD_ARM_HEMI_VARIANT` rule. Symptom of missing link: `arm-none-eabi-nm` lists `_ZN7streams15LorenzGenerator4InitEh` or similar as unresolved.
+Vendor non-header-only `.cpp` files (not just headers) must compile into the ARM plug-in `.o`. Per-dep host tests cover them, but ARM-side calls only resolve if the cpps are linked into the consuming applet's `.o`. Linkage is per-applet via `VENDOR_DEPS_<APPLET>` in the Makefile: e.g. `VENDOR_DEPS_LowerRenz` lists `build/arm/shim_src/lorenz/streams_{resources,lorenz_generator}.o`, pulled into the `BUILD_PER_APPLET` rule for LowerRenz only. Applets that need no vendor cpp leave their `VENDOR_DEPS_*` empty. Symptom of missing link: `arm-none-eabi-nm` lists `_ZN7streams15LorenzGenerator4InitEh` or similar as unresolved.
 
 ## C++ COMDAT section merge in ARM partial-link
 
 gcc emits one `.text._ZN<mangled>` COMDAT section per inline class method. `ld -r` preserves them under SHF_GROUP even with a `-T SECTIONS{}` script. Pipeline collapses them: `arm-none-eabi-objcopy --remove-section='.group'` followed by `ld -r -T shim/merge_sections.lds` merges all `.text._Z*`/`.data.rel.ro._Z*`/etc into single canonical sections. Drops ~1640 sections to ~14 with no behavior change. The section explosion is NOT a firmware cap (verified by deploying a 12-section 83KB build that still failed), but the cleaner artifact is easier to inspect and ship. Use `arm-none-eabi-readelf -W -S` (not `objdump -h`, which truncates) to inspect full mangled section names.
 
-## Factory variants: HEMI_VARIANT
+## Factory variants: HEMI_VARIANT (retired)
 
-`shim/include/HemispheresFactory.h` gates the on-device applet set by `HEMI_VARIANT` set per `.o` via Makefile:
-
-- `0` = host build (default; all 56 applets, tests use this)
-- `1` = ARM `Hemispheres.o` primary: 51 applets (~82KB text)
-- `2` = ARM `Hemispheres2.o` secondary: 5 largest applets (Relabi, Shredder, EnsOscKey, VectorLFO, Strum)
-
-Applets dropped from a variant get `make_applet<Empty>` stubs in `factory_table` and skipped `#include`. `kMaxAppletSize`/`kMaxAppletAlign` hardcoded to 1024/16 in variants 1-2 (cmax chain needs all types in scope, only available in variant 0). New applets choose variant by per-class `.text` size measured on the pre-merge `Hemispheres.raw.o` (`arm-none-eabi-readelf -W -S`); greedy-keep favors smallest text in primary to maximize on-device applet count.
+The `HEMI_VARIANT` factory-split scheme (bundled `Hemispheres.o` primary plus `Hemispheres2.o` secondary, gated by `shim/include/HemispheresFactory.h`) was removed in the 2026-05-23 cleanup release along with `BUILD_ARM_HEMI_VARIANT`, `HemispheresFactory.h`, `applet_indices.h`, and `Empty.h`. Each applet now ships as its own `plugins/applets/<APPLET>.o`, so there is no per-`.o` applet-set packing problem to solve. If a future single applet overflows the `.text` cap, shrink it; there is no variant machinery to fall back on.
 
 ## Plugin directory layout (per-applet pilot release onward)
 
 `plugins/applets/`, `plugins/hosts/`, `plugins/probes/` are the canonical
-locations for new per-applet plug-ins, host plug-ins, and diagnostic
-probes. The top-level `applets/` directory is deprecated; its remaining
-contents (`Hemispheres.cpp`, `Hemispheres2.cpp`) will move or be removed
-in the cleanup release after the mass-port release ships. Probes
-(`aeabi_probe`, `bus_probe`, `section_probe`, `solo_probe`) moved to
-`plugins/probes/` during the pilot release setup commits.
+locations for per-applet plug-ins, host plug-ins, and diagnostic
+probes. The top-level `applets/` directory was removed in the 2026-05-23
+cleanup release. Probes (`aeabi_probe`, `bus_probe`, `section_probe`,
+`solo_probe`, `reentrancy_probe`) live under `plugins/probes/`.
 
 Per-applet plug-ins compile via the `BUILD_PER_APPLET` Makefile macro
-and the `PILOT_APPLET_LIST` variable. Each per-applet `.o` is small
-(16-20 KB `.text`), well under the firmware's ~82 KB per-`.o` cap.
-Hosts (`Hemispheres_host.o`, `Quadrants_host.o`) compose per-applet
-plug-ins at runtime through the firmware `_NT_slot` API plus the
-versioned `HemiPluginInterface` function-pointer-in-data ABI.
+and the `ALL_APPLET_LIST` variable (`PILOT_APPLET_LIST` is a
+backwards-compat alias). Each per-applet `.o` is small (16-20 KB
+`.text`), well under the firmware's ~82 KB per-`.o` cap. Hosts
+(`Hemispheres_host.o`, `Quadrants_host.o`) compose per-applet plug-ins
+at runtime through the firmware `_NT_slot` API plus the versioned
+`HemiPluginInterface` function-pointer-in-data ABI.
+
+## Adding a sparse-checkout vendor submodule
+
+`vendor/llvm-project` (compiler-rt builtins) is added as a sparse
+submodule. `.gitignore` ignores `vendor/*`, and a plain
+`git submodule update` does NOT carry sparse-checkout config, so two
+non-obvious steps are required (both codified in `bootstrap.sh`):
+
+- `git add -f vendor/<name>` to stage the gitlink past the `vendor/*`
+  ignore rule (the existing submodules were added before that rule).
+- `git submodule absorbgitdirs vendor/<name>` only works AFTER the path
+  is staged; run it after `git add -f`, not before.
+
+`bootstrap.sh` carries an idempotent clone-vs-reapply block: on a fresh
+checkout it clones `--no-checkout --depth=1 --filter=blob:none`, applies
+`sparse-checkout set compiler-rt/lib/builtins`, checks out the tag, and
+absorbs the git dir; on re-runs (including new worktrees) it runs
+`sparse-checkout reapply`. `make vendor` calls `bootstrap.sh` so every
+provisioning path applies the sparse config. Verify with
+`git -C vendor/llvm-project sparse-checkout list` (and
+`test ! -d vendor/llvm-project/llvm` confirms the full tree was not
+pulled; the sparse tree is ~2 MB, not multi-GB).
 
 ## Markdown discipline
 

@@ -453,7 +453,7 @@ test: host test-applets
 	python3 harness/scripts/run_scenario.py tests/scenarios/gainCustomUI/zero_signal.yaml
 
 vendor:
-	git submodule update --init --recursive
+	./bootstrap.sh
 
 clean:
 	rm -rf build/

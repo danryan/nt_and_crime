@@ -314,6 +314,8 @@ static bool draw_impl(_NT_algorithm* self) {
     // Screen is 256 wide; each slot gets 128 px (matching bundled host layout).
     // Vendor applets draw at x = 0..63 relative to HS::gfx_offset; the 128-step
     // spacing leaves room for the applet's full draw plus any decoration.
+    // Per-applet clip rect (Q1) is set inside render_view_with_offset in each
+    // per-applet plug-in's TU; the host does not touch HS::gfx_clip_w/h.
     static constexpr int origins[2] = { 0, 128 };
     for (int i = 0; i < 2; ++i) {
         HemiPluginInterface* p = inst->cached_slot[i];

@@ -25,7 +25,8 @@
 // TU and allow the host test binary to link and run.
 //
 // Covered:
-//   QH1a-d: button1-4 edges set focused slot to 0-3.
+//   QH1a-d: Q4 button cycling. Button 3 advances focused slot forward;
+//           button 4 retreats; buttons 1 and 2 unclaimed and inert.
 //   QH2: L encoder routes only to focused slot (on_encoder_turn).
 //   QH3: R encoder routes only to focused slot (on_encoder_turn_shifted).
 //   QH4: L encoder button edge routes to focused slot on_button_press.
@@ -35,7 +36,7 @@
 //   QH8: All slots empty: draw renders incompatible stubs, no crash.
 //   QH9: serialise/deserialise round-trip preserves focused_slot_idx.
 //   QH10: hasCustomUi returns correct bitmask.
-//   QH11: Holding button1 (no rising edge) does not re-trigger focus change.
+//   QH11: Holding button3 (no rising edge) does not re-cycle focus.
 //   QH12: Factory metadata matches spec.
 
 // Must come before any include that transitively pulls in distingnt/slot.h,
@@ -204,43 +205,63 @@ static _NT_uiData encoder_button_edge(uint16_t which) {
 }
 
 // ---------------------------------------------------------------------------
-// QH1a-d: button1-4 sets focused slot index
+// QH1a-d: Q4 button cycling. Button 3 advances focused slot forward;
+// button 4 retreats. Buttons 1 and 2 are unclaimed and have no effect.
 // ---------------------------------------------------------------------------
 
-TEST_CASE("QH1a: button1 edge sets focused slot to 0", "[quadrants-host]") {
+TEST_CASE("QH1a: button1 edge does not change focused slot (unclaimed)", "[quadrants-host]") {
     auto* loaded = setup_host();
-    qq_test_set_focused_slot(loaded->algorithm, 3);
+    qq_test_set_focused_slot(loaded->algorithm, 1);
 
     loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button1));
-
-    REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 0);
-    qq_test_clear_slots();
-}
-
-TEST_CASE("QH1b: button2 edge sets focused slot to 1", "[quadrants-host]") {
-    auto* loaded = setup_host();
-
-    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button2));
 
     REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 1);
     qq_test_clear_slots();
 }
 
-TEST_CASE("QH1c: button3 edge sets focused slot to 2", "[quadrants-host]") {
+TEST_CASE("QH1b: button2 edge does not change focused slot (unclaimed)", "[quadrants-host]") {
     auto* loaded = setup_host();
+    qq_test_set_focused_slot(loaded->algorithm, 2);
 
-    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button3));
+    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button2));
 
     REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 2);
     qq_test_clear_slots();
 }
 
-TEST_CASE("QH1d: button4 edge sets focused slot to 3", "[quadrants-host]") {
+TEST_CASE("QH1c: button3 edge advances focused slot forward (wraps 3->0)", "[quadrants-host]") {
     auto* loaded = setup_host();
 
-    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button4));
+    qq_test_set_focused_slot(loaded->algorithm, 0);
+    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button3));
+    REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 1);
 
+    qq_test_set_focused_slot(loaded->algorithm, 2);
+    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button3));
     REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 3);
+
+    qq_test_set_focused_slot(loaded->algorithm, 3);
+    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button3));
+    REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 0);
+
+    qq_test_clear_slots();
+}
+
+TEST_CASE("QH1d: button4 edge retreats focused slot (wraps 0->3)", "[quadrants-host]") {
+    auto* loaded = setup_host();
+
+    qq_test_set_focused_slot(loaded->algorithm, 3);
+    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button4));
+    REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 2);
+
+    qq_test_set_focused_slot(loaded->algorithm, 1);
+    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button4));
+    REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 0);
+
+    qq_test_set_focused_slot(loaded->algorithm, 0);
+    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button4));
+    REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 3);
+
     qq_test_clear_slots();
 }
 
@@ -430,11 +451,11 @@ TEST_CASE("QH9: serialise/deserialise round-trip preserves focused_slot_idx", "[
 // QH10: hasCustomUi returns full bitmask
 // ---------------------------------------------------------------------------
 
-TEST_CASE("QH10: hasCustomUi returns full Quadrants claim bitmask", "[quadrants-host]") {
+TEST_CASE("QH10: hasCustomUi claims button3/4 + encoders only (Q4)", "[quadrants-host]") {
     auto* loaded = setup_host();
     uint32_t mask = loaded->factory->hasCustomUi(loaded->algorithm);
-    REQUIRE((mask & kNT_button1) != 0u);
-    REQUIRE((mask & kNT_button2) != 0u);
+    REQUIRE((mask & kNT_button1) == 0u);
+    REQUIRE((mask & kNT_button2) == 0u);
     REQUIRE((mask & kNT_button3) != 0u);
     REQUIRE((mask & kNT_button4) != 0u);
     REQUIRE((mask & kNT_encoderL) != 0u);
@@ -448,25 +469,23 @@ TEST_CASE("QH10: hasCustomUi returns full Quadrants claim bitmask", "[quadrants-
 // QH11: Holding button1 (no rising edge) does not re-trigger focus change
 // ---------------------------------------------------------------------------
 
-TEST_CASE("QH11: held button1 (no rising edge) does not re-trigger focus change",
+TEST_CASE("QH11: held button3 (no rising edge) does not re-cycle focus",
           "[quadrants-host]") {
     auto* loaded = setup_host();
 
-    // Rising edge: set focus to 0.
-    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button1));
-    REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 0);
+    // Rising edge: advance focus 0 -> 1.
+    qq_test_set_focused_slot(loaded->algorithm, 0);
+    loaded->factory->customUi(loaded->algorithm, button_edge(kNT_button3));
+    REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 1);
 
-    // Move focus elsewhere.
-    qq_test_set_focused_slot(loaded->algorithm, 3);
-
-    // Held state: both controls and lastButtons have button1 set (no rising edge).
+    // Held state: both controls and lastButtons have button3 set (no rising edge).
     _NT_uiData held{};
-    held.controls    = kNT_button1;
-    held.lastButtons = kNT_button1;
+    held.controls    = kNT_button3;
+    held.lastButtons = kNT_button3;
     loaded->factory->customUi(loaded->algorithm, held);
 
-    // Focus must remain at 3.
-    REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 3);
+    // Focus must remain at 1 (no re-advance while held).
+    REQUIRE(qq_test_get_focused_slot(loaded->algorithm) == 1);
 
     qq_test_clear_slots();
 }

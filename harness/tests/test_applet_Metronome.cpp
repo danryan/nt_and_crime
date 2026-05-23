@@ -178,7 +178,7 @@ TEST_CASE("Metronome MT5: hasCustomUi returns expected bitmask", "[per-applet][m
     auto s = make_setup();
     REQUIRE(s.loaded->factory->hasCustomUi != nullptr);
     uint32_t mask = s.loaded->factory->hasCustomUi(s.alg);
-    REQUIRE(mask == (kNT_encoderL | kNT_encoderButtonL | kNT_button1));
+    REQUIRE(mask == (kNT_encoderL | kNT_encoderButtonL));
 }
 
 // ---------------------------------------------------------------------------

@@ -202,9 +202,10 @@ TEST_CASE("Xfader XF6: encoder turn (no edit mode) adjusts balance and center", 
     REQUIRE(((packed >> 24) & 0xFF) == 129u);
 }
 
-TEST_CASE("Xfader XF7: aux button toggles center_reset_enable", "[per-applet][xfader]") {
-    // AuxButton() flips center_reset_enable. Default is false (bit 32 = 0).
-    // After one press it becomes true (bit 32 = 1).
+TEST_CASE("Xfader XF7: button1 in standalone customUi has no effect (Q5)", "[per-applet][xfader]") {
+    // Q5: standalone per-applet customUi no longer routes button1 to
+    // on_aux_button. center_reset_enable (bit 32) stays at its initial
+    // value (false) across a button1 rising-edge customUi call.
     nt::reset_runtime();
     nt::LoadedPlugin* loaded = nt::load_plugin();
     REQUIRE(loaded != nullptr);
@@ -216,7 +217,7 @@ TEST_CASE("Xfader XF7: aux button toggles center_reset_enable", "[per-applet][xf
     ui.lastButtons = 0;
     loaded->factory->customUi(loaded->algorithm, ui);
 
-    REQUIRE(((xfader_applet_on_data_request(loaded->algorithm) >> 32) & 1) == 1u);
+    REQUIRE(((xfader_applet_on_data_request(loaded->algorithm) >> 32) & 1) == 0u);
 }
 
 TEST_CASE("Xfader XF8: encoder button press does not crash", "[per-applet][xfader]") {

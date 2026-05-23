@@ -229,7 +229,7 @@ TEST_CASE("Scope SC7: Cycle clock edge does not crash and CV passthrough survive
 // SC8: hasCustomUi returns expected bitmask.
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Scope SC8: hasCustomUi returns encoderL | encoderButtonL | button1",
+TEST_CASE("Scope SC8: hasCustomUi returns encoderL | encoderButtonL (Q5)",
           "[per-applet-pilot][scope]") {
     nt::reset_runtime();
     auto* loaded = nt::load_plugin();
@@ -237,7 +237,7 @@ TEST_CASE("Scope SC8: hasCustomUi returns encoderL | encoderButtonL | button1",
     uint32_t mask = loaded->factory->hasCustomUi(loaded->algorithm);
     REQUIRE((mask & kNT_encoderL)       != 0u);
     REQUIRE((mask & kNT_encoderButtonL) != 0u);
-    REQUIRE((mask & kNT_button1)        != 0u);
+    REQUIRE((mask & kNT_button1)        == 0u);
 }
 
 // ---------------------------------------------------------------------------

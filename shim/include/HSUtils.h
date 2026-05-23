@@ -38,9 +38,22 @@ using simfloat = int32_t;
 
 #define ForEachChannel(ch) for (int_fast8_t ch = 0; (ch) < 2; ++(ch))
 #define ForAllChannels(ch) for (int_fast8_t ch = 0; (ch) < 4; ++(ch))
-namespace HS { extern int gfx_offset; extern int gfx_offset_y; }
+namespace HS {
+extern int gfx_offset;
+extern int gfx_offset_y;
+// Clip-rect width and height (screen-space). Hosts set per-frame to bound
+// drawing to a single lane's column; defaults are full-screen (256x64) so
+// standalone runs and host tests see no clamp. Q1 fix for the Quadrants
+// right-edge bleed: vendor applets draw past x=63 in some headers/widgets,
+// and without a clip rect that bleed lands in the neighboring lane's
+// leftmost column.
+extern int gfx_clip_w;
+extern int gfx_clip_h;
+}
 using HS::gfx_offset;
 using HS::gfx_offset_y;
+using HS::gfx_clip_w;
+using HS::gfx_clip_h;
 #define BottomAlign(h) (62 - (h))
 #define io_offset 0                                             // shim's frame indexes from 0
 

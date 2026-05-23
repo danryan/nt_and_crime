@@ -224,19 +224,37 @@ void run_controller_inner_ticks(Applet* applet, int numFramesBy4) {
 // call is required because vendor applet View() bodies do NOT render
 // their own name (the bundled Hemispheres host code draws it for them
 // at hemispheres_shim.h:210-213).
+//
+// Q1 clip rect: vendor applets target a 64x64 panel. Clamp emissions
+// to [gfx_offset, gfx_offset + 64) x [gfx_offset_y, gfx_offset_y + 64)
+// during the View() call by writing the per-TU HS::gfx_clip_w/h
+// globals. Each per-applet plug-in TU has its own HS::* globals via
+// the hem_shim_impl.h -> globals.cpp include chain, so this write
+// reaches the same memory that HemisphereApplet's gfx helpers read
+// during the same call. Defaults (256 x 64) restored on exit so
+// non-render harness paths see the full screen.
 template <typename AppletInstance>
 inline void render_view_with_offset(_NT_algorithm* self, int origin_x, int origin_y) {
     HS::gfx_offset   = origin_x;
     HS::gfx_offset_y = origin_y;
+    HS::gfx_clip_w   = 64;
+    HS::gfx_clip_h   = 64;
     auto* inst = static_cast<AppletInstance*>(self);
     inst->applet.DrawHeader();
     inst->applet.View();
     HS::gfx_offset   = 0;
     HS::gfx_offset_y = 0;
+    HS::gfx_clip_w   = 256;
+    HS::gfx_clip_h   = 64;
 }
 
 // customUi routing through the HemiPluginInterface pointers populated by
-// construct(). Standalone path is identical to what the host would do.
+// construct(). Standalone path covers encoder turn + encoder button press
+// only. Q5 (2026-05-22): aux button is NOT reachable from the standalone
+// per-applet plug-in's customUi; users wanted firmware default behavior
+// for hardware button 1 instead of the applet's aux-button (which in many
+// vendor applets toggles param-edit mode). Hosts (Hemispheres/Quadrants)
+// remain free to route their own controls to on_aux_button as before.
 inline void route_custom_ui(_NT_algorithm* self, const _NT_uiData& data) {
     auto* p = static_cast<HemiPluginInterface*>(self);
     if (data.encoders[0] != 0 && p->on_encoder_turn) {
@@ -244,9 +262,6 @@ inline void route_custom_ui(_NT_algorithm* self, const _NT_uiData& data) {
     }
     if ((data.controls & kNT_encoderButtonL) && !(data.lastButtons & kNT_encoderButtonL)) {
         if (p->on_button_press) p->on_button_press(self);
-    }
-    if ((data.controls & kNT_button1) && !(data.lastButtons & kNT_button1)) {
-        if (p->on_aux_button) p->on_aux_button(self);
     }
 }
 

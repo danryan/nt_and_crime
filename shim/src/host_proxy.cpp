@@ -32,6 +32,12 @@ constexpr uint32_t kHemiPrefixMask = 0xFFFFu;
 constexpr uint32_t kHemiPrefix     = static_cast<uint32_t>('H') |
                                      (static_cast<uint32_t>('m') << 8);
 
+// Q3 placeholder name for unbound proxy parameter entries. Firmware reads
+// inst->parameters[i].name for every i < numParameters; a null pointer is
+// printed as uninitialized memory ("-OFhW" garbage on hardware). Pointing at
+// this static C string literal costs ~12 bytes of .rodata per host .o.
+constexpr const char* kUnusedLabel = "--unused--";
+
 bool guid_is_hemi(uint32_t guid) {
     return (guid & kHemiPrefixMask) == kHemiPrefix;
 }
@@ -182,7 +188,7 @@ void init(State& s, int num_slots) {
     s.enum_strs.count = 1;
 
     for (int i = 0; i < kMaxHostParams; ++i) {
-        s.proxy_params[i] = { nullptr, 0, 0, 0, kNT_unitNone, 0, nullptr };
+        s.proxy_params[i] = { kUnusedLabel, 0, 0, 0, kNT_unitNone, 0, nullptr };
         s.proxy_names[i][0] = '\0';
     }
     for (int lane = 0; lane < kMaxSlotsPerHost; ++lane) {
@@ -321,7 +327,7 @@ void aggregate_slot(State& s, int lane, uint32_t slot_idx) {
         s.maps[lane].slot_idx       = kInvalidSlotIdx;
         s.maps[lane].slot_param_cnt = 0;
         for (int p = 0; p < kMaxProxyParamsPerSlot; ++p) {
-            s.proxy_params[base + p] = { nullptr, 0, 0, 0, kNT_unitNone, 0, nullptr };
+            s.proxy_params[base + p] = { kUnusedLabel, 0, 0, 0, kNT_unitNone, 0, nullptr };
             s.proxy_names[base + p][0] = '\0';
         }
         return;
@@ -343,7 +349,7 @@ void aggregate_slot(State& s, int lane, uint32_t slot_idx) {
         s.proxy_params[base + p].name = s.proxy_names[base + p];
     }
     for (int p = count; p < kMaxProxyParamsPerSlot; ++p) {
-        s.proxy_params[base + p] = { nullptr, 0, 0, 0, kNT_unitNone, 0, nullptr };
+        s.proxy_params[base + p] = { kUnusedLabel, 0, 0, 0, kNT_unitNone, 0, nullptr };
         s.proxy_names[base + p][0] = '\0';
     }
     s.maps[lane].slot_idx       = slot_idx;
@@ -368,7 +374,7 @@ void aggregate_slot(State& s, int lane, uint32_t slot_idx) {
         s.proxy_params[base + p].name = s.proxy_names[base + p];
     }
     for (int p = count; p < kMaxProxyParamsPerSlot; ++p) {
-        s.proxy_params[base + p] = { nullptr, 0, 0, 0, kNT_unitNone, 0, nullptr };
+        s.proxy_params[base + p] = { kUnusedLabel, 0, 0, 0, kNT_unitNone, 0, nullptr };
         s.proxy_names[base + p][0] = '\0';
     }
     s.maps[lane].slot_idx       = slot_idx;

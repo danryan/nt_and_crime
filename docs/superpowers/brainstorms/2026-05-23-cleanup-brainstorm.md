@@ -253,6 +253,13 @@ Capture-only. Do not act in this release. Each candidate names an observation, f
 - Pointers: `plugins/probes/aeabi_probe.cpp`, `plugins/probes/bus_probe.cpp`, `plugins/probes/reentrancy_probe.cpp`, `plugins/probes/section_probe.cpp`, `plugins/probes/solo_probe.cpp`. CLAUDE.md "Construct-time parameterChanged hazard" describes the reentrancy result.
 - Followup: per-probe audit re-deploying each on current firmware and confirming the observed behavior still matches the documented finding. Audit is hardware-gated.
 
+### D7. Semantic IWYU sweep
+
+- Status: deferred. Conservative heuristic scan during the cleanup release found zero candidates (no include in any TU whose basename appears nowhere as a symbol reference in its containing TU). The negative result documents that the codebase is healthy at the shallow level.
+- Observation: deeper IWYU would resolve transitive macro and namespace dependencies (example: `OC_strings.h` is consumed in `HemisphereApplet.h` via `OC::Strings::capital_letters`; the shallow scan does not match `OC::Strings` against `OC_strings` and flagged this case as suspect when it is actually live). A semantic pass needs per-include audit, not heuristic matching.
+- Pointers: every `.cpp` and `.h` under `shim/`, `plugins/`, `harness/` is candidate surface. Largest header by include count is `shim/include/HemisphereApplet.h` (14 includes).
+- Followup: dedicated IWYU release. Tools that resolve namespace and macro names (e.g. `iwyu` itself, with project-tuned mappings). Verify byte-identical `.text` per directory after each removal batch.
+
 ### D6. Vendor de-duplication for lorenz and quant
 
 - Observation: lorenz and quant carry verbatim copies of vendor source. The split (`shim/include/` plus `shim/src/`) with forwarding bridges exists to support these copies; collapsing the duplication likely collapses the split friction with it.

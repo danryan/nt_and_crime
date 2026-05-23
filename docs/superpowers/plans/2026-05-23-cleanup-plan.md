@@ -17,7 +17,7 @@ Lowest-risk first. Each phase is its own commit (per Conventional Commits rule i
 | B | Superseded shim headers | `shim/include/hemispheres_shim.h`, `HemispheresFactory.h`, `applet_indices.h`, `Empty.h`, `OC_ADC.h` | Low | Sequential (B1 -> B2 -> B3 -> B4; B5 independent) |
 | C | Compiler_rt to `vendor/llvm-project` submodule | `.gitmodules`, `bootstrap.sh`, `Makefile`, CLAUDE.md, `shim/src/compiler_rt/` (deleted) | Medium | Sequential |
 | D | Docs sprawl consolidation | `docs/superpowers/{brainstorms,specs,plans}/`, `docs/superpowers/archived/` (new) | Low | Parallel by phase |
-| E | IWYU sweep | All non-vendor TUs | Low | Parallel by directory |
+| E | IWYU sweep | All non-vendor TUs | Low | Deferred (conservative scan: no candidates) |
 
 ## Phase A: deprecated `applets/` plus cascade
 
@@ -161,7 +161,15 @@ After all implementer subagents complete:
 - Implementer worktree branched from `main` instead of the feature branch -> abort that worktree, re-dispatch from feature branch.
 - `markdownlint` errors uncovered in moved files -> fix in the integration commit before opening PR. Moved files preserve content; lint failures should be pre-existing.
 
-## Phase E: IWYU sweep
+## Phase E: IWYU sweep (deferred 2026-05-23)
+
+Conservative heuristic scan run against all four directories found zero unused-include candidates that would survive the byte-identical `.text` gate. The scan checked each `#include` for matching symbol-name references in its containing TU; zero hits across `shim/include/`, `shim/src/`, `plugins/`, `harness/`.
+
+The negative result is meaningful: per-applet plug-ins, host plug-ins, and shim sources all carry tight include lists because they were authored under the mass-port spec which already constrains the include set. A deeper semantic IWYU pass (resolving transitive macro and namespace dependencies, e.g. `OC::Strings::*` consumed via `OC_strings.h`) is possible but high-effort per file and orthogonal to the cleanup release's scope.
+
+Phase E is deferred to a follow-up release that does dedicated semantic IWYU. No Phase E commits land in the cleanup release.
+
+Original Phase E specification (kept for reference):
 
 Parallel by directory. Four directories: `shim/include/`, `shim/src/`, `plugins/`, `harness/`. One implementer subagent per directory.
 
@@ -301,12 +309,9 @@ Phase D (one per archived phase):
 
 Phase E:
 
-- `refactor(shim): drop unused includes in shim/include`
-- `refactor(shim): drop unused includes in shim/src`
-- `refactor(plugins): drop unused includes in plugins/`
-- `refactor(harness): drop unused includes in harness/`
+- Deferred to follow-up release. Conservative IWYU scan found no candidates across the four directories. See Phase E section above.
 
-Total: roughly 20-22 commits. Each is single-purpose; no bundles.
+Total: roughly 18 commits. Each is single-purpose; no bundles.
 
 ## PR shape
 

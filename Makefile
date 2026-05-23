@@ -27,9 +27,9 @@ help:
 	@echo "make arm      - build all NT plug-ins under build/arm/"
 	@echo "make host     - build host simulator at build/host/sim_gainCustomUI"
 	@echo "make test     - run all scripted scenarios"
-	@echo "make test-applets - run host Catch2 binary for Hemispheres applet logic"
+	@echo "make test-applets - run per-applet host Catch2 binaries (alias for test-applets-pilot)"
 	@echo "make deploy        - copy build/arm/*.o to DEVICE/programs/plug-ins/ (default DEVICE: /Volumes/NT; NT must be in USB disk mode)"
-	@echo "make deploy-sysex  - push build/arm/Hemispheres.o via USB-MIDI sysex (NT firmware v1.13+, no reboot)"
+	@echo "make deploy-sysex  - push build/arm/Hemispheres_host.o via USB-MIDI sysex (NT firmware v1.13+, no reboot)"
 	@echo "make clean    - remove build/"
 
 # Sources shared by every host build (no Catch2 main).
@@ -199,55 +199,13 @@ build/arm/compiler_rt/%.o: shim/src/compiler_rt/%.S
 	mkdir -p $(@D)
 	$(ARM_CC) $(ARM_CFLAGS) -Ishim/src/compiler_rt -c -o $@ $<
 
-# Vendor dep sources that ship .cpp implementations (not header-only). LowerRenz
-# references streams::LorenzGenerator::Init/Process; the firmware does not provide
-# them, so they must be linked into Hemispheres.o. streams_resources.cpp carries the
-# constant tables LorenzGenerator references at runtime.
-VENDOR_DEP_ARM_SRCS := shim/src/lorenz/streams_resources.cpp \
-                      shim/src/lorenz/streams_lorenz_generator.cpp
-VENDOR_DEP_ARM_OBJS := $(patsubst shim/src/%.cpp,build/arm/shim_src/%.o,$(VENDOR_DEP_ARM_SRCS))
-
+# Pattern rule for vendor dep .cpp implementations under shim/src/.
+# Used by per-applet plug-ins that pull vendor dep objects via
+# VENDOR_DEPS_<APPLET> (e.g. LowerRenz pulls
+# build/arm/shim_src/lorenz/streams_*.o).
 build/arm/shim_src/%.o: shim/src/%.cpp
 	mkdir -p $(@D)
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
-
-# Hemispheres ARM build pipeline. The on-device applet set is split across
-# two .o files: Hemispheres.o (primary, variant 1) holds 51 applets, and
-# Hemispheres2.o (secondary, variant 2) holds the 5 largest applets that
-# would otherwise push the primary past the NT firmware's per-plug-in .text
-# budget (Relabi, Shredder, EnsOscKey, VectorLFO, Strum). Each .o must fit
-# under the budget (empirically ~82KB) independently.
-#
-# HEMI_VARIANT selects the applet subset HemispheresFactory.h registers:
-#   0 = host build (all 56 applets; tests need them)
-#   1 = ARM primary
-#   2 = ARM secondary
-#
-# Section pipeline: compile -> partial-link with lorenz + compiler-rt ->
-# strip COMDAT groups -> re-partial-link with merge_sections.lds (collapses
-# split COMDAT subsections into single .text/.data/.rodata, reducing
-# section count from ~1640 to ~14). Required because gcc emits
-# `.text.<mangled>` per C++ COMDAT inline method; NT firmware fails to
-# load plug-ins past ~1600 sections.
-# Per-variant vendor dep object lists. Variant 1 needs Lorenz (LowerRenz
-# applet). Variant 2 has none of the Lorenz-dependent applets so its dep
-# list is empty. If a future applet in variant 2 needs Lorenz, add the
-# objects back to VARIANT2_DEP_OBJS.
-VARIANT1_DEP_OBJS := $(VENDOR_DEP_ARM_OBJS)
-VARIANT2_DEP_OBJS :=
-
-define BUILD_ARM_HEMI_VARIANT
-build/arm/$(1).o: applets/$(1).cpp $$(SHIM_DEPS) $$(COMPILER_RT_OBJS) $(3)
-	mkdir -p build/arm
-	$$(ARM_CXX) $$(ARM_FLAGS) -DHEMI_VARIANT=$(2) $$(SHIM_INCLUDE) $$(HEM_APPLET_INCLUDE) -c -o build/arm/$(1).raw.o $$<
-	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o $(3) $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
-	arm-none-eabi-objcopy --remove-section='.group' build/arm/$(1).merge1.o build/arm/$(1).nogroup.o
-	$$(ARM_LD) -r -T shim/merge_sections.lds build/arm/$(1).nogroup.o -o build/arm/$(1).linked.o
-	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/$(1).linked.o $$@
-endef
-
-$(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres,1,$(VARIANT1_DEP_OBJS)))
-$(eval $(call BUILD_ARM_HEMI_VARIANT,Hemispheres2,2,$(VARIANT2_DEP_OBJS)))
 
 # ---------------------------------------------------------------------------
 # Per-applet plug-ins (mass-port release).
@@ -472,7 +430,7 @@ build/host/test_dep_%: harness/tests/test_dep_%.cpp $(SHIM_CORE_SRCS) $(HARNESS_
 test-deps: $(addprefix build/host/, $(DEP_TESTS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o build/arm/Hemispheres.o build/arm/Hemispheres2.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins
@@ -487,7 +445,7 @@ deploy: arm
 # requirements.txt). NT must be connected over USB-MIDI and not held open
 # by another app.
 SYSEX_ID ?= 0
-SYSEX_PLUGIN ?= build/arm/Hemispheres.o
+SYSEX_PLUGIN ?= build/arm/Hemispheres_host.o
 deploy-sysex: $(SYSEX_PLUGIN)
 	python3 harness/scripts/push_plugin_to_device.py $(SYSEX_ID) $(SYSEX_PLUGIN)
 

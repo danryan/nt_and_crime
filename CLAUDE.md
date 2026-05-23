@@ -250,3 +250,23 @@ After editing any `.md` file, run `markdownlint <file>` and fix all errors. The 
 ## Removing worktrees with submodules
 
 `git worktree remove .worktrees/<name>` fails with "working trees containing submodules cannot be moved or removed". Always pass `--force` when removing a worktree that initialized submodules (every worktree in this repo does, since `make vendor` ran or submodules were init'd during provisioning).
+
+## Hardware deploy: SRAM-size cache invalidation
+
+Firmware caches `calculateRequirements` at plug-in scan time. Enlarging any `_NT_algorithm` subclass (adding a member, growing a buffer) requires a power cycle on the NT before the new build behaves correctly. Without it, the runtime allocates the prior smaller size, `construct()` overruns into adjacent memory, and downstream reads return garbage that often masquerades as expected behavior (e.g. a `step()` memcpy "restore" reading pixels indistinguishable from the firmware overlay it was supposed to overwrite). Power cycle re-reads the requirement; the build then works.
+
+## Firmware footer overdraw pattern (Hemispheres + Quadrants hosts)
+
+NT firmware paints its helper-text overlay onto `NT_screen` after the algorithm's `draw()` returns. `step()` runs at audio rate AFTER the firmware overlay pass and BEFORE the next display flush; writes to `NT_screen` from `step()` reach the display. Both composer hosts use this to suppress the overlay: `draw()` snapshots the bottom 16 rows into a per-instance `footer_cache[16*128]`; `step()` restores them while `steps_since_draw < kFooterRestoreSteps` (navigate-away guard, ~67 ms at 48 kHz/32-frame buffers). The counter is reset in `draw()` and incremented in `step()`. See `plugins/hosts/Hemispheres_host.cpp` `step_impl` + `draw_impl` tail. No `hasCustomUi` changes needed; softkey nav stays intact.
+
+## HS:: globals are per-TU, not shared
+
+Each per-applet ARM `.o` privately aggregates `shim/src/globals.cpp` via the `_per_applet_runtime.h` -> `hem_shim.h` -> `hem_shim_impl.h` include chain. Every plug-in therefore has its own copy of every `HS::*` global (`gfx_offset`, `gfx_clip_w`, `clock_m`, `popup_type`, ...). Writes from one TU do NOT reach reads from another TU. Implication: host plug-ins cannot drive per-applet rendering by writing `HS::*` from the host's TU; the write must happen in the same TU that reads it (e.g. `_per_applet_runtime.h::render_view_with_offset`). Hosts have no `globals.o` linked and `arm-none-eabi-nm` shows `HS::*` symbols as unresolved if the host references them.
+
+## Per-applet standalone customUi mapping
+
+Standalone per-applet plug-ins (loaded without a Hemispheres/Quadrants host) route firmware control events through `plugins/applets/_per_applet_runtime.h::route_custom_ui`. Current mapping: `kNT_encoderL` -> `on_encoder_turn` and `kNT_encoderButtonL` -> `on_button_press`. `kNT_button1` is intentionally NOT claimed in standalone; the applet's `on_aux_button` switches many vendor applets into param-edit mode and routing it to button 1 in standalone view ended up changing parameters unexpectedly. Hardware button 1 is therefore handled by the firmware default. Host plug-ins have their own routing in `plugins/hosts/*_host.cpp::customUi_impl` and forward button events to per-applet `on_aux_button` from there.
+
+## Makefile prerequisite expansion timing
+
+`$(VAR)` references in prerequisite lists expand at rule-parse time, not at rule-evaluation time. A `:=` variable defined AFTER its use in a prereq expands to empty. `SHIM_CORE_SRCS` was previously defined after its uses in `test_host_%`, `test_applet_%`, and `test_dep_%` rules; the empty expansion silently worked while no host TU referenced anything from the listed sources. Adding any new host reference to symbols defined in `shim/src/globals.cpp` / `shim/src/graphics.cpp` / `shim/src/icons.cpp` / `shim/src/quant/*` / `shim/src/cv_map/*` will surface the missing link. Fix: keep variable definitions ABOVE the first rule that uses them in a prereq.

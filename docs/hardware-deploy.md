@@ -4,7 +4,7 @@ Three paths from build to running plug-in, fast to slow.
 
 ## Preferred: `make deploy-sysex` (no reboot)
 
-In-tree target. Sends `build/arm/Hemispheres.o` to the NT over USB MIDI SysEx and triggers a plug-in rescan. No USB disk mode, no module reboot, no menu navigation. Iteration cycle is roughly one second per build.
+In-tree target. Sends `build/arm/Hemispheres_host.o` to the NT over USB MIDI SysEx and triggers a plug-in rescan. No USB disk mode, no module reboot, no menu navigation. Iteration cycle is roughly one second per build.
 
 Requirements:
 
@@ -15,8 +15,8 @@ Requirements:
 Usage:
 
 ```
-make deploy-sysex                                   # default: Hemispheres.o, SysEx ID 0
-make deploy-sysex SYSEX_PLUGIN=build/arm/gain.o     # override plug-in
+make deploy-sysex                                   # default: Hemispheres_host.o, SysEx ID 0
+make deploy-sysex SYSEX_PLUGIN=build/arm/Compare.o  # override plug-in
 make deploy-sysex SYSEX_ID=3                        # override SysEx ID
 ```
 

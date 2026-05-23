@@ -22,7 +22,7 @@ Required tools: `arm-none-eabi-c++` (for the NT target), `clang++` or `g++` (hos
 | `make help` | List targets |
 | `make arm` | Build all NT plug-ins under `build/arm/*.o` (the deployable artifact) |
 | `make host` | Build host simulator binary |
-| `make test-applets` | Build and run Catch2 host test binary for Hemisphere applet logic (the main test target during applet ports) |
+| `make test-applets` | Run per-applet Catch2 host test binaries (alias for `test-applets-pilot`; the main test target during applet ports) |
 | `make test-runtime` | Build and run NT runtime simulator tests |
 | `make test-buses`, `test-draw`, `test-draw-shape`, `test-json`, `test-params`, `test-loader` | Per-subsystem host tests |
 | `make test` | Run host build + applet tests + a scripted scenario |
@@ -30,7 +30,7 @@ Required tools: `arm-none-eabi-c++` (for the NT target), `clang++` or `g++` (hos
 | `make deploy-sysex SYSEX_PLUGIN=build/arm/Hemispheres.o SYSEX_ID=0` | Push a built plug-in over USB-MIDI sysex (NT firmware v1.13+, no reboot) |
 | `make clean` | Remove `build/` |
 
-To run a single Catch2 test case, pass a tag to the binary directly: `./build/host/test_hemispheres '[cumulus]'` (build first via `make test-applets` or `make build/host/test_hemispheres`).
+To run a single Catch2 test case, pass a tag to the matching per-applet binary directly: `./build/host/test_applet_Cumulus '[cumulus]'` (build first via `make build/host/test_applet_Cumulus`).
 
 ## Architecture
 
@@ -63,7 +63,7 @@ The project has three layers and one applet host.
 
 **`applets/Hemispheres.cpp` (the host):** A single NT plug-in (`NT_HEMISPHERES_PLUGIN`) that hosts two Hemisphere applets simultaneously (left and right side), with runtime selectors. Its parameter table maps gate inputs A-D, CV inputs A-D, and CV outputs A-D to the standard Phazerville Hemisphere bus layout. `shim/include/HemispheresFactory.h` holds the registration table (applet enum, name strings, `kMaxAppletSize`/`kMaxAppletAlign` `cmax` chains, `applet_factory()` table); `shim/include/applet_indices.h` is the slim enum-only header. To add an applet, the integration step touches both plus `shim/include/PhzIcons.h` and `shim/src/icons.cpp` for icon stubs.
 
-**`harness/` (host test infrastructure):** `harness/src/nt_runtime.cpp` simulates the NT's audio frame loop in-process. `harness/src/plugin_loader.cpp` loads plug-ins through the same factory path as the device. `harness/tests/test_hemispheres.cpp` is the Catch2 binary used for applet behavior coverage; `harness/tests/applet_test_helpers.{h,cpp}` holds the `pack_<applet>` helpers that mirror each vendor `OnDataRequest` byte-by-byte. `harness/tests/test_buses.cpp`, `test_draw_text.cpp`, etc. cover non-applet subsystems. `harness/scripts/run_scenario.py` runs YAML-driven integration scenarios from `tests/scenarios/`.
+**`harness/` (host test infrastructure):** `harness/src/nt_runtime.cpp` simulates the NT's audio frame loop in-process. `harness/src/plugin_loader.cpp` loads plug-ins through the same factory path as the device. `harness/tests/test_applet_<APPLET>.cpp` is the per-applet Catch2 binary used for applet behavior coverage; each file carries its own local `pack_<applet>` helper that mirrors the vendor `OnDataRequest` byte-by-byte (see "Pack helper convention" below). `harness/tests/test_buses.cpp`, `test_draw_text.cpp`, etc. cover non-applet subsystems. `harness/scripts/run_scenario.py` runs YAML-driven integration scenarios from `tests/scenarios/`.
 
 ## Critical gotcha: 10x clocked multiplier
 
@@ -71,7 +71,7 @@ The host harness runs the vendor `Controller()` 10 times per NT `step()` call (`
 
 Bus-level "fires once per N input edges" assertions are unreliable for these applets. Two valid coverage shapes:
 
-1. Model the multiplier explicitly in the assertion math. See Cumulus CU2 at `harness/tests/test_hemispheres.cpp:1264` for the canonical commentary and Stairs ST3 / RunglBook RB3 for working examples.
+1. Model the multiplier explicitly in the assertion math. See Cumulus per-applet test `harness/tests/test_applet_Cumulus.cpp` for the canonical commentary and Stairs ST3 / RunglBook RB3 for working examples.
 2. Drop bus-level fire-count assertions; cover via round-trip plus state-injection only. See ProbabilityDivider PD3/PD4 for the template.
 
 Per-applet entries in the design specs must state which shape they use. New applet ports MUST acknowledge this rule in their test concerns or test failures will look mysterious.
@@ -98,7 +98,7 @@ Vendor non-applet headers (`HSProbLoopLinker.h`, `SegmentDisplay.h`, etc.) usual
 
 ## Pack helper convention
 
-`pack_<applet>` helpers in `harness/tests/applet_test_helpers.cpp` mirror the vendor `OnDataRequest` byte-by-byte. Rules:
+`pack_<applet>` helpers in each `harness/tests/test_applet_<APPLET>.cpp` mirror the vendor `OnDataRequest` byte-by-byte. Each per-applet test owns its own local copy of the relevant helper. Rules:
 
 - Use `int` for each field at the helper boundary; apply the vendor bias inside (e.g., `(value + 32)` for ClockDivider's `div[i] + 32`).
 - AND with the field-width mask, not `0xFF`.

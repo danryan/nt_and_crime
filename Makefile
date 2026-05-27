@@ -153,7 +153,8 @@ build/arm/section_probe.o: plugins/probes/section_probe.cpp
 # prereq expansion is non-empty (Make expands prereqs at rule-parse time).
 
 # Hem shim sources (header-only for now; compiled as part of each applet's TU)
-SHIM_INCLUDE := -Ishim/include
+# -Ishim/include MUST stay before -I$(HEM_SRC_DIR): shim stubs shadow same-named vendor headers.
+SHIM_INCLUDE := -Ishim/include -I$(HEM_SRC_DIR)
 HEM_APPLET_INCLUDE := -Ivendor/O_C-Phazerville/software/src/applets
 
 SHIM_DEPS := $(wildcard shim/include/*.h) $(wildcard shim/include/*/*.h) $(wildcard shim/src/*.cpp)
@@ -200,11 +201,18 @@ build/arm/compiler_rt/%.o: $(COMPILER_RT_DIR)/%.S
 	mkdir -p $(@D)
 	$(ARM_CC) $(ARM_CFLAGS) -I$(COMPILER_RT_DIR) -c -o $@ $<
 
-# Pattern rule for vendor dep .cpp implementations under shim/src/.
-# Used by per-applet plug-ins that pull vendor dep objects via
-# VENDOR_DEPS_<APPLET> (e.g. LowerRenz pulls
-# build/arm/shim_src/lorenz/streams_*.o).
+# Pattern rule for shim/src/ .cpp implementations (host_helpers, host_proxy,
+# and any other shim-owned source). Vendor dep cpps are compiled in place via
+# the build/arm/vendor_src/%.o rule below.
 build/arm/shim_src/%.o: shim/src/%.cpp
+	mkdir -p $(@D)
+	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
+
+# Pattern rule for vendor dep .cpp implementations compiled in place from
+# the vendor source tree. The vendor cpps include their headers by bare name;
+# compiling in place lets the compiler find the sibling header via its
+# own-directory search, so no forwarding bridge is needed.
+build/arm/vendor_src/%.o: $(HEM_SRC_DIR)/%.cpp
 	mkdir -p $(@D)
 	$(ARM_CXX) $(ARM_FLAGS) $(SHIM_INCLUDE) -c -o $@ $<
 
@@ -288,7 +296,7 @@ VENDOR_DEPS_PolyDiv            :=
 VENDOR_DEPS_ADEG               :=
 VENDOR_DEPS_ADSREG             :=
 VENDOR_DEPS_RunglBook          :=
-VENDOR_DEPS_LowerRenz          := build/arm/shim_src/lorenz/streams_resources.o build/arm/shim_src/lorenz/streams_lorenz_generator.o
+VENDOR_DEPS_LowerRenz          := build/arm/vendor_src/streams_resources.o build/arm/vendor_src/streams_lorenz_generator.o
 VENDOR_DEPS_Combin8            :=
 
 # $(1) = applet name (e.g. Compare). $(2) = expanded VENDOR_DEPS_<applet>.
@@ -351,8 +359,8 @@ HOST_PLUGIN_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(HOST_PLUGIN_LIST))
 # Vendor dep cpp sources linked into the host test binary. Per-dep Catch2
 # binaries #include these .cpp files directly inline; for the applet host
 # build the same code is compiled as separate TUs and linked in.
-VENDOR_DEP_HOST_SRCS := shim/src/lorenz/streams_resources.cpp \
-                       shim/src/lorenz/streams_lorenz_generator.cpp
+VENDOR_DEP_HOST_SRCS := $(HEM_SRC_DIR)/streams_resources.cpp \
+                       $(HEM_SRC_DIR)/streams_lorenz_generator.cpp
 
 # `make test-applets` is preserved as an alias for the per-applet test
 # runner. The bundled-host test binary that this target originally drove

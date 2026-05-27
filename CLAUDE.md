@@ -200,7 +200,7 @@ Firmware resolves at load: `NT_*` ABI (`NT_drawText`, `NT_screen`, `NT_jsonParse
 
 ## Vendor dep cpps must link into ARM plug-in
 
-Vendor non-header-only `.cpp` files (not just headers) must compile into the ARM plug-in `.o`. Per-dep host tests cover them, but ARM-side calls only resolve if the cpps are linked into the consuming applet's `.o`. Linkage is per-applet via `VENDOR_DEPS_<APPLET>` in the Makefile: e.g. `VENDOR_DEPS_LowerRenz` lists `build/arm/shim_src/lorenz/streams_{resources,lorenz_generator}.o`, pulled into the `BUILD_PER_APPLET` rule for LowerRenz only. Applets that need no vendor cpp leave their `VENDOR_DEPS_*` empty. Symptom of missing link: `arm-none-eabi-nm` lists `_ZN7streams15LorenzGenerator4InitEh` or similar as unresolved.
+Vendor non-header-only `.cpp` files (not just headers) must compile into the ARM plug-in `.o`. Per-dep host tests cover them, but ARM-side calls only resolve if the cpps are linked into the consuming applet's `.o`. Linkage is per-applet via `VENDOR_DEPS_<APPLET>` in the Makefile: e.g. `VENDOR_DEPS_LowerRenz` lists `build/arm/vendor_src/streams_{resources,lorenz_generator}.o`, compiled in place from `$(HEM_SRC_DIR)` by the `build/arm/vendor_src/%.o` rule and pulled into the `BUILD_PER_APPLET` rule for LowerRenz only. Applets that need no vendor cpp leave their `VENDOR_DEPS_*` empty. Symptom of missing link: `arm-none-eabi-nm` lists `_ZN7streams15LorenzGenerator4InitEh` or similar as unresolved.
 
 ## C++ COMDAT section merge in ARM partial-link
 

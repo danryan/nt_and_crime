@@ -1,12 +1,9 @@
 // Output-parity class: integer-only, byte-identical across host and ARM.
 // dep-lorenz: LorenzGeneratorManager + streams_lorenz_generator invariant tests.
 //
-// Include strategy: vendor .cpp files in shim/src/lorenz/ use bare-name
-// #include "streams_resources.h" and #include "streams_lorenz_generator.h".
-// These resolve to forwarding headers at shim/src/lorenz/streams_resources.h
-// and shim/src/lorenz/streams_lorenz_generator.h respectively (found via the
-// "current file's directory" rule for #include "..." search). Those forwarding
-// headers redirect to shim/include/lorenz/ via the -Ishim/include search path.
+// The vendor lorenz sources are compiled in place from
+// vendor/O_C-Phazerville/software/src. This test includes the vendor header
+// by bare name; -I$(HEM_SRC_DIR) on SHIM_INCLUDE resolves it.
 #include <cstdint>
 #include <cstring>
 
@@ -14,7 +11,7 @@
 // separate TUs via Makefile's VENDOR_DEP_HOST_SRCS so the same code links
 // into the LowerRenz applet build path without duplicating symbols. Pull
 // only the headers here.
-#include "lorenz/streams_lorenz_generator.h"
+#include "streams_lorenz_generator.h"
 
 // OC::CORE::ticks declared in OC_core.h, defined in shim/src/globals.cpp
 // (compiled into Hemispheres.host.o, linked into this binary).

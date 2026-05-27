@@ -33,7 +33,7 @@ Out of scope:
 ## Method
 
 - Use a real tool that resolves symbols, e.g. `include-what-you-use` with project-tuned mappings, or hand-audit per include with namespace/macro awareness. Do NOT apply a tool blindly: IWYU tooling over-suggests on shim/vendor boundaries. Treat every suggestion as a hypothesis to verify by building.
-- Forwarding-bridge headers under `shim/src/lorenz/` exist on purpose (vendor `.cpp` files use bare-name includes); do not "fix" them.
+- The lorenz forwarding-bridge headers were removed in the vendor de-dup; vendor `.cpp` files are now compiled in place from `$(HEM_SRC_DIR)`. If any forwarding bridge survives elsewhere in `shim/src/`, it exists on purpose (vendor `.cpp` files use bare-name includes); do not "fix" those.
 - The shim's job is to satisfy unmodified vendor applet headers. An include in a shim header may exist to put a name in scope for a downstream vendor header, not for the shim header's own body. Confirm no vendor applet header breaks before removing such an include: `make test-applets` plus `make arm` is the check.
 
 ## Workflow

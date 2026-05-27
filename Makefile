@@ -356,9 +356,10 @@ $(foreach h,$(HOST_PLUGIN_LIST),$(eval $(call BUILD_HOST_PLUGIN,$(h))))
 
 HOST_PLUGIN_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(HOST_PLUGIN_LIST)))
 
-# Vendor dep cpp sources linked into the host test binary. Per-dep Catch2
-# binaries #include these .cpp files directly inline; for the applet host
-# build the same code is compiled as separate TUs and linked in.
+# Vendor dep cpp sources compiled as separate TUs and linked into the host
+# test binaries (both per-applet test_applet_% and per-dep test_dep_%). The
+# test .cpp files include only the vendor headers; these sources supply the
+# definitions so the vendor code links once without duplicate symbols.
 VENDOR_DEP_HOST_SRCS := $(HEM_SRC_DIR)/streams_resources.cpp \
                        $(HEM_SRC_DIR)/streams_lorenz_generator.cpp
 
@@ -423,10 +424,9 @@ test-hosts-pilot: $(addprefix build/host/test_host_, $(HOST_PLUGIN_LIST))
 DEP_TESTS := test_dep_vec_osc test_dep_lorenz test_dep_tideslite \
              test_dep_clock_mgr test_dep_quant test_dep_cv_map
 
-# Shim core sources (globals, graphics, icons, cxx runtime stubs). Linked
-# into dep tests so dep tests do not pull vendor copies of vec_osc /
-# lorenz dep headers (which would collide with the shim copies the dep
-# tests already include).
+# Shim core source implementations (globals, graphics, icons, the quant
+# engine, and cv_map) compiled as TUs and linked into the host test
+# binaries, so the symbols those tests reference are defined exactly once.
 SHIM_CORE_SRCS := shim/src/globals.cpp shim/src/graphics.cpp shim/src/icons.cpp \
                   shim/src/quant/braids_quantizer.cpp shim/src/quant/OC_scales.cpp \
                   shim/src/quant/q_engine.cpp shim/src/cv_map/bjorklund.cpp

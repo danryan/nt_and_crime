@@ -2,7 +2,7 @@
 // (dead code on NT: no SD card). Omits avr/pgmspace.h and FLASHMEM
 // (not applicable on Cortex-M7 / host sim). Omits the static_assert on
 // scale_names count: those string tables are not ported to the shim.
-#include "quant/OC_scales.h"
+#include "OC_scales.h"
 #include "util/util_macros.h"
 #include <cstring>
 

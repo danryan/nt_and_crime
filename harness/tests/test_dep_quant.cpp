@@ -10,7 +10,7 @@
 //   [midi-quant]    MIDIQuantizer::NoteNumber and CV round-trip
 #include "catch.hpp"
 #include "HemisphereApplet.h"
-#include "quant/OC_scales.h"
+#include "OC_scales.h"
 #include "quant/MIDIQuantizer.h"
 
 // ONE_OCTAVE is defined in HSUtils.h (12 << 7 = 1536 hem units).

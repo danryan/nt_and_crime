@@ -1,7 +1,7 @@
 // HS:: quantizer engine: global pool definition and free-function
 // implementations. These mirror vendor HSUtils.h:200-235 and HSUtils.cpp.
 #include "HSUtils.h"
-#include "quant/OC_scales.h"
+#include "OC_scales.h"
 
 namespace HS {
 

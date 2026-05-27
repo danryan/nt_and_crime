@@ -2,7 +2,7 @@
 // vendor/O_C-Phazerville/software/src/braids_quantizer.cpp but compiled
 // against the shim include path (no OC_options.h, no util_misc.h).
 // NORTHERNLIGHT is not defined on the disting NT target.
-#include "quant/braids_quantizer.h"
+#include "braids_quantizer.h"
 #include "util/util_macros.h"
 #include <algorithm>
 #include <cstdlib>

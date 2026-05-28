@@ -15,6 +15,9 @@
 #include <cstdint>
 
 #include "OC_DAC.h"
+#include "OC_ADC.h"
+#include "OC_digital_inputs.h"
+#include "OC_config.h"
 
 #include "catch.hpp"
 
@@ -52,4 +55,79 @@ TEST_CASE("getHistory returns the last kHistoryDepth pushes in order", "[oc_io][
 
 TEST_CASE("get_voltage_scaling collapses to 1V/oct", "[oc_io][dac]") {
     REQUIRE(OC::DAC::get_voltage_scaling(DAC_CHANNEL_A) == OC::VOLTAGE_SCALING_1V_PER_OCT);
+}
+
+TEST_CASE("templated ADC value<channel> reads the injected input", "[oc_io][adc]") {
+    // Compile proof: the template parameter binds to the extern channel
+    // object ADC_CHANNEL_1 (an lvalue), mirroring the vendor
+    // `template <ADC_CHANNEL &channel>` signature (APP_LORENZ.h:191).
+    oc_io::set_input(ADC_CHANNEL_1, 1536);
+    REQUIRE(OC::ADC::value<ADC_CHANNEL_1>() == 1536);
+}
+
+TEST_CASE("runtime ADC value(channel) reads the injected input", "[oc_io][adc]") {
+    oc_io::set_input(ADC_CHANNEL_2, -512);
+    REQUIRE(OC::ADC::value(ADC_CHANNEL_2) == -512);
+
+    oc_io::set_input(ADC_CHANNEL_4, 4096);
+    REQUIRE(OC::ADC::value(ADC_CHANNEL_4) == 4096);
+}
+
+TEST_CASE("ADC pitch_value applies 1V/oct (12 semitones) scaling", "[oc_io][adc]") {
+    // The NT input bus is already in 1V/oct hem units (12 << 7 = 1536 per
+    // octave, 128 per semitone), so one octave of input reads back as one
+    // octave of pitch and one semitone reads back as 128.
+    oc_io::set_input(ADC_CHANNEL_1, 1536);
+    REQUIRE(OC::ADC::pitch_value(ADC_CHANNEL_1) == 1536);
+
+    oc_io::set_input(ADC_CHANNEL_1, 128);
+    REQUIRE(OC::ADC::pitch_value(ADC_CHANNEL_1) == 128);
+}
+
+TEST_CASE("ADC raw_value and raw_pitch_value are present", "[oc_io][adc]") {
+    oc_io::set_input(ADC_CHANNEL_3, 768);
+    REQUIRE(OC::ADC::raw_value(ADC_CHANNEL_3) == 768);
+    REQUIRE(OC::ADC::raw_pitch_value(ADC_CHANNEL_3) == 768);
+}
+
+TEST_CASE("DigitalInputs::clocked reports a rising edge then clears after Scan", "[oc_io][di]") {
+    // Establish a known-low baseline so the first edge is unambiguous.
+    oc_io::set_trigger(OC::DIGITAL_INPUT_1, false);
+    OC::DigitalInputs::Scan();
+    REQUIRE(OC::DigitalInputs::clocked(OC::DIGITAL_INPUT_1) == 0u);
+
+    // Rising edge: low -> high. Scan latches the edge.
+    oc_io::set_trigger(OC::DIGITAL_INPUT_1, true);
+    OC::DigitalInputs::Scan();
+    REQUIRE(OC::DigitalInputs::clocked(OC::DIGITAL_INPUT_1) != 0u);
+    REQUIRE(OC::DigitalInputs::clocked<OC::DIGITAL_INPUT_1>() != 0u);
+
+    // Held high (no new edge): the next Scan clears the clocked flag.
+    OC::DigitalInputs::Scan();
+    REQUIRE(OC::DigitalInputs::clocked(OC::DIGITAL_INPUT_1) == 0u);
+}
+
+TEST_CASE("DigitalInputs edge detection is per-input independent", "[oc_io][di]") {
+    oc_io::set_trigger(OC::DIGITAL_INPUT_2, false);
+    oc_io::set_trigger(OC::DIGITAL_INPUT_3, false);
+    OC::DigitalInputs::Scan();
+
+    oc_io::set_trigger(OC::DIGITAL_INPUT_2, true);
+    OC::DigitalInputs::Scan();
+    REQUIRE(OC::DigitalInputs::clocked(OC::DIGITAL_INPUT_2) != 0u);
+    REQUIRE(OC::DigitalInputs::clocked(OC::DIGITAL_INPUT_3) == 0u);
+}
+
+TEST_CASE("DigitalInputs::read_immediate reports the live trigger level", "[oc_io][di]") {
+    oc_io::set_trigger(OC::DIGITAL_INPUT_4, true);
+    REQUIRE(OC::DigitalInputs::read_immediate(OC::DIGITAL_INPUT_4) == true);
+    REQUIRE(OC::DigitalInputs::read_immediate<OC::DIGITAL_INPUT_4>() == true);
+
+    oc_io::set_trigger(OC::DIGITAL_INPUT_4, false);
+    REQUIRE(OC::DigitalInputs::read_immediate(OC::DIGITAL_INPUT_4) == false);
+}
+
+TEST_CASE("OC_config exposes the vendor isr freq and trigger-delay bound", "[oc_io][config]") {
+    REQUIRE(OC_CORE_ISR_FREQ == 16666u);
+    REQUIRE(OC::kMaxTriggerDelayTicks == 96u);
 }

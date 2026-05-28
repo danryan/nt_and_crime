@@ -439,10 +439,13 @@ build/host/test_dep_%: harness/tests/test_dep_%.cpp $(SHIM_CORE_SRCS) $(HARNESS_
 test-deps: $(addprefix build/host/, $(DEP_TESTS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
-# O_C apps foundation: shim DAC accessor behavior. Standalone host test
-# mirroring the test_dep_% rule. Links SHIM_CORE_SRCS so the extern
-# DAC_CHANNEL_* channel objects (defined in shim/src/globals.cpp) resolve.
-build/host/test_oc_io: harness/tests/test_oc_io.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS) $(VENDOR_DEP_HOST_SRCS)
+# O_C apps foundation: shim DAC, ADC, digital-input accessor behavior.
+# Standalone host test mirroring the test_dep_% rule. Links SHIM_CORE_SRCS so
+# the extern DAC_CHANNEL_* channel objects (defined in shim/src/globals.cpp)
+# resolve, plus shim/src/oc/io.cpp for the O_C-only ADC_CHANNEL_* channel
+# objects and the ADC/digital-input backing state. io.cpp is O_C-only and is
+# not part of SHIM_CORE_SRCS (which is aggregated into every Hemisphere applet).
+build/host/test_oc_io: harness/tests/test_oc_io.cpp shim/src/oc/io.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS) $(VENDOR_DEP_HOST_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
 

@@ -8,6 +8,7 @@
 
 #include "OC_ADC.h"
 #include "OC_digital_inputs.h"
+#include "OC_apps.h"
 
 // ADC channel objects. Vendor OC_ADC.h:16 declares these as extern lvalue
 // objects so `template <ADC_CHANNEL &channel>` binds to them. Values mirror the
@@ -16,6 +17,16 @@ ADC_CHANNEL ADC_CHANNEL_1 = 0;
 ADC_CHANNEL ADC_CHANNEL_2 = 1;
 ADC_CHANNEL ADC_CHANNEL_3 = 2;
 ADC_CHANNEL ADC_CHANNEL_4 = 3;
+
+// Per-app runtime sets this in construct(). Lives here (not globals.cpp)
+// because globals.cpp aggregates into every Hemisphere applet, which has no
+// OC::App; keeping current_app in the O_C-only io.cpp keeps the symbol
+// strictly scoped to plug-ins that pull oc_shim_impl.h.
+namespace OC {
+namespace apps {
+const App* current_app = nullptr;
+}  // namespace apps
+}  // namespace OC
 
 namespace oc_io {
 namespace {

@@ -487,6 +487,19 @@ build/host/test_oc_strings: harness/tests/test_oc_strings.cpp $(HEM_SRC_DIR)/OC_
 test-oc-strings: build/host/test_oc_strings
 	./build/host/test_oc_strings
 
+# O_C apps runtime test: exercises the per-app runtime helpers in
+# plugins/apps/_per_app_runtime.h (cadence accumulator, one-edge-per-tick,
+# centering shift, sentinel, enum-offset, settings round-trip). Links the
+# OC-only I/O backing (shim/src/oc/io.cpp) so the runtime can refresh
+# OC::ADC and OC::DigitalInputs from the test-injected backing state.
+build/host/test_oc_runtime: harness/tests/test_oc_runtime.cpp shim/src/oc/io.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-runtime
+test-oc-runtime: build/host/test_oc_runtime
+	./build/host/test_oc_runtime
+
 arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
 
 DEVICE ?= /Volumes/NT

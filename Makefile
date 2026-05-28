@@ -453,6 +453,18 @@ build/host/test_oc_io: harness/tests/test_oc_io.cpp shim/src/oc/io.cpp $(SHIM_CO
 test-oc-io: build/host/test_oc_io
 	./build/host/test_oc_io
 
+# O_C_strings test: vendor OC_strings.cpp defines the new string tables and delay
+# ticks array. We link OC_strings.cpp directly and exclude the old string definitions
+# from globals.cpp to avoid duplicate symbol errors. We still need HARNESS_SRCS for
+# Catch2 main but not SHIM_CORE_SRCS which contains globals.cpp.
+build/host/test_oc_strings: harness/tests/test_oc_strings.cpp $(HEM_SRC_DIR)/OC_strings.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-strings
+test-oc-strings: build/host/test_oc_strings
+	./build/host/test_oc_strings
+
 arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
 
 DEVICE ?= /Volumes/NT

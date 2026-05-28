@@ -173,8 +173,14 @@ void push_settings_to_params(LorenzInstance* inst) {
         const int v = inst->settings_facade.get_value(
             inst->settings_facade.instance, s);
         if (inst->v[base + s] != static_cast<int16_t>(v)) {
+            // NT_setParameterFromUi indexes the GLOBAL parameter table, which
+            // includes the firmware's common-parameter prefix. inst->v above is
+            // plug-in-relative, so the store compare uses base + s, but the
+            // push target must add NT_parameterOffset() (api.h:571). Omitting it
+            // writes one global index low and the firmware re-applies the edit to
+            // the setting above the edited one.
             NT_setParameterFromUi(static_cast<uint32_t>(idx),
-                                  static_cast<uint32_t>(base + s),
+                                  static_cast<uint32_t>(base + s) + NT_parameterOffset(),
                                   static_cast<int16_t>(v));
         }
     }
@@ -270,6 +276,21 @@ int low_rents_settings_param_base() { return oc_runtime::settings_param_base(); 
 void low_rents_encoder_edit_freq1(_NT_algorithm* self, int delta) {
     auto* inst = static_cast<LorenzInstance*>(self);
     emit_encoder(inst, OC::CONTROL_ENCODER_L, delta);
+    push_settings_to_params(inst);
+}
+
+// Drive an edit of an arbitrary list setting through the on-device path: place
+// the cursor on setting_idx, enter editing mode, emit ENCODER_R, then push back.
+// This is the path the user exercises with the hardware encoder, distinct from
+// the ENCODER_L FREQ edit above. Used to prove a push-back edit lands on the
+// edited setting and not its neighbor.
+void low_rents_encoder_edit_setting(_NT_algorithm* self, int setting_idx, int delta) {
+    auto* inst = static_cast<LorenzInstance*>(self);
+    auto& cur = lorenz_generator_state.cursor;
+    cur.Init(LORENZ_SETTING_RHO1, LORENZ_SETTING_LAST - 1);
+    cur.Scroll(setting_idx - LORENZ_SETTING_RHO1);
+    cur.set_editing(true);
+    emit_encoder(inst, OC::CONTROL_ENCODER_R, delta);
     push_settings_to_params(inst);
 }
 

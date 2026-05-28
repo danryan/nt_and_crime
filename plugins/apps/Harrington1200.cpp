@@ -187,8 +187,14 @@ void push_settings_to_params(H1200Instance* inst) {
         const int v = inst->settings_facade.get_value(
             inst->settings_facade.instance, s);
         if (inst->v[base + s] != static_cast<int16_t>(v)) {
+            // NT_setParameterFromUi indexes the GLOBAL parameter table, which
+            // includes the firmware's common-parameter prefix. inst->v above is
+            // plug-in-relative, so the store compare uses base + s, but the
+            // push target must add NT_parameterOffset() (api.h:571). Omitting it
+            // writes one global index low and the firmware re-applies the edit to
+            // the setting above the edited one.
             NT_setParameterFromUi(static_cast<uint32_t>(idx),
-                                  static_cast<uint32_t>(base + s),
+                                  static_cast<uint32_t>(base + s) + NT_parameterOffset(),
                                   static_cast<int16_t>(v));
         }
     }

@@ -117,6 +117,14 @@ static std::map<std::pair<int,int>, bool> g_gray_out;
 // "idx value\n" here before calling parameterChanged.
 static FILE* g_param_log = nullptr;
 
+// Common-parameter prefix width. The device firmware injects common parameters
+// (Bypass and friends) ahead of a plug-in's own table, so plug-in parameter P
+// lives at global index P + NT_parameterOffset(). The harness defaults to 0 (no
+// prefix) but a test may raise it to model the firmware so customUi push-backs
+// that forget NT_parameterOffset() are caught (otherwise they only fail on
+// hardware). Reset to 0 by reset_runtime().
+static uint32_t g_param_offset = 0;
+
 namespace nt {
 int  num_buses()       { return 64; }
 int  bus_frame_count() { return g_bus_frames; }
@@ -142,11 +150,15 @@ void reset_runtime() {
     g_slot = nullptr;
     g_gray_out.clear();
     g_param_log = nullptr;
+    g_param_offset = 0;
     nt::reset_plugin_loader();
 }
 
 void set_param_log(FILE* f) {
     g_param_log = f;
+}
+void set_parameter_offset(uint32_t offset) {
+    g_param_offset = offset;
 }
 bool shape_rasteriser_is_placeholder() { return true; }
 
@@ -193,8 +205,9 @@ uint32_t NT_algorithmCount(void) {
 }
 
 uint32_t NT_parameterOffset(void) {
-    // The host harness has no common-parameter prefix; offset is always zero.
-    return 0u;
+    // Defaults to 0 (no common-parameter prefix). A test can raise it via
+    // nt::set_parameter_offset to model the device firmware's injected commons.
+    return g_param_offset;
 }
 
 void NT_setParameterFromUi(uint32_t algorithmIndex, uint32_t parameter, int16_t value) {

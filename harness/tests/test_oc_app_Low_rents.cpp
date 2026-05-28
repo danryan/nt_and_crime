@@ -42,6 +42,9 @@ int  low_rents_settings_param_base();
 // Drive the vendor app's encoder edit on the FREQ1 setting (selected generator
 // 0) so the test can observe the app-side push back into the NT parameter store.
 void low_rents_encoder_edit_freq1(_NT_algorithm* self, int delta);
+// Drive an edit of an arbitrary list setting through the on-device encoder path
+// (cursor + ENCODER_R), so the test can observe the push-back targeting.
+void low_rents_encoder_edit_setting(_NT_algorithm* self, int setting_idx, int delta);
 // Arm the construct-time sentinel (the firmware fires parameterChanged during
 // construct before the algorithm is registered; the runtime guards on a
 // sentinel that the first draw() flips true).
@@ -291,4 +294,35 @@ TEST_CASE("Low-rents NT parameter add-on syncs bidirectionally", "[oc_app][low_r
 
     // The NT parameter store (alg->v) must reflect the app-side edit.
     REQUIRE(p->algorithm->v[base + L_FREQ1] == after);
+}
+
+TEST_CASE("Low-rents customUI push-back honors the common-parameter offset",
+          "[oc_app][low_rents][param-sync][offset]") {
+    // The device firmware injects common parameters (Bypass) ahead of the
+    // plug-in table, so plug-in parameter P lives at global index
+    // P + NT_parameterOffset(). NT_setParameterFromUi takes the GLOBAL index, so
+    // the customUI push-back must add NT_parameterOffset(). Model a +1 prefix and
+    // edit one list setting through the on-device encoder path; the edit must
+    // land on that setting only. A push-back that forgets the offset writes one
+    // global index low and the firmware re-applies it to the setting above the
+    // edited one, which is the off-by-one observed on hardware.
+    nt::reset_runtime();
+    nt::set_parameter_offset(1);
+    nt::LoadedPlugin* p = nt::load_plugin();
+    REQUIRE(p != nullptr);
+    low_rents_arm_sentinel(p->algorithm);
+
+    const int base = low_rents_settings_param_base();
+    const int rho1_before = low_rents_get_setting(p->algorithm, L_RHO1);
+    const int rho2_before = low_rents_get_setting(p->algorithm, L_RHO2);
+
+    // Edit RHO2 by +5 via the cursor/ENCODER_R path.
+    low_rents_encoder_edit_setting(p->algorithm, L_RHO2, +5);
+
+    // RHO2 took the edit; RHO1 (the neighbor above) must be untouched.
+    REQUIRE(low_rents_get_setting(p->algorithm, L_RHO2) == rho2_before + 5);
+    REQUIRE(low_rents_get_setting(p->algorithm, L_RHO1) == rho1_before);
+
+    // The store slot for RHO2 (plugin-relative) must carry the new value.
+    REQUIRE(p->algorithm->v[base + L_RHO2] == rho2_before + 5);
 }

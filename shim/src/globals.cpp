@@ -80,7 +80,27 @@ const char* const scale_names_short[] = {
     "BM", "BR", "Pj", "Pi", "Fk", "Jp", "Gm", "Gy", "Ar", "Fl",
     "Wh", "Py", "Eb", "E4", "Ea", "Bh", "Gn", "Mr", "Us"
 };
+// Harrington 1200 (APP_H1200) CV-source labels. Vendor OC_strings.cpp:88, four-
+// channel (non-Teensy41) form. H1200's CV-source settings index this 0..4
+// (H1200_CV_SOURCE_NONE..CV4); the trailing "A".."D" cover the slot CV sources
+// the broader catalog uses. The shim owns these so Harrington 1200 needs no
+// vendor OC_strings.cpp link (which would duplicate note_names/capital_letters,
+// also defined above). globals.cpp is aggregated into every applet/app TU; the
+// table is additive and referenced only by Harrington 1200.
+const char* const cv_input_names_none[] = {
+    " - ", "CV1", "CV2", "CV3", "CV4", "A", "B", "C", "D"
+};
+// Trigger-delay labels. Vendor OC_strings.cpp:123.
+const char* const trigger_delay_times[kNumDelayTimes] = {
+    "off", "120us", "240us", "360us", "480us", "1ms", "2ms", "4ms"
+};
 }
+// Trigger-delay tick counts. Vendor OC_strings.cpp:341 (namespace OC, not
+// OC::Strings). Harrington 1200's TriggerDelays::Process indexes this by the
+// selected delay setting.
+const uint8_t trigger_delay_ticks[kNumDelayTimes] = {
+    0, 2, 4, 6, 8, 16, 33, 66
+};
 }
 
 HSClockManager clock_m;

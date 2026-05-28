@@ -29,6 +29,17 @@ enum DigitalInput {
   DIGITAL_INPUT_LAST
 };
 
+// Per-input mask constants. Vendor OC_digital_inputs.h:20-25 defines
+// DIGITAL_INPUT_MASK(x) = (0x1 << x) and the four named masks from it. Vendor
+// apps (Harrington 1200, APP_H1200.h:482-488) reference the named masks
+// directly to test the bitmask returned by clocked(). The shim's clocked()
+// mask uses the same (0x1u << input) bit layout, so a clocked() result ANDed
+// with DIGITAL_INPUT_n_MASK reports an edge on input n exactly as on hardware.
+static constexpr uint32_t DIGITAL_INPUT_1_MASK = 0x1u << DIGITAL_INPUT_1;
+static constexpr uint32_t DIGITAL_INPUT_2_MASK = 0x1u << DIGITAL_INPUT_2;
+static constexpr uint32_t DIGITAL_INPUT_3_MASK = 0x1u << DIGITAL_INPUT_3;
+static constexpr uint32_t DIGITAL_INPUT_4_MASK = 0x1u << DIGITAL_INPUT_4;
+
 }  // namespace OC
 
 // Backing store for the O_C trigger bus. set_trigger sets the live level;

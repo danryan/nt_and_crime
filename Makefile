@@ -347,7 +347,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents
+OC_APP_LIST := StubApp Low_rents Harrington1200
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -357,6 +357,16 @@ VENDOR_DEP_HOST_SRCS_StubApp :=
 # applet uses). Host side: the vendor sources compiled into the test binary.
 VENDOR_DEPS_Low_rents          := build/arm/vendor_src/streams_resources.o build/arm/vendor_src/streams_lorenz_generator.o
 VENDOR_DEP_HOST_SRCS_Low_rents := $(HEM_SRC_DIR)/streams_resources.cpp $(HEM_SRC_DIR)/streams_lorenz_generator.cpp
+
+# Harrington 1200 (APP_H1200) needs no net-new vendor .cpp. The string tables
+# and the trigger-delay ticks array it reads (note_names, cv_input_names_none,
+# trigger_delay_times, trigger_delay_ticks) are all shim-owned in
+# shim/src/globals.cpp, which rides the OC shim-impl aggregation. Linking vendor
+# OC_strings.cpp would duplicate note_names/note_names_unpadded/capital_letters
+# (also in globals.cpp) and fail the link on both host and ARM. Euclidean
+# (bjorklund) and SemitoneQuantizer likewise ride the aggregation.
+VENDOR_DEPS_Harrington1200          :=
+VENDOR_DEP_HOST_SRCS_Harrington1200 :=
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

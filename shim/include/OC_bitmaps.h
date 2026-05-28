@@ -1,4 +1,14 @@
 #pragma once
+// Define the vendor include guard so a quote-include of "OC_bitmaps.h" from
+// inside a vendor app header (APP_H1200.h:28, which resolves to its vendor
+// sibling first, not through -Ishim/include) becomes a no-op once this shim
+// shadow has been included ahead of the vendor app header. Without this the
+// vendor OC_bitmaps.h would redefine kBitmapEditIndicatorW and redeclare
+// bitmap_gate_indicators_8 with a clashing type. Same poison technique as
+// OC_digital_inputs.h.
+#ifndef OC_BITMAPS_H_
+#define OC_BITMAPS_H_
+#endif
 #include <cstdint>
 
 // Minimal shim shadow of vendor OC_bitmaps.h. The bare-name include from a

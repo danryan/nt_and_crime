@@ -28,6 +28,9 @@ using uint = unsigned int;
 #ifndef EXTMEM
 #define EXTMEM
 #endif
+#ifndef FASTRUN
+#define FASTRUN
+#endif
 
 #include <type_traits>
 template <typename T, typename U, typename V>

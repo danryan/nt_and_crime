@@ -106,6 +106,14 @@ build/host/test_host_proxy: harness/tests/test_host_proxy.cpp shim/src/host_prox
 test-host-proxy: build/host/test_host_proxy
 	./build/host/test_host_proxy
 
+build/host/test_oc_apps: harness/tests/test_oc_apps.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-apps
+test-oc-apps: build/host/test_oc_apps
+	./build/host/test_oc_apps
+
 build/host/test_loader: harness/tests/test_loader.cpp \
                         vendor/distingNT_API/examples/gainCustomUI.cpp \
                         $(HARNESS_SRCS)

@@ -825,3 +825,74 @@ ring (`getHistory` / `kHistoryDepth`) the Low-rents screensaver needs.
 - The `build/arm/vendor_src/%.o: $(HEM_SRC_DIR)/%.cpp` Makefile rule and the
   `-Ishim/include -I$(HEM_SRC_DIR)` ordering exist and are reused unchanged.
   Confirmed against the current Makefile.
+
+## Implementation notes (foundation built 2026-05-28)
+
+The foundation shipped on branch `dr/oc-apps-foundation` across Layer 0 (eight
+shim tasks), Layer 0.5 (build skeleton plus a stub app), and Layer 1 (Low-rents
+and Harrington 1200). Build is green: `make test`, `make test-applets` (55/55),
+`make arm`. `.text` per `.o`: StubApp 8108 B, Low_rents 10992 B, Harrington1200
+14848 B, all far under the ~82 KB cap. Several things diverged from this spec
+during the build; they are recorded here so the per-app port issues that follow
+do not re-derive them.
+
+- customUI event emission lives in the per-app `.cpp`, not the runtime. Vendor
+  `UI/ui_events.h` defines `Event` in top-level `::UI::`, while `OC_apps.h`
+  forward-declares `OC::UI::Event`. The runtime owns the router state machine
+  (edge detection, 500 ms long-press timing via `classify_release`, idle reset,
+  `.mask` through `last_controls_of`) and exposes those primitives; the per-app
+  `.cpp` constructs the `::UI::Event` and dispatches it, bridging the App
+  handler pointers with a `reinterpret_cast` (layout-identical structs). See
+  `plugins/apps/Low_rents.cpp` and `Harrington1200.cpp` for the canonical glue.
+- Build model. A per-app TU defines `NT_OC_APP_TU`, which makes
+  `_per_app_runtime.h` pull `shim/include/oc_shim_impl.h` (the OC aggregation
+  header, guarded by the shared `NT_HEM_NO_IMPL` sentinel). `BUILD_PER_OC_APP`
+  mirrors `BUILD_PER_APPLET`; the host `test_oc_app_%` rule links the app `.cpp`
+  (which aggregates) and does not pull `SHIM_CORE_SRCS`. `.SECONDEXPANSION` plus
+  `$$*` is needed so `VENDOR_DEP_HOST_SRCS_<APP>` binds in the pattern-rule
+  prerequisite.
+- Include-guard poison is the shadowing technique for a vendor header that is
+  quote-included from inside another vendor header (so `-Ishim/include` cannot
+  shadow it). The shim shadow defines the vendor header's own `_H_` include
+  guard, so the vendor sibling self-suppresses when the shim is included first.
+  Applied to `OC_digital_inputs.h`, `OC_bitmaps.h`, `OC_strings.h`, and
+  `util/util_math.h`.
+- Harrington 1200 links no net-new vendor `.cpp`. The spec planned to link
+  vendor `OC_strings.cpp`, but that duplicates `note_names` /
+  `note_names_unpadded` / `capital_letters`, which `globals.cpp` already defines
+  (and which rides the OC aggregation). The three net-new tables
+  (`cv_input_names_none`, `trigger_delay_times`, `trigger_delay_ticks`) were
+  added to `globals.cpp` instead; `VENDOR_DEPS_Harrington1200` is empty.
+- `parameterChanged` and the I/O routing accessors read the firmware-managed
+  `alg.v` (not the private `v_storage` snapshot). The firmware repoints `v`
+  after construct, so live param and routing edits only appear in `alg.v`.
+- `DIGITAL_INPUT_1_MASK..4_MASK` were added to the shim `OC_digital_inputs.h`
+  (the vendor `DIGITAL_INPUT_MASK(x)` macro lived in the now-suppressed vendor
+  body). Harrington 1200 ANDs `clocked()` against these.
+
+Deferred follow-ups (not blockers; track as issues):
+
+- Relocate the OC string tables out of `globals.cpp` into an OC-only TU (the way
+  `current_app` moved to `shim/src/oc/io.cpp`). Today `globals.cpp` defines six
+  OC string symbols unconditionally, so a future app that needs vendor
+  `OC_strings.cpp` would hit a duplicate-symbol link error. Update the stale
+  `test_oc_strings` Makefile comment at the same time.
+- ADC scale unification: the shim collapses vendor's separate `value()` (raw
+  counts) and `pitch_value()` scales into the single 1536-per-octave NT bus
+  space. Harrington 1200's CV-controlled knob math (`>> 9` / `>> 8`) will respond
+  at a different per-step ratio than hardware; verify on the hardware smoke
+  check and adjust per-app scaling if needed.
+- Manifest `inputs[]` / `outputs[]` `BusParam` arrays are currently inert (the
+  parameter table uses hardcoded "CV in 1".."TR in 4"). Either wire the
+  descriptive names into `emit_io_params` or drop the arrays.
+- Makefile host-test rules do not list headers as prerequisites, so editing a
+  shim header does not auto-rebuild host test binaries. Add header deps or
+  document the `rm -f` workaround.
+
+## Validation coverage actually exercised
+
+Both apps pass host Catch2 suites through the `nt_runtime` simulator and the
+factory path: Low_rents 72 assertions / 6 cases, Harrington1200 193 assertions /
+7 cases, plus the foundation suites (runtime 167/10, router 14/5, menus 37/10,
+io 30/12, apps 18/4, strings 4/1, stub 32/4). Hardware smoke (Layer 3) is
+deferred to after PR open since it needs physical access.

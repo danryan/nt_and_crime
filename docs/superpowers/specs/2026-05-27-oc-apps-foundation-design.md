@@ -893,6 +893,31 @@ Deferred follow-ups (not blockers; track as issues):
 
 Both apps pass host Catch2 suites through the `nt_runtime` simulator and the
 factory path: Low_rents 72 assertions / 6 cases, Harrington1200 193 assertions /
-7 cases, plus the foundation suites (runtime 167/10, router 14/5, menus 37/10,
-io 30/12, apps 18/4, strings 4/1, stub 32/4). Hardware smoke (Layer 3) is
-deferred to after PR open since it needs physical access.
+7 cases, plus the foundation suites (runtime 170/11, router 14/5, menus 37/10,
+io 30/12, apps 18/4, strings 4/1, stub 32/4).
+
+## Hardware bring-up findings (2026-05-28)
+
+All three plug-ins (StubApp, Low-rents, Harrington 1200) deployed over USB-MIDI
+sysex and now ADD on a physical disting NT (verified via `mcp__nt_helper__new`
+with each GUID; full parameter tables present). Two firmware add-time faults the
+host harness did not model were found and fixed, both in `_per_app_runtime.h`:
+
+- serialise must not call `_NT_jsonStream::addString`. The firmware calls
+  `serialise` during add-algorithm, and `addString` faults there ("Failed to add
+  algorithm"). The fix packs the `Save()` blob four bytes per JSON number under
+  `oc_len` / `oc_w0..oc_wN` (addNumber / parse.number only), matching the working
+  per-applet pattern. Confirmed by on-device bisection on StubApp: serialise-on
+  failed, the addNumber rewrite passed.
+- the isr cadence loop needs an `sr == 0` guard. The firmware runs `step()` at
+  add before the sample rate is set, so `while (numerator >= NT_globals.sampleRate)`
+  with `sr == 0` spins forever; `if (sr == 0) return;` skips the step until the
+  rate is valid.
+
+Lesson: passing host tests plus clean registration do NOT prove a plug-in will
+add. The firmware add path (serialise, sampleRate-driven step, construct) is
+unmodeled by the harness; verify ADD on hardware. Remaining Layer 3 (render,
+control nav, CV I/O, settings persistence on device) is hands-on and pending.
+An unrelated device-side condition (a malformed `SAITO_T8_022.wav` sample on the
+SD card) surfaced its own firmware modal during testing; it is not related to
+these plug-ins.

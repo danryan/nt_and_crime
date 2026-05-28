@@ -330,6 +330,53 @@ PILOT_APPLET_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(PRESENT_APPLETS))
 ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 
 # ---------------------------------------------------------------------------
+# Per-app O_C full-screen plug-ins.
+#
+# Mirrors the per-applet model exactly. Each O_C-app ships one .o per app
+# (build/arm/<APP>.o). Each per-app .cpp lives at plugins/apps/<APP>.cpp,
+# includes its manifest at shim/include/oc_app_manifests/<APP>.h and the
+# per-app runtime plugins/apps/_per_app_runtime.h. The .cpp defines
+# NT_OC_APP_TU at its top, which pulls the OC shim impl aggregation
+# (shim/include/oc_shim_impl.h) into the single per-app TU -- the same single-
+# aggregating-TU model the applets use via hem_shim.h. The build also passes
+# -DNT_OC_APP_TU on the ARM compile so the trigger is explicit at the rule
+# level; the source-level define makes it idempotent.
+#
+# Per-app vendor .cpp linkage is via VENDOR_DEPS_<APP> (ARM-side, partial-
+# linked .o files) and VENDOR_DEP_HOST_SRCS_<APP> (host-side, source files for
+# the test binary). The stub needs neither.
+# ---------------------------------------------------------------------------
+
+OC_APP_LIST := StubApp
+
+VENDOR_DEPS_StubApp          :=
+VENDOR_DEP_HOST_SRCS_StubApp :=
+
+# $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
+# Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with
+# -DNT_OC_APP_TU so it aggregates the OC shim impl, partial-link the vendor
+# deps + compiler-rt builtins, strip the COMDAT group, merge the per-method
+# COMDAT sections via merge_sections.lds, then strip the unwanted metadata
+# sections.
+define BUILD_PER_OC_APP
+build/arm/$(1).o: plugins/apps/$(1).cpp shim/include/oc_app_manifests/$(1).h plugins/apps/_per_app_runtime.h $$(SHIM_DEPS) $$(COMPILER_RT_OBJS) $(2)
+	mkdir -p build/arm
+	$$(ARM_CXX) $$(ARM_FLAGS) $$(SHIM_INCLUDE) $$(HEM_APPLET_INCLUDE) -DNT_OC_APP_TU -c -o build/arm/$(1).raw.o $$<
+	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o $(2) $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
+	arm-none-eabi-objcopy --remove-section='.group' build/arm/$(1).merge1.o build/arm/$(1).nogroup.o
+	$$(ARM_LD) -r -T shim/merge_sections.lds build/arm/$(1).nogroup.o -o build/arm/$(1).linked.o
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/$(1).linked.o $$@
+endef
+
+# Generate ARM build rules only for apps whose plugins/apps/<APP>.cpp exists,
+# matching the per-applet PRESENT_APPLETS discipline.
+PRESENT_OC_APPS := $(filter-out ,$(foreach a,$(OC_APP_LIST),$(if $(wildcard plugins/apps/$(a).cpp),$(a),)))
+
+$(foreach a,$(PRESENT_OC_APPS),$(eval $(call BUILD_PER_OC_APP,$(a),$(VENDOR_DEPS_$(a)))))
+
+OC_APP_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(PRESENT_OC_APPS)))
+
+# ---------------------------------------------------------------------------
 # Host plug-ins (Hemispheres host, Quadrants host).
 #
 # Each host source includes shim/include/host_helpers.h and links against
@@ -513,7 +560,29 @@ build/host/test_oc_router: harness/tests/test_oc_router.cpp shim/src/oc/io.cpp $
 test-oc-router: build/host/test_oc_router
 	./build/host/test_oc_router
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
+# Per-app O_C host test binaries. Each binary links the per-app .cpp (which
+# aggregates the OC shim impl into its single TU) plus the matching test .cpp
+# and the harness. It deliberately does NOT add SHIM_CORE_SRCS or oc/io.cpp:
+# the aggregating per-app TU already supplies every shim symbol, so linking the
+# shim sources again would produce duplicate definitions. It also does NOT pass
+# -DNT_OC_APP_TU, so the TEST TU does not aggregate (only the .cpp does). A
+# per-app VENDOR_DEP_HOST_SRCS_<APP> supplies any host-compiled vendor sources
+# (e.g. OC_strings.cpp) a real app needs; the stub needs none.
+build/host/test_oc_app_%: harness/tests/test_oc_app_%.cpp plugins/apps/%.cpp $(HARNESS_SRCS) $(VENDOR_DEP_HOST_SRCS_$*)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+# Convenience target for a single app's host test (e.g. make test-oc-app-StubApp).
+.PHONY: test-oc-app-%
+test-oc-app-%: build/host/test_oc_app_%
+	./build/host/test_oc_app_$*
+
+# Run every present O_C-app host test.
+.PHONY: test-oc-apps-all
+test-oc-apps-all: $(addprefix build/host/test_oc_app_, $(PRESENT_OC_APPS))
+	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
+
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS) $(OC_APP_OBJS)
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

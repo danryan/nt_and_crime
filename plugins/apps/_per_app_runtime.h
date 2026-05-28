@@ -1,5 +1,22 @@
 #pragma once
 
+// Aggregation trigger. A per-app plug-in TU (plugins/apps/<APP>.cpp) defines
+// NT_OC_APP_TU before including this header; that pulls the OC shim impl
+// aggregation (all the OC-specific shim .cpp bodies) into the single per-app
+// TU, exactly as hem_shim.h does for Hemisphere applets (hem_shim.h:3-6). The
+// guard inside oc_shim_impl.h (NT_HEM_NO_IMPL) makes the include idempotent.
+//
+// Host tests that link the shim sources separately (test_oc_runtime,
+// test_oc_router) and harness helpers (oc_ui_sim.h) include this header
+// WITHOUT defining NT_OC_APP_TU, so they never aggregate and never collide
+// with their separately-linked SHIM_CORE_SRCS / oc/io.cpp. The per-app host
+// test (test_oc_app_<APP>) likewise does not define NT_OC_APP_TU: the
+// aggregating per-app .cpp it links supplies every shim symbol, so the test TU
+// must stay non-aggregating to avoid duplicate definitions.
+#if defined(NT_OC_APP_TU)
+#include "../../shim/include/oc_shim_impl.h"
+#endif
+
 // Per-app runtime for O_C full-screen apps ported as disting NT plug-ins. The
 // header is included once by each plugins/apps/<APP>.cpp. It provides:
 //

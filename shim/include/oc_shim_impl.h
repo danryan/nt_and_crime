@@ -6,6 +6,15 @@
 // it does NOT include HemisphereApplet.h or HSIOFrame.h. (HSClockManager.h IS
 // pulled transitively: globals.cpp includes it to define the clock_m global.)
 //
+// Aggregation guard: the shim .cpp bodies below define non-inline globals, so
+// they may appear in at most one TU per linked binary. The same NT_HEM_NO_IMPL
+// sentinel hem_shim.h uses gates this include: the first aggregating header in
+// a TU (either hem_shim.h or this one) sets the flag, and the second is a
+// no-op. A per-app .cpp therefore cannot double-aggregate even if it somehow
+// pulls both the Hemisphere and O_C aggregation headers.
+#ifndef NT_HEM_NO_IMPL
+#define NT_HEM_NO_IMPL 1
+//
 // Order matters: cxx_runtime_stubs.cpp first (operator new / __dso_handle
 // stubs the rest may reach), then globals.cpp (DAC_CHANNEL_* objects, shared
 // string tables, OC::CORE::ticks), then graphics + icons (rendering deps),
@@ -26,3 +35,5 @@
 // they never aggregate into a Hemisphere applet TU.
 #include "../src/oc/io.cpp"
 #include "../src/oc/menus.cpp"
+
+#endif  // NT_HEM_NO_IMPL

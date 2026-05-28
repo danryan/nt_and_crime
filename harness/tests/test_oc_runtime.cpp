@@ -192,6 +192,32 @@ TEST_CASE("cadence accumulator drives isr() at the vendor isr rate", "[oc_runtim
     REQUIRE(OC::CORE::ticks == static_cast<uint32_t>(observed));
 }
 
+TEST_CASE("step() with sampleRate 0 returns without spinning or advancing",
+          "[oc_runtime][cadence]") {
+    // Regression: the firmware runs step() during add-algorithm before the
+    // audio sample rate is established, so NT_globals.sampleRate can be 0. An
+    // unguarded `while (numerator >= sr)` with sr == 0 spins forever (watchdog
+    // fault, surfaced on-device as "Failed to add algorithm"). The guard must
+    // make step() a no-op until the rate is valid. If the guard is missing,
+    // this test hangs (which is itself the failure signal).
+    reset_test_state();
+
+    AppAlgorithm alg;
+    oc_runtime::construct(alg, make_dummy_app());
+
+    oc_runtime::sample_rate_override() = 0;  // simulate add-time sampleRate == 0
+    oc_runtime::step(alg, 48);               // must return; no infinite loop
+    oc_runtime::sample_rate_override() = -1;  // restore: use NT_globals
+
+    // No isr ticks, no tick advance while the rate was unestablished.
+    REQUIRE(g_app_state.isr_calls == 0);
+    REQUIRE(OC::CORE::ticks == 0u);
+
+    // After the rate is restored, the cadence resumes normally.
+    oc_runtime::step(alg, 48);
+    REQUIRE(g_app_state.isr_calls > 0);
+}
+
 TEST_CASE("one-edge-per-tick: a held-high trigger fires exactly one isr tick", "[oc_runtime][edges]") {
     reset_test_state();
 

@@ -141,7 +141,7 @@ TEST_CASE("Low-rents settings round-trip through factory serialise/deserialise",
     p->factory->serialise(p->algorithm, *stream);
     stream->closeObject();
     const std::string json = stream->buffer();
-    REQUIRE(json.find("oc_settings_b64") != std::string::npos);
+    REQUIRE(json.find("oc_len") != std::string::npos);
 
     // Clobber every setting away from its saved value, then deserialise: the
     // saved values must be restored exactly. apply_value clamps into range and

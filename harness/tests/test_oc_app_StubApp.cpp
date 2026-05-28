@@ -131,13 +131,13 @@ TEST_CASE("StubApp settings round-trip through factory serialise/deserialise", "
     REQUIRE(stub_app_get_setting(p->algorithm, 0) == 7);
     REQUIRE(stub_app_get_setting(p->algorithm, 1) == 2);
 
-    // Serialise into a host JSON stream.
+    // serialise into a host JSON stream (addNumber-only format).
     auto stream = nt::make_json_stream();
     stream->openObject();
     p->factory->serialise(p->algorithm, *stream);
     stream->closeObject();
     const std::string json = stream->buffer();
-    REQUIRE(json.find("oc_settings_b64") != std::string::npos);
+    REQUIRE(json.find("oc_len") != std::string::npos);
 
     // Reset the embedded settings to a different value, then deserialise the
     // saved blob: the original values must be restored.

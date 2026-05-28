@@ -397,7 +397,23 @@ inline void flush_oc_outputs(AppAlgorithm& alg, float* busFrames, int numFrames)
 //
 // The runtime needs the NT sample rate. Read it from NT_globals at first call
 // so tests using the host's stub NT_globals (48 kHz) get the right cadence.
+#ifdef NT_HEM_HOST_SIM
+// Host-test seam: NT_globals is const on host, so tests cannot mutate the
+// sample rate to exercise the sr == 0 guard in step(). A negative value means
+// "use NT_globals.sampleRate". Compiled out of the ARM plug-in entirely
+// (NT_HEM_HOST_SIM is set only in HOST_FLAGS), so production carries no seam.
+inline int32_t& sample_rate_override() {
+    static int32_t v = -1;
+    return v;
+}
+#endif
+
 inline uint32_t sample_rate_hz() {
+#ifdef NT_HEM_HOST_SIM
+    if (sample_rate_override() >= 0) {
+        return static_cast<uint32_t>(sample_rate_override());
+    }
+#endif
     return NT_globals.sampleRate;
 }
 
@@ -421,6 +437,13 @@ inline void step(AppAlgorithm& alg, float* busFrames, int num_frames) {
 
     // Add this buffer's contribution to the cadence accumulator.
     const uint64_t sr = sample_rate_hz();
+    // Guard against an unestablished sample rate. The firmware runs step()
+    // during add-algorithm before the audio rate is set for the new instance,
+    // so NT_globals.sampleRate can be 0. An unguarded `while (numerator >= 0)`
+    // would spin forever (watchdog fault, surfaced on-device as "Failed to add
+    // algorithm"). Skip the step until the rate is valid; leave the accumulator
+    // untouched so the cadence stays exact once audio starts.
+    if (sr == 0) return;
     alg.tick_numerator += static_cast<uint64_t>(num_frames) *
                           static_cast<uint64_t>(OC_CORE_ISR_FREQ);
 
@@ -610,30 +633,57 @@ inline int decode(const char* in, int len, uint8_t* out, int max_out) {
 }
 }  // namespace b64
 
+// Build "oc_w<idx>" (settings-blob word member name) into buf (>= 12 bytes).
+inline void blob_word_name(int idx, char* buf) {
+    buf[0] = 'o'; buf[1] = 'c'; buf[2] = '_'; buf[3] = 'w';
+    char tmp[8];
+    int t = 0;
+    if (idx == 0) {
+        tmp[t++] = '0';
+    } else {
+        for (int x = idx; x > 0; x /= 10) tmp[t++] = static_cast<char>('0' + x % 10);
+    }
+    int o = 4;
+    while (t > 0) buf[o++] = tmp[--t];
+    buf[o] = '\0';
+}
+
+// Settings persistence uses addNumber / parse.number ONLY. The disting NT
+// firmware faults when a plug-in calls _NT_jsonStream::addString during the
+// add-algorithm path (confirmed on hardware by bisection: the working
+// per-applet runtime serialises with addNumber and adds cleanly, while an
+// addString-based serialiser makes add-algorithm fail). The SettingsBase
+// Save() blob is therefore packed four bytes per JSON number, under the members
+// "oc_len" (byte count) and "oc_w0".."oc_wN" (the packed little-endian words).
 inline void serialise(AppAlgorithm& alg, _NT_jsonStream& stream) {
     if (alg.settings_facade.save == nullptr) return;
     // Guard the fixed-size stack blob: an app whose storage footprint exceeds
-    // the runtime's kMaxBlobBytes would overrun on Save. Bail rather than
-    // corrupt the stack; a per-app TU that needs more storage must raise
-    // kMaxBlobBytes (and rebuild the host) before it can serialise.
+    // kMaxBlobBytes would overrun on Save. Bail rather than corrupt the stack.
     if (alg.settings_facade.storage_size != nullptr &&
         alg.settings_facade.storage_size() > static_cast<size_t>(kMaxBlobBytes)) {
         return;
     }
     uint8_t blob[kMaxBlobBytes] = {0};
-    const size_t n = alg.settings_facade.save(alg.settings_facade.instance, blob);
-    char b64[kMaxBlobB64];
-    b64::encode(blob, static_cast<int>(n), b64);
-    stream.addMemberName("oc_settings_b64");
-    stream.addString(b64);
-    stream.addMemberName("oc_settings_len");
-    stream.addNumber(static_cast<int>(n));
+    const int n = static_cast<int>(
+        alg.settings_facade.save(alg.settings_facade.instance, blob));
+    stream.addMemberName("oc_len");
+    stream.addNumber(n);
+    const int words = (n + 3) / 4;
+    for (int w = 0; w < words; ++w) {
+        uint32_t packed = 0;
+        for (int b = 0; b < 4; ++b) {
+            const int idx = w * 4 + b;
+            if (idx < n) packed |= static_cast<uint32_t>(blob[idx]) << (b * 8);
+        }
+        char name[12];
+        blob_word_name(w, name);
+        stream.addMemberName(name);
+        stream.addNumber(static_cast<int>(packed));
+    }
 }
 
 inline bool deserialise(AppAlgorithm& alg, _NT_jsonParse& parse) {
     if (alg.settings_facade.restore == nullptr) return false;
-    // Same bound as serialise: refuse to Restore into a blob larger than the
-    // fixed stack buffer can hold.
     if (alg.settings_facade.storage_size != nullptr &&
         alg.settings_facade.storage_size() > static_cast<size_t>(kMaxBlobBytes)) {
         return false;
@@ -642,30 +692,37 @@ inline bool deserialise(AppAlgorithm& alg, _NT_jsonParse& parse) {
     int num_members = 0;
     if (!parse.numberOfObjectMembers(num_members)) return false;
 
-    const char* b64_str  = nullptr;
-    int         blob_len = 0;
-    bool        got_b64  = false;
-    bool        got_len  = false;
+    uint8_t blob[kMaxBlobBytes] = {0};
+    int blob_len = -1;
 
     for (int i = 0; i < num_members; ++i) {
-        if (parse.matchName("oc_settings_b64")) {
-            if (!parse.string(b64_str)) return false;
-            got_b64 = true;
-        } else if (parse.matchName("oc_settings_len")) {
+        if (parse.matchName("oc_len")) {
             if (!parse.number(blob_len)) return false;
-            got_len = true;
-        } else {
+            continue;
+        }
+        bool matched = false;
+        for (int w = 0; w < kMaxBlobBytes / 4; ++w) {
+            char name[12];
+            blob_word_name(w, name);
+            if (parse.matchName(name)) {
+                int packed = 0;
+                if (!parse.number(packed)) return false;
+                for (int b = 0; b < 4; ++b) {
+                    const int idx = w * 4 + b;
+                    if (idx < kMaxBlobBytes) {
+                        blob[idx] = static_cast<uint8_t>(
+                            (static_cast<uint32_t>(packed) >> (b * 8)) & 0xFF);
+                    }
+                }
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
             if (!parse.skipMember()) return false;
         }
     }
-    if (!got_b64 || !got_len) return false;
     if (blob_len < 0 || blob_len > kMaxBlobBytes) return false;
-
-    uint8_t blob[kMaxBlobBytes] = {0};
-    int b64_len = 0;
-    while (b64_str[b64_len] != '\0') ++b64_len;
-    int decoded = b64::decode(b64_str, b64_len, blob, kMaxBlobBytes);
-    if (decoded < 0) return false;
 
     alg.settings_facade.restore(alg.settings_facade.instance, blob);
     return true;

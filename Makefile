@@ -453,6 +453,20 @@ build/host/test_oc_io: harness/tests/test_oc_io.cpp shim/src/oc/io.cpp $(SHIM_CO
 test-oc-io: build/host/test_oc_io
 	./build/host/test_oc_io
 
+# O_C menus foundation: the hand-ported menu widgets (ScreenCursor, SettingsList,
+# SettingsListItem, TitleBar) plus vectorscope_render and visualize_pitch_classes.
+# Mirrors the test_oc_io rule: links SHIM_CORE_SRCS (globals.cpp for the
+# DAC_CHANNEL_* channel objects, graphics.cpp for the non-inline draw primitives)
+# plus shim/src/oc/menus.cpp. menus.cpp is O_C-only and is NOT part of
+# SHIM_CORE_SRCS (which aggregates into every Hemisphere applet).
+build/host/test_oc_menus: harness/tests/test_oc_menus.cpp shim/src/oc/menus.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS) $(VENDOR_DEP_HOST_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-menus
+test-oc-menus: build/host/test_oc_menus
+	./build/host/test_oc_menus
+
 # O_C_strings test: vendor OC_strings.cpp defines the new string tables and delay
 # ticks array. We link OC_strings.cpp directly and exclude the old string definitions
 # from globals.cpp to avoid duplicate symbol errors. We still need HARNESS_SRCS for

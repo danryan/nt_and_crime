@@ -439,6 +439,17 @@ build/host/test_dep_%: harness/tests/test_dep_%.cpp $(SHIM_CORE_SRCS) $(HARNESS_
 test-deps: $(addprefix build/host/, $(DEP_TESTS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
+# O_C apps foundation: shim DAC accessor behavior. Standalone host test
+# mirroring the test_dep_% rule. Links SHIM_CORE_SRCS so the extern
+# DAC_CHANNEL_* channel objects (defined in shim/src/globals.cpp) resolve.
+build/host/test_oc_io: harness/tests/test_oc_io.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS) $(VENDOR_DEP_HOST_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-io
+test-oc-io: build/host/test_oc_io
+	./build/host/test_oc_io
+
 arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
 
 DEVICE ?= /Volumes/NT

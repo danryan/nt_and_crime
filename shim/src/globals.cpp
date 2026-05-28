@@ -1,6 +1,7 @@
 #include "HSUtils.h"
 #include "OC_core.h"
 #include "OC_strings.h"
+#include "OC_DAC.h"
 #include "HSClockManager.h"
 #include <cstddef>
 
@@ -19,6 +20,16 @@ namespace CORE {
 volatile uint32_t ticks = 0;
 }
 }
+
+// DAC channel objects. The shim switched OC_DAC.h from `enum DAC_CHANNEL` to
+// the vendor `using DAC_CHANNEL = int` plus extern channel objects so the
+// templated accessors (`template <DAC_CHANNEL &channel>`) bind to lvalues.
+// Values mirror the prior enumerator ordinals (A=0, B=1, C=2, D=3) so every
+// existing value-context use (Out, ClockOut casts) is unchanged.
+DAC_CHANNEL DAC_CHANNEL_A = 0;
+DAC_CHANNEL DAC_CHANNEL_B = 1;
+DAC_CHANNEL DAC_CHANNEL_C = 2;
+DAC_CHANNEL DAC_CHANNEL_D = 3;
 
 namespace HS {
 const char* help_strings[HS::HELP_LABEL_COUNT] = { nullptr };

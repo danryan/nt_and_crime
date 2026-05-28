@@ -272,6 +272,50 @@ TEST_CASE("step routes CV-in bus into OC::ADC and OC::DAC out onto the CV-out bu
     REQUIRE(b13[0] == Catch::Approx(1.0f).margin(1e-4));
 }
 
+TEST_CASE("re-routing a CV-in bus via alg.v takes effect live", "[oc_runtime][routing][reroute]") {
+    reset_test_state();
+
+    AppAlgorithm alg;
+    oc_runtime::construct(alg, make_dummy_app());
+
+    // The routing accessors must read the firmware/host-managed published
+    // parameter array (alg.v), not the private v_storage snapshot. construct()
+    // seeds alg.v == v_storage, but the firmware (and the harness loader)
+    // repoint alg.v to its own backing store after construct. Replicate that
+    // here with a separate published array so a write to alg.v does NOT alias
+    // back into v_storage; only then does reading v_storage vs alg.v differ.
+    static int16_t published[oc_runtime::kMaxParams];
+    std::memcpy(published, alg.v_storage, sizeof(published));
+    const_cast<int16_t*&>(alg.v) = published;
+
+    g_app_state.capture_adc = true;
+
+    const int numFrames = 32;
+    nt::set_bus_frame_count(numFrames);
+
+    // CV-in 1 defaults to bus 1. Put a distinctive 1.0V on the default bus and
+    // a different 2.0V on bus 7 (the new routing target).
+    float* default_bus  = nt::bus_pointer(1, numFrames);
+    float* rerouted_bus = nt::bus_pointer(7, numFrames);
+    for (int i = 0; i < numFrames; ++i) {
+        default_bus[i]  = 1.0f;
+        rerouted_bus[i] = 2.0f;
+    }
+
+    // Re-route CV-in 1 (param index 0) from bus 1 to bus 7 by writing the
+    // firmware-managed published array, exactly as a routing param edit does.
+    // v_storage stays at the bus-1 default; only alg.v moves to bus 7.
+    published[0] = 7;
+    REQUIRE(alg.v_storage[0] == 1);  // stale snapshot unchanged
+
+    oc_runtime::step(alg, nt::bus_frames_base(), numFrames);
+
+    // The isr must have read the re-routed bus (2.0V * 1536 = 3072 hem units),
+    // proving the routing accessor read alg.v, not the stale v_storage default
+    // (which would have yielded 1.0V * 1536 = 1536).
+    REQUIRE(g_app_state.adc_seen == 3072);
+}
+
 TEST_CASE("step routes a TR-in bus edge so clocked() fires once", "[oc_runtime][routing][edges]") {
     reset_test_state();
 

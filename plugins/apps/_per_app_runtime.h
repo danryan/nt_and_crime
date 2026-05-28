@@ -321,10 +321,17 @@ inline void construct(AppAlgorithm& alg, const OC::App* app,
 //   [.. + kNumTrigInputs)                        TR-in bus selections
 // Each value is a 1-indexed NT bus (0 == not routed), matching the
 // hem_shim bus convention (v[bus_param]; src = busFrames + (bus-1)*numFrames).
-inline int cv_in_bus(const AppAlgorithm& alg, int i)  { return alg.v_storage[i]; }
-inline int cv_out_bus(const AppAlgorithm& alg, int i) { return alg.v_storage[kNumCvInputs + i]; }
+//
+// Read the firmware/host-managed published array (alg.v), not the private
+// v_storage snapshot: alg.v is repointed away from v_storage after construct
+// (NT API: v is "Managed by the system"), so a routing param edit lands in
+// alg.v and only reading alg.v makes the re-route take effect live. These
+// accessors run from step()/draw() only, after construct() has set alg.v, so
+// alg.v is always valid here.
+inline int cv_in_bus(const AppAlgorithm& alg, int i)  { return alg.v[i]; }
+inline int cv_out_bus(const AppAlgorithm& alg, int i) { return alg.v[kNumCvInputs + i]; }
 inline int trig_in_bus(const AppAlgorithm& alg, int i) {
-    return alg.v_storage[kNumCvInputs + kNumCvOutputs + i];
+    return alg.v[kNumCvInputs + kNumCvOutputs + i];
 }
 
 // Bus <-> hem-unit conversions. The NT input/output bus carries 1V/oct in
@@ -516,8 +523,15 @@ inline void parameterChanged(AppAlgorithm& alg, int idx) {
     const int s = idx - kIoParamCount;
     if (s >= alg.settings_facade.num_settings) return;
     if (alg.settings_facade.apply_value == nullptr) return;
+    // Read the firmware/host-managed published parameter array (alg.v), not the
+    // private v_storage snapshot. Per the NT API, v is "Managed by the system":
+    // construct() seeds v == v_storage, but the firmware then repoints alg.v to
+    // its own parameter store (the harness loader does exactly the same), so
+    // after construct the two arrays diverge and only alg.v carries live edits.
+    // The firmware (and NT_setParameterFromUi) write through alg.v, so
+    // parameterChanged and all live parameter reads must use alg.v.
     alg.settings_facade.apply_value(alg.settings_facade.instance, s,
-                                    alg.v_storage[idx]);
+                                    alg.v[idx]);
 }
 
 inline void parameterChanged_factory(_NT_algorithm* self, int idx) {

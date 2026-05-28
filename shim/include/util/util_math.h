@@ -38,3 +38,27 @@ constexpr int Proportion(const int numerator, const int denominator, const int m
 #ifndef USAT16
 #define USAT16(x) ((x) > 65535 ? 65535 : ((x) < 0 ? 0 : (x)))
 #endif
+
+// SmoothedValue mirrors vendor util/util_math.h:105 verbatim. The shim suppresses
+// the vendor body (the guard above) to avoid the Proportion ODR clash, which also
+// drops this header-only template; the O_C apps need it (APP_LORENZ.h:135-138 holds
+// four SmoothedValue<int32_t, 16> CV smoothers). Hemisphere applets never use it,
+// so re-providing it here is additive and leaves test-applets unaffected.
+template <typename T, T smoothing>
+struct SmoothedValue {
+  SmoothedValue() : value_(0) { }
+
+  T value_;
+
+  T value() const {
+    return value_;
+  }
+
+  void push(T value) {
+    value_ = (value_ * (smoothing - 1) + value) / smoothing;
+  }
+
+  void set(T value) {
+    value_ = value;
+  }
+};

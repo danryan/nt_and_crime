@@ -347,10 +347,16 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp
+OC_APP_LIST := StubApp Low_rents
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
+
+# Low-rents (APP_LORENZ) links the streams Lorenz generator + its resource LUTs.
+# ARM side: the already-built partial-link objects (same pair the LowerRenz
+# applet uses). Host side: the vendor sources compiled into the test binary.
+VENDOR_DEPS_Low_rents          := build/arm/vendor_src/streams_resources.o build/arm/vendor_src/streams_lorenz_generator.o
+VENDOR_DEP_HOST_SRCS_Low_rents := $(HEM_SRC_DIR)/streams_resources.cpp $(HEM_SRC_DIR)/streams_lorenz_generator.cpp
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with
@@ -568,7 +574,14 @@ test-oc-router: build/host/test_oc_router
 # -DNT_OC_APP_TU, so the TEST TU does not aggregate (only the .cpp does). A
 # per-app VENDOR_DEP_HOST_SRCS_<APP> supplies any host-compiled vendor sources
 # (e.g. OC_strings.cpp) a real app needs; the stub needs none.
-build/host/test_oc_app_%: harness/tests/test_oc_app_%.cpp plugins/apps/%.cpp $(HARNESS_SRCS) $(VENDOR_DEP_HOST_SRCS_$*)
+# Secondary expansion lets the per-app VENDOR_DEP_HOST_SRCS_<APP> reach the
+# prerequisite list: the $* stem is not bound during the first prerequisite
+# expansion of a pattern rule, so $(VENDOR_DEP_HOST_SRCS_$*) would expand to
+# empty without it. With .SECONDEXPANSION enabled the escaped $$* binds on the
+# second pass. The rules that follow only reference already-resolved file lists
+# in their prerequisites, so re-expanding them is idempotent.
+.SECONDEXPANSION:
+build/host/test_oc_app_%: harness/tests/test_oc_app_%.cpp plugins/apps/%.cpp $(HARNESS_SRCS) $$(VENDOR_DEP_HOST_SRCS_$$*)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
 

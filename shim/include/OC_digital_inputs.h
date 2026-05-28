@@ -1,4 +1,13 @@
 #pragma once
+// Define the vendor include guard so a quote-include of "OC_digital_inputs.h"
+// from inside a vendor app header (e.g. APP_LORENZ.h:31, which resolves to its
+// vendor sibling first, not through -Ishim/include) becomes a no-op once this
+// shim shadow has been included ahead of the vendor app header. Without this,
+// the vendor header would re-include and pull vendor OC_core.h / OC_gpio.h /
+// OC_debug.h and the Teensy GPIO machinery, none of which the shim satisfies.
+#ifndef OC_DIGITAL_INPUTS_H_
+#define OC_DIGITAL_INPUTS_H_
+#endif
 #include <cstdint>
 
 // O_C-only shim digital-input accessor. Net-new; shadows vendor

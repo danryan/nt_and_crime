@@ -106,6 +106,14 @@ build/host/test_host_proxy: harness/tests/test_host_proxy.cpp shim/src/host_prox
 test-host-proxy: build/host/test_host_proxy
 	./build/host/test_host_proxy
 
+build/host/test_oc_apps: harness/tests/test_oc_apps.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-apps
+test-oc-apps: build/host/test_oc_apps
+	./build/host/test_oc_apps
+
 build/host/test_loader: harness/tests/test_loader.cpp \
                         vendor/distingNT_API/examples/gainCustomUI.cpp \
                         $(HARNESS_SRCS)
@@ -322,6 +330,69 @@ PILOT_APPLET_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(PRESENT_APPLETS))
 ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 
 # ---------------------------------------------------------------------------
+# Per-app O_C full-screen plug-ins.
+#
+# Mirrors the per-applet model exactly. Each O_C-app ships one .o per app
+# (build/arm/<APP>.o). Each per-app .cpp lives at plugins/apps/<APP>.cpp,
+# includes its manifest at shim/include/oc_app_manifests/<APP>.h and the
+# per-app runtime plugins/apps/_per_app_runtime.h. The .cpp defines
+# NT_OC_APP_TU at its top, which pulls the OC shim impl aggregation
+# (shim/include/oc_shim_impl.h) into the single per-app TU -- the same single-
+# aggregating-TU model the applets use via hem_shim.h. The build also passes
+# -DNT_OC_APP_TU on the ARM compile so the trigger is explicit at the rule
+# level; the source-level define makes it idempotent.
+#
+# Per-app vendor .cpp linkage is via VENDOR_DEPS_<APP> (ARM-side, partial-
+# linked .o files) and VENDOR_DEP_HOST_SRCS_<APP> (host-side, source files for
+# the test binary). The stub needs neither.
+# ---------------------------------------------------------------------------
+
+OC_APP_LIST := StubApp Low_rents Harrington1200
+
+VENDOR_DEPS_StubApp          :=
+VENDOR_DEP_HOST_SRCS_StubApp :=
+
+# Low-rents (APP_LORENZ) links the streams Lorenz generator + its resource LUTs.
+# ARM side: the already-built partial-link objects (same pair the LowerRenz
+# applet uses). Host side: the vendor sources compiled into the test binary.
+VENDOR_DEPS_Low_rents          := build/arm/vendor_src/streams_resources.o build/arm/vendor_src/streams_lorenz_generator.o
+VENDOR_DEP_HOST_SRCS_Low_rents := $(HEM_SRC_DIR)/streams_resources.cpp $(HEM_SRC_DIR)/streams_lorenz_generator.cpp
+
+# Harrington 1200 (APP_H1200) needs no net-new vendor .cpp. The string tables
+# and the trigger-delay ticks array it reads (note_names, cv_input_names_none,
+# trigger_delay_times, trigger_delay_ticks) are all shim-owned in
+# shim/src/globals.cpp, which rides the OC shim-impl aggregation. Linking vendor
+# OC_strings.cpp would duplicate note_names/note_names_unpadded/capital_letters
+# (also in globals.cpp) and fail the link on both host and ARM. Euclidean
+# (bjorklund) and SemitoneQuantizer likewise ride the aggregation.
+VENDOR_DEPS_Harrington1200          :=
+VENDOR_DEP_HOST_SRCS_Harrington1200 :=
+
+# $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
+# Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with
+# -DNT_OC_APP_TU so it aggregates the OC shim impl, partial-link the vendor
+# deps + compiler-rt builtins, strip the COMDAT group, merge the per-method
+# COMDAT sections via merge_sections.lds, then strip the unwanted metadata
+# sections.
+define BUILD_PER_OC_APP
+build/arm/$(1).o: plugins/apps/$(1).cpp shim/include/oc_app_manifests/$(1).h plugins/apps/_per_app_runtime.h $$(SHIM_DEPS) $$(COMPILER_RT_OBJS) $(2)
+	mkdir -p build/arm
+	$$(ARM_CXX) $$(ARM_FLAGS) $$(SHIM_INCLUDE) $$(HEM_APPLET_INCLUDE) -DNT_OC_APP_TU -c -o build/arm/$(1).raw.o $$<
+	$$(ARM_LD) -r --strip-debug build/arm/$(1).raw.o $(2) $$(COMPILER_RT_OBJS) -o build/arm/$(1).merge1.o
+	arm-none-eabi-objcopy --remove-section='.group' build/arm/$(1).merge1.o build/arm/$(1).nogroup.o
+	$$(ARM_LD) -r -T shim/merge_sections.lds build/arm/$(1).nogroup.o -o build/arm/$(1).linked.o
+	arm-none-eabi-objcopy -R '.ARM.extab*' -R '.ARM.exidx*' -R '.rel.ARM.exidx*' -R '.ARM.attributes' -R '.comment' -R '.group' -R '.note.GNU-stack' -R '.eh_frame' -R '.eh_frame_hdr' build/arm/$(1).linked.o $$@
+endef
+
+# Generate ARM build rules only for apps whose plugins/apps/<APP>.cpp exists,
+# matching the per-applet PRESENT_APPLETS discipline.
+PRESENT_OC_APPS := $(filter-out ,$(foreach a,$(OC_APP_LIST),$(if $(wildcard plugins/apps/$(a).cpp),$(a),)))
+
+$(foreach a,$(PRESENT_OC_APPS),$(eval $(call BUILD_PER_OC_APP,$(a),$(VENDOR_DEPS_$(a)))))
+
+OC_APP_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(PRESENT_OC_APPS)))
+
+# ---------------------------------------------------------------------------
 # Host plug-ins (Hemispheres host, Quadrants host).
 #
 # Each host source includes shim/include/host_helpers.h and links against
@@ -439,7 +510,102 @@ build/host/test_dep_%: harness/tests/test_dep_%.cpp $(SHIM_CORE_SRCS) $(HARNESS_
 test-deps: $(addprefix build/host/, $(DEP_TESTS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS)
+# O_C apps foundation: shim DAC, ADC, digital-input accessor behavior.
+# Standalone host test mirroring the test_dep_% rule. Links SHIM_CORE_SRCS so
+# the extern DAC_CHANNEL_* channel objects (defined in shim/src/globals.cpp)
+# resolve, plus shim/src/oc/io.cpp for the O_C-only ADC_CHANNEL_* channel
+# objects and the ADC/digital-input backing state. io.cpp is O_C-only and is
+# not part of SHIM_CORE_SRCS (which is aggregated into every Hemisphere applet).
+build/host/test_oc_io: harness/tests/test_oc_io.cpp shim/src/oc/io.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS) $(VENDOR_DEP_HOST_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-io
+test-oc-io: build/host/test_oc_io
+	./build/host/test_oc_io
+
+# O_C menus foundation: the hand-ported menu widgets (ScreenCursor, SettingsList,
+# SettingsListItem, TitleBar) plus vectorscope_render and visualize_pitch_classes.
+# Mirrors the test_oc_io rule: links SHIM_CORE_SRCS (globals.cpp for the
+# DAC_CHANNEL_* channel objects, graphics.cpp for the non-inline draw primitives)
+# plus shim/src/oc/menus.cpp. menus.cpp is O_C-only and is NOT part of
+# SHIM_CORE_SRCS (which aggregates into every Hemisphere applet).
+build/host/test_oc_menus: harness/tests/test_oc_menus.cpp shim/src/oc/menus.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS) $(VENDOR_DEP_HOST_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-menus
+test-oc-menus: build/host/test_oc_menus
+	./build/host/test_oc_menus
+
+# O_C_strings test: vendor OC_strings.cpp defines the new string tables and delay
+# ticks array. We link OC_strings.cpp directly and exclude the old string definitions
+# from globals.cpp to avoid duplicate symbol errors. We still need HARNESS_SRCS for
+# Catch2 main but not SHIM_CORE_SRCS which contains globals.cpp.
+build/host/test_oc_strings: harness/tests/test_oc_strings.cpp $(HEM_SRC_DIR)/OC_strings.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-strings
+test-oc-strings: build/host/test_oc_strings
+	./build/host/test_oc_strings
+
+# O_C apps runtime test: exercises the per-app runtime helpers in
+# plugins/apps/_per_app_runtime.h (cadence accumulator, one-edge-per-tick,
+# centering shift, sentinel, enum-offset, settings round-trip). Links the
+# OC-only I/O backing (shim/src/oc/io.cpp) so the runtime can refresh
+# OC::ADC and OC::DigitalInputs from the test-injected backing state.
+build/host/test_oc_runtime: harness/tests/test_oc_runtime.cpp shim/src/oc/io.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-runtime
+test-oc-runtime: build/host/test_oc_runtime
+	./build/host/test_oc_runtime
+
+# O_C apps router test: foundation-level control-router coverage. Uses the
+# reusable _NT_uiData synthesis helper (harness/include/oc_ui_sim.h) to drive
+# the per-app runtime's customUi and asserts on the router primitives
+# (classify_release, was_long_press_already_emitted, last_controls_of, the
+# mapping table). Links the same OC-only I/O backing as test_oc_runtime.
+build/host/test_oc_router: harness/tests/test_oc_router.cpp shim/src/oc/io.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-router
+test-oc-router: build/host/test_oc_router
+	./build/host/test_oc_router
+
+# Per-app O_C host test binaries. Each binary links the per-app .cpp (which
+# aggregates the OC shim impl into its single TU) plus the matching test .cpp
+# and the harness. It deliberately does NOT add SHIM_CORE_SRCS or oc/io.cpp:
+# the aggregating per-app TU already supplies every shim symbol, so linking the
+# shim sources again would produce duplicate definitions. It also does NOT pass
+# -DNT_OC_APP_TU, so the TEST TU does not aggregate (only the .cpp does). A
+# per-app VENDOR_DEP_HOST_SRCS_<APP> supplies any host-compiled vendor sources
+# (e.g. OC_strings.cpp) a real app needs; the stub needs none.
+# Secondary expansion lets the per-app VENDOR_DEP_HOST_SRCS_<APP> reach the
+# prerequisite list: the $* stem is not bound during the first prerequisite
+# expansion of a pattern rule, so $(VENDOR_DEP_HOST_SRCS_$*) would expand to
+# empty without it. With .SECONDEXPANSION enabled the escaped $$* binds on the
+# second pass. The rules that follow only reference already-resolved file lists
+# in their prerequisites, so re-expanding them is idempotent.
+.SECONDEXPANSION:
+build/host/test_oc_app_%: harness/tests/test_oc_app_%.cpp plugins/apps/%.cpp $(HARNESS_SRCS) $$(VENDOR_DEP_HOST_SRCS_$$*)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+# Convenience target for a single app's host test (e.g. make test-oc-app-StubApp).
+.PHONY: test-oc-app-%
+test-oc-app-%: build/host/test_oc_app_%
+	./build/host/test_oc_app_$*
+
+# Run every present O_C-app host test.
+.PHONY: test-oc-apps-all
+test-oc-apps-all: $(addprefix build/host/test_oc_app_, $(PRESENT_OC_APPS))
+	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
+
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS) $(OC_APP_OBJS)
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

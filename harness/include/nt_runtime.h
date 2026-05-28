@@ -29,4 +29,10 @@ void   reset_plugin_loader();
 // "idx value\n" to this FILE* before calling parameterChanged.
 // Pass nullptr to disable logging.
 void   set_param_log(FILE* f);
+
+// Model the firmware's common-parameter prefix width. Raises NT_parameterOffset
+// so a customUi push-back that omits NT_parameterOffset() lands on the wrong
+// global index in the harness, exactly as it would on hardware. reset_runtime
+// restores 0.
+void   set_parameter_offset(uint32_t offset);
 }

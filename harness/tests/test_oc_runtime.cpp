@@ -632,3 +632,28 @@ TEST_CASE("draw caches the footer band and step restores it over an overlay",
     oc_runtime::step(alg, 32);
     REQUIRE(shim_pixel(fx, 60) == 0);
 }
+
+TEST_CASE("pitch_to_dac maps to the 16-bit code space and saturates at the rails",
+          "[oc_runtime][dac]") {
+    using namespace OC::DAC;
+
+    // 0V reference: pitch 0, octave 0 -> the code midpoint.
+    REQUIRE(pitch_to_dac(DAC_CHANNEL_A, 0, 0) == kDacZeroCode);
+
+    // 1V/oct: one octave up is +kCodesPerVolt codes, whether expressed as an
+    // octave_offset or as kIntervalSize pitch units (the two legs must agree).
+    const int oct_up = pitch_to_dac(DAC_CHANNEL_A, 0, 1);
+    REQUIRE(oct_up == Catch::Approx(kDacZeroCode + kCodesPerVolt).margin(1.0));
+    REQUIRE(pitch_to_dac(DAC_CHANNEL_A, kIntervalSize, 0) == oct_up);
+
+    // +5V is the top rail (5 octaves up == code 65536, clamped to kMaxValue);
+    // anything beyond saturates, it does not wrap.
+    REQUIRE(pitch_to_dac(DAC_CHANNEL_A, 0, 5) == kMaxValue);
+    REQUIRE(pitch_to_dac(DAC_CHANNEL_A, 0, 6) == kMaxValue);
+    REQUIRE(pitch_to_dac(DAC_CHANNEL_A, 0, 100) == kMaxValue);
+
+    // -5V is the bottom rail; below it saturates to 0, not a negative/wrapped code.
+    REQUIRE(pitch_to_dac(DAC_CHANNEL_A, 0, -5) == 0);
+    REQUIRE(pitch_to_dac(DAC_CHANNEL_A, 0, -6) == 0);
+    REQUIRE(pitch_to_dac(DAC_CHANNEL_A, 0, -100) == 0);
+}

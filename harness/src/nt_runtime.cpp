@@ -215,8 +215,9 @@ void NT_setParameterFromUi(uint32_t algorithmIndex, uint32_t parameter, int16_t 
     nt::LoadedPlugin* lp = nt::registered_algorithm((int)algorithmIndex);
     if (!lp) return;
 
-    // Step 2: bounds-check paramIdx against the algorithm's parameters[] table.
-    // NT_parameterOffset() is always 0, so paramIdx == parameter here.
+    // Step 2: recover the plug-in-relative index by subtracting the common-
+    // parameter offset (0 by default; a test raises it via set_parameter_offset
+    // to model the firmware's injected prefix), then bounds-check it.
     int paramIdx = (int)parameter - (int)NT_parameterOffset();
     int count    = param_count_for(lp);
     if (paramIdx < 0 || paramIdx >= count) {

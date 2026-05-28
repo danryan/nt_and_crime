@@ -129,6 +129,12 @@ inline int32_t pitch_to_dac(DAC_CHANNEL /*channel*/, int32_t pitch, int32_t octa
     // same constants, so 1V/oct is preserved.
     const float code = static_cast<float>(kDacZeroCode) +
         static_cast<float>(pitch + octave_offset * kIntervalSize) * kCodesPerPitchUnit;
+    // Saturate at the rails (intentional): a request beyond +-5V from the 0V
+    // reference cannot be represented by the 16-bit code or the bus, so it pins
+    // to the nearest rail rather than wrapping. A NaN code (only reachable if a
+    // caller passes a corrupt pitch whose float product overflows) fails both
+    // comparisons and falls through; set() then backstops it via usat16, so that
+    // redundant clamp is deliberate, not dead.
     if (code <= 0.0f) return 0;
     if (code >= static_cast<float>(kMaxValue)) return kMaxValue;
     return static_cast<int32_t>(code + 0.5f);

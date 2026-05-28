@@ -266,7 +266,7 @@ TEST_CASE("step routes CV-in bus into OC::ADC and OC::DAC out onto the CV-out bu
     // assert (a) the isr saw it and (b) the CV-out 1 default bus carries the
     // DAC value converted back to NT bus space.
     g_app_state.capture_adc = true;
-    g_app_state.dac_write_value = OC::DAC::kOctaveZero * OC::DAC::kIntervalSize; // 0V biased
+    g_app_state.dac_write_value = OC::DAC::kDacZeroCode; // midpoint code = 0V
 
     // CV-in 1 routes to bus 1 by default; CV-out 1 routes to bus 13 by default.
     const int numFrames = 32;
@@ -282,21 +282,43 @@ TEST_CASE("step routes CV-in bus into OC::ADC and OC::DAC out onto the CV-out bu
     // The isr must have read the routed input: 1.0V * 1536 = 1536 hem units.
     REQUIRE(g_app_state.adc_seen == 1536);
 
-    // The DAC value (0V biased = kOctaveZero * 1536) must reach CV-out 1's bus
-    // unbiased: (dac - kOctaveZero*1536) / 1536 = 0.0V.
-    REQUIRE(bus13[0] == Catch::Approx(0.0f).margin(1e-4));
+    // OC::DAC values are 16-bit codes; the midpoint code is 0V on the bus.
+    REQUIRE(bus13[0] == Catch::Approx(0.0f).margin(1e-3));
 
-    // A nonzero DAC pitch must reach the bus correctly: 1 octave above 0V.
+    // A pitch one octave above 0V: kCodesPerVolt codes above the midpoint -> +1V.
     reset_test_state();
     AppAlgorithm alg2;
     oc_runtime::construct(alg2, make_dummy_app());
     g_app_state.capture_adc = true;
     g_app_state.dac_write_value =
-        (OC::DAC::kOctaveZero + 1) * OC::DAC::kIntervalSize; // +1V
+        static_cast<uint32_t>(OC::DAC::kDacZeroCode + OC::DAC::kCodesPerVolt); // +1V
     nt::set_bus_frame_count(numFrames);
     float* b13 = nt::bus_pointer(13, numFrames);
     oc_runtime::step(alg2, nt::bus_frames_base(), numFrames);
-    REQUIRE(b13[0] == Catch::Approx(1.0f).margin(1e-4));
+    REQUIRE(b13[0] == Catch::Approx(1.0f).margin(1e-3));
+
+    // Full-scale modulation codes map to the bipolar rails, not past them: a
+    // full-scale Lorenz-style code (max) is +5V, code 0 is -5V. The earlier
+    // pitch-only conversion (/1536) railed these to ~+38V / -5V.
+    reset_test_state();
+    AppAlgorithm alg3;
+    oc_runtime::construct(alg3, make_dummy_app());
+    g_app_state.capture_adc = true;
+    g_app_state.dac_write_value = OC::DAC::kMaxValue; // 65535 -> ~+5V
+    nt::set_bus_frame_count(numFrames);
+    float* b13_hi = nt::bus_pointer(13, numFrames);
+    oc_runtime::step(alg3, nt::bus_frames_base(), numFrames);
+    REQUIRE(b13_hi[0] == Catch::Approx(5.0f).margin(0.01f));
+
+    reset_test_state();
+    AppAlgorithm alg4;
+    oc_runtime::construct(alg4, make_dummy_app());
+    g_app_state.capture_adc = true;
+    g_app_state.dac_write_value = 0; // 0 -> -5V
+    nt::set_bus_frame_count(numFrames);
+    float* b13_lo = nt::bus_pointer(13, numFrames);
+    oc_runtime::step(alg4, nt::bus_frames_base(), numFrames);
+    REQUIRE(b13_lo[0] == Catch::Approx(-5.0f).margin(0.01f));
 }
 
 TEST_CASE("re-routing a CV-in bus via alg.v takes effect live", "[oc_runtime][routing][reroute]") {

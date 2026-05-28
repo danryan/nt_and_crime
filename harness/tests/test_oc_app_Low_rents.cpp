@@ -215,6 +215,15 @@ TEST_CASE("Low-rents isr produces DAC output for a known frequency and rho", "[o
         if (outA[0] != Catch::Approx(sample0).margin(1e-6)) output_changed = true;
     }
     REQUIRE(output_changed);
+
+    // Lorenz writes full-scale 16-bit DAC codes. The output must land within the
+    // bipolar +-5V rails, not be over-scaled. The earlier pitch-only conversion
+    // (/1536) railed these codes to roughly +16V, so this bounds the fix.
+    for (int s = 0; s < 50; ++s) {
+        run_steps(p, numFrames, 1);
+        REQUIRE(outA[0] >= -5.1f);
+        REQUIRE(outA[0] <= 5.1f);
+    }
 }
 
 TEST_CASE("Low-rents reset trigger fires exactly once per rising edge", "[oc_app][low_rents][edges]") {

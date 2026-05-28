@@ -58,6 +58,19 @@ static constexpr int kIntervalSize = 12 << 7;
 static constexpr int kOctaves = 10;
 static constexpr uint16_t kMaxValue = 65535;
 
+// Unified 16-bit DAC code space (matches the vendor hardware DAC range). Every
+// OC::DAC value is a 16-bit code: pitch apps reach it through pitch_to_dac,
+// modulation apps (e.g. Lorenz) write full-scale codes directly. 0V sits at the
+// code midpoint, and full scale 0..65535 spans kVoltsFullScale volts bipolar.
+// The per-app runtime converts a code to NT bus volts with these constants, so
+// pitch stays 1V/oct (one octave == kCodesPerVolt codes) while full-scale
+// modulation outputs span +-kVoltsFullScale/2 around 0V. Replaces the earlier
+// pitch-only model (value == pitch units, 1536/V), which railed full-scale codes.
+static constexpr int   kDacZeroCode       = 32768;                         // 0V (= kOctaveZero)
+static constexpr float kVoltsFullScale    = 10.0f;                         // 0..65535 -> -5V..+5V
+static constexpr float kCodesPerVolt      = 65536.0f / kVoltsFullScale;    // 6553.6
+static constexpr float kCodesPerPitchUnit = kCodesPerVolt / kIntervalSize; // 4.2667
+
 namespace detail {
 inline uint32_t (&values())[DAC_CHANNEL_COUNT] {
     static uint32_t values_[DAC_CHANNEL_COUNT] = { 0 };
@@ -109,12 +122,16 @@ inline uint32_t value(size_t index) {
 // bus is linear 1V/oct, so the calibrated octave table collapses to
 // pitch * (full-scale per octave). kOctaveZero biases 0V to C5.
 inline int32_t pitch_to_dac(DAC_CHANNEL /*channel*/, int32_t pitch, int32_t octave_offset) {
-    const int interval_size = kIntervalSize;
-    const int max_pitch = kOctaves * interval_size;
-    pitch += (kOctaveZero + octave_offset) * interval_size;
-    if (pitch < 0) pitch = 0;
-    if (pitch > max_pitch) pitch = max_pitch;
-    return pitch;
+    // Map pitch (kIntervalSize units/octave; pitch 0, octave 0 == note at
+    // kOctaveZero == 0V) into the 16-bit code space: 0V at kDacZeroCode, one
+    // octave == kCodesPerVolt codes. No per-channel calibration LUT (the NT bus
+    // is linear 1V/oct). The route then converts the code back to volts with the
+    // same constants, so 1V/oct is preserved.
+    const float code = static_cast<float>(kDacZeroCode) +
+        static_cast<float>(pitch + octave_offset * kIntervalSize) * kCodesPerPitchUnit;
+    if (code <= 0.0f) return 0;
+    if (code >= static_cast<float>(kMaxValue)) return kMaxValue;
+    return static_cast<int32_t>(code + 0.5f);
 }
 
 inline int32_t semitone_to_dac(DAC_CHANNEL channel, int32_t semi, int32_t octave_offset) {
@@ -125,9 +142,11 @@ inline void set_pitch(DAC_CHANNEL channel, int32_t pitch, int32_t octave_offset)
     set(channel, static_cast<uint32_t>(pitch_to_dac(channel, pitch, octave_offset)));
 }
 
-// Set integer voltage value, where 0 = 0V relative to kOctaveZero.
+// Set integer voltage value, where 0 = 0V relative to kOctaveZero. Routes
+// through pitch_to_dac so the stored value is a 16-bit code like every other
+// DAC write.
 inline void set_octave(DAC_CHANNEL channel, int v) {
-    set(channel, static_cast<uint32_t>((kOctaveZero + v) * kIntervalSize));
+    set(channel, static_cast<uint32_t>(pitch_to_dac(channel, 0, v)));
 }
 
 // 1V/oct collapse. Vendor returns the stored per-channel scaling; the NT bus

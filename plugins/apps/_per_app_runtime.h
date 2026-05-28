@@ -347,13 +347,13 @@ inline int trig_in_bus(const AppAlgorithm& alg, int i) {
     return alg.v[kNumCvInputs + kNumCvOutputs + i];
 }
 
-// Bus <-> hem-unit conversions. The NT input/output bus carries 1V/oct in
-// float volts; the OC input store and the unbiased pitch space use hem units
-// at 1536 per octave (12 << 7), matching hem_shim::copy_bus_to_frame and
-// OC_DAC.h kIntervalSize. OC::DAC::value() is biased by kOctaveZero octaves
-// (0V == kOctaveZero * kIntervalSize), so the flush subtracts that bias.
+// Bus conversions. The NT input/output bus carries volts as float.
+// INPUTS: the OC ADC store uses hem units at 1536 per volt (1V/oct), matching
+// hem_shim::copy_bus_to_frame.
+// OUTPUTS: OC::DAC values are 16-bit codes (OC_DAC.h). A code converts to volts
+// as (code - kDacZeroCode) / kCodesPerVolt, so pitch stays 1V/oct and a
+// full-scale modulation output (e.g. Lorenz) spans +-5V around 0V.
 constexpr float kHemUnitsPerVolt = 1536.0f;
-constexpr int   kDacZeroBias = static_cast<int>(OC::DAC::kOctaveZero) * OC::DAC::kIntervalSize;
 
 // Read the mean level of a routed bus across the buffer and store it in the
 // OC input backing as hem units. bus 0 (not routed) clears the channel.
@@ -379,13 +379,15 @@ inline void route_trigger_input(int input, int bus, const float* busFrames, int 
     oc_io::set_trigger(input, high);
 }
 
-// Write one OC DAC channel onto a routed CV-out bus in replace mode, after
-// unbiasing the DAC value and converting from hem units to NT volts.
+// Write one OC DAC channel onto a routed CV-out bus in replace mode, converting
+// the 16-bit DAC code to NT volts (0V at the code midpoint, kCodesPerVolt codes
+// per volt). Pitch outputs stay 1V/oct; full-scale modulation spans +-5V.
 inline void route_cv_output(int channel, int bus, float* busFrames, int numFrames) {
     if (bus <= 0 || busFrames == nullptr) return;
     float* dst = busFrames + (bus - 1) * numFrames;
     const int dac = static_cast<int>(OC::DAC::value(static_cast<size_t>(channel)));
-    const float volts = static_cast<float>(dac - kDacZeroBias) / kHemUnitsPerVolt;
+    const float volts =
+        static_cast<float>(dac - OC::DAC::kDacZeroCode) / OC::DAC::kCodesPerVolt;
     for (int i = 0; i < numFrames; ++i) dst[i] = volts;
 }
 

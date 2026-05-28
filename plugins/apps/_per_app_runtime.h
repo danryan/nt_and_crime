@@ -172,8 +172,20 @@ struct AppAlgorithm : public _NT_algorithm {
     // OC_CORE_ISR_FREQ (~16.666 kHz) regardless of NT's sample rate.
     uint64_t tick_numerator = 0;
 
-    // Idle counter for screensaver transitions, reset by any control event.
-    uint32_t idle_count = 0;
+    // OC::CORE::ticks value at the last control activity. The screensaver
+    // engages once the tick counter has advanced past this by
+    // kScreensaverTimeoutTicks. Tick-based (not draw-count-based) so the timeout
+    // tracks wall-clock regardless of the firmware's draw rate.
+    uint32_t last_active_tick = 0;
+
+    // Footer overdraw suppression (mirrors the Hemispheres/Quadrants hosts).
+    // draw() snapshots the bottom kFooterRows of the centered frame; step()
+    // restores them after the firmware paints its helper-text overlay, while
+    // steps_since_draw < kFooterRestoreSteps (the navigate-away guard).
+    static constexpr int      kFooterRows         = 16;
+    static constexpr uint32_t kFooterRestoreSteps = 100;
+    uint8_t  footer_cache[kFooterRows * 128] = {};
+    uint32_t steps_since_draw = UINT32_MAX;
 
     // Construct-time sentinel. Firmware fires parameterChanged for every
     // parameter during construct (before NT_algorithmIndex is valid) and that
@@ -273,11 +285,12 @@ inline void construct(AppAlgorithm& alg, const OC::App* app) {
     alg.parameterPages = nullptr;
     const_cast<int16_t*&>(alg.v) = alg.v_storage;
 
-    alg.tick_numerator = 0;
-    alg.idle_count     = 0;
-    alg.alive          = false;
-    OC::CORE::ticks    = 0;
-    alg.last_controls  = 0;
+    alg.tick_numerator   = 0;
+    alg.last_active_tick = 0;
+    alg.steps_since_draw = UINT32_MAX;  // no cached footer until first draw()
+    alg.alive            = false;
+    OC::CORE::ticks      = 0;
+    alg.last_controls    = 0;
     for (size_t i = 0; i < sizeof(alg.held_since) / sizeof(alg.held_since[0]); ++i) {
         alg.held_since[i] = 0;
     }
@@ -465,6 +478,17 @@ inline void step(AppAlgorithm& alg, float* busFrames, int num_frames) {
     if (busFrames != nullptr) {
         flush_oc_outputs(alg, busFrames, num_frames);
     }
+
+    // Footer overdraw: step() runs at audio rate, after the firmware paints its
+    // helper-text overlay on top of the current frame. Repainting the cached
+    // bottom rows here overwrites the overlay before the next display flush. The
+    // guard stops once the user navigates away (no fresh draw() resets it).
+    if (alg.steps_since_draw < AppAlgorithm::kFooterRestoreSteps) {
+        constexpr int rows = AppAlgorithm::kFooterRows;
+        std::memcpy(NT_screen + (64 - rows) * 128, alg.footer_cache,
+                    static_cast<size_t>(rows) * 128);
+        ++alg.steps_since_draw;
+    }
 }
 
 // Cadence/edge-only overload: drives the runtime with a frame count and no
@@ -484,10 +508,14 @@ inline void step_factory(_NT_algorithm* self, float* busFrames, int numFramesBy4
 // Draw: idle counter + loop() + DrawMenu/Screensaver + centering shift
 // ---------------------------------------------------------------------------
 
-// Idle ticks before the screensaver kicks in. Vendor uses a multi-second
-// threshold; for the foundation 60 draws is enough to cover both idle and
-// active paths under host tests.
-constexpr uint32_t kScreensaverIdleThreshold = 60;
+// Screensaver timeout, expressed in OC isr ticks. Vendor uses a 25 s wall-clock
+// timeout (vendor OC_config.h:34 SCREENSAVER_TIMEOUT_S). OC::CORE::ticks advances
+// at OC_CORE_ISR_FREQ inside step(), so the timeout is seconds * the isr
+// frequency. Counting ticks (not draw() calls) keeps the timeout tied to
+// wall-clock regardless of the firmware's draw rate.
+constexpr uint32_t kScreensaverTimeoutSeconds = 25;
+constexpr uint32_t kScreensaverTimeoutTicks =
+    kScreensaverTimeoutSeconds * OC_CORE_ISR_FREQ;
 
 inline void center_screen_into_192() {
     // Each of the 64 rows on NT_screen is 128 bytes wide (256 pixels packed
@@ -511,7 +539,9 @@ inline void draw(AppAlgorithm& alg) {
 
     if (alg.app->loop) alg.app->loop();
 
-    const bool screensaving = alg.idle_count >= kScreensaverIdleThreshold;
+    const uint32_t idle_ticks =
+        static_cast<uint32_t>(OC::CORE::ticks) - alg.last_active_tick;
+    const bool screensaving = idle_ticks >= kScreensaverTimeoutTicks;
     if (screensaving && alg.app->DrawScreensaver) {
         alg.app->DrawScreensaver();
     } else if (alg.app->DrawMenu) {
@@ -520,7 +550,17 @@ inline void draw(AppAlgorithm& alg) {
 
     center_screen_into_192();
 
-    alg.idle_count += 1;
+    // Footer overdraw: cache the bottom kFooterRows of the centered frame so
+    // step() can repaint them over the firmware's helper-text overlay (which the
+    // firmware paints onto NT_screen after draw() returns). Reset the guard so
+    // step() restores for the next kFooterRestoreSteps audio buffers.
+    {
+        constexpr int rows = AppAlgorithm::kFooterRows;
+        std::memcpy(alg.footer_cache, NT_screen + (64 - rows) * 128,
+                    static_cast<size_t>(rows) * 128);
+        alg.steps_since_draw = 0;
+    }
+
     alg.alive = true;
 }
 
@@ -874,9 +914,9 @@ inline void customUi(AppAlgorithm& alg, const _NT_uiData& data) {
 
     alg.last_controls = data.controls;
 
-    // Any control activity resets the idle counter.
+    // Any control activity defers the screensaver: stamp the current tick.
     if (data.controls != 0 || data.encoders[0] != 0 || data.encoders[1] != 0) {
-        alg.idle_count = 0;
+        alg.last_active_tick = static_cast<uint32_t>(OC::CORE::ticks);
     }
 }
 

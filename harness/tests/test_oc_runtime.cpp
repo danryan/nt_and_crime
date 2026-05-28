@@ -49,9 +49,10 @@ uint8_t shim_pixel(int x, int y) {
 // thunks into an OC::App aggregate manually (matching the per-app .cpp's
 // DECLARE_APP-equivalent construction).
 struct DummyAppState {
-    int  isr_calls       = 0;
-    int  loop_calls      = 0;
-    int  draw_menu_calls = 0;
+    int  isr_calls              = 0;
+    int  loop_calls             = 0;
+    int  draw_menu_calls        = 0;
+    int  draw_screensaver_calls = 0;
     bool clocked_seen[OC::DIGITAL_INPUT_LAST] = { false, false, false, false };
     // Number of inner ticks during the most recent step() during which the
     // input was clocked. Used by the one-edge-per-tick test.
@@ -81,7 +82,7 @@ void dummy_draw_menu() {
         graphics.setPixel(g_app_state.menu_pixel_x, g_app_state.menu_pixel_y);
     }
 }
-void dummy_draw_screensaver() {}
+void dummy_draw_screensaver() { ++g_app_state.draw_screensaver_calls; }
 void dummy_handle_button_event(const OC::UI::Event&) {}
 void dummy_handle_encoder_event(const OC::UI::Event&) {}
 void dummy_isr() {
@@ -539,4 +540,73 @@ TEST_CASE("customUi classification distinguishes short press from long release",
 
     // last_controls accessor (F7) reflects the most recent controls mask.
     REQUIRE(oc_runtime::last_controls_of(alg2) == kNT_encoderButtonL);
+}
+
+TEST_CASE("screensaver engages on the isr-tick timeout, deferred by activity",
+          "[oc_runtime][screensaver]") {
+    reset_test_state();
+    AppAlgorithm alg;
+    oc_runtime::construct(alg, make_dummy_app());
+
+    // Fresh (ticks 0): the menu draws, not the screensaver.
+    oc_runtime::draw(alg);
+    REQUIRE(g_app_state.draw_menu_calls == 1);
+    REQUIRE(g_app_state.draw_screensaver_calls == 0);
+
+    // One tick short of the timeout: still the menu.
+    OC::CORE::ticks = oc_runtime::kScreensaverTimeoutTicks - 1;
+    oc_runtime::draw(alg);
+    REQUIRE(g_app_state.draw_menu_calls == 2);
+    REQUIRE(g_app_state.draw_screensaver_calls == 0);
+
+    // At the timeout: the screensaver engages.
+    OC::CORE::ticks = oc_runtime::kScreensaverTimeoutTicks;
+    oc_runtime::draw(alg);
+    REQUIRE(g_app_state.draw_screensaver_calls == 1);
+
+    // Control activity stamps the current tick, deferring the screensaver: a
+    // following draw at the same tick is back inside the timeout window.
+    _NT_uiData turn{};
+    turn.encoders[0] = 1;
+    oc_runtime::customUi(alg, turn);
+    oc_runtime::draw(alg);
+    REQUIRE(g_app_state.draw_menu_calls == 3);
+    REQUIRE(g_app_state.draw_screensaver_calls == 1);
+}
+
+TEST_CASE("draw caches the footer band and step restores it over an overlay",
+          "[oc_runtime][footer]") {
+    reset_test_state();
+    AppAlgorithm alg;
+    oc_runtime::construct(alg, make_dummy_app());
+
+    // DrawMenu paints a pixel inside the bottom kFooterRows band (y in
+    // [64 - 16, 64)). After centering, vendor x maps to NT x + 64.
+    g_app_state.menu_pixel_x = 10;
+    g_app_state.menu_pixel_y = 60;
+    oc_runtime::draw(alg);
+    const int fx = 10 + 64;
+    REQUIRE(shim_pixel(fx, 60) != 0);
+
+    // The firmware paints its helper-text overlay over the footer band after
+    // draw() returns. Simulate that by clobbering those rows.
+    for (int y = 64 - AppAlgorithm::kFooterRows; y < 64; ++y) {
+        std::memset(NT_screen + y * 128, 0, 128);
+    }
+    REQUIRE(shim_pixel(fx, 60) == 0);
+
+    // One step() restores the cached footer band over the overlay (the sample
+    // rate is established so the step body runs through to the restore).
+    nt::set_bus_frame_count(32);
+    oc_runtime::step(alg, 32);
+    REQUIRE(shim_pixel(fx, 60) != 0);
+
+    // After kFooterRestoreSteps further steps the guard lapses (navigate-away);
+    // a fresh overlay is then left intact until the next draw().
+    for (uint32_t i = 0; i < AppAlgorithm::kFooterRestoreSteps; ++i) {
+        oc_runtime::step(alg, 32);
+    }
+    std::memset(NT_screen + 60 * 128, 0, 128);
+    oc_runtime::step(alg, 32);
+    REQUIRE(shim_pixel(fx, 60) == 0);
 }

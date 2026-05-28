@@ -241,11 +241,13 @@ TEST_CASE("Harrington 1200 screensaver draws without faulting", "[oc_app][h1200]
     nt::set_bus_frame_count(numFrames);
     run_steps(p, numFrames, 1);
 
-    // Draw enough times to cross the screensaver idle threshold; the runtime
-    // then calls DrawScreensaver (H1200_screensaver) which invokes
+    // Advance the isr tick counter past the screensaver timeout (no control
+    // activity has stamped last_active_tick, which construct left at 0). The
+    // next draw then selects DrawScreensaver (H1200_screensaver), which invokes
     // OC::visualize_pitch_classes. It must paint the note circle without
     // faulting and leave non-zero pixels.
-    for (int i = 0; i < 70; ++i) p->factory->draw(p->algorithm);
+    OC::CORE::ticks = oc_runtime::kScreensaverTimeoutTicks + 1;
+    p->factory->draw(p->algorithm);
     REQUIRE(count_nonzero_screen() > 0);
 }
 
@@ -337,4 +339,26 @@ TEST_CASE("Harrington 1200 NT parameter add-on syncs bidirectionally", "[oc_app]
     REQUIRE(after == before + 1);
     REQUIRE(p->algorithm->v[base + H_INVERSION] == after);
     (void)alg;
+}
+
+TEST_CASE("Harrington 1200 customUI push-back honors the common-parameter offset",
+          "[oc_app][h1200][param-sync][offset]") {
+    // The device firmware injects common parameters (Bypass) ahead of the
+    // plug-in table, so NT_setParameterFromUi (which indexes the GLOBAL table)
+    // needs the push-back to add NT_parameterOffset() (api.h:571). Model a +1
+    // prefix; an edit must land on the plug-in-relative store slot for the edited
+    // setting, not one index low. Same defect class observed on hardware.
+    nt::reset_runtime();
+    nt::set_parameter_offset(1);
+    nt::LoadedPlugin* p = nt::load_plugin();
+    REQUIRE(p != nullptr);
+    h1200_arm_sentinel(p->algorithm);
+
+    const int base = h1200_settings_param_base();
+    const int before = h1200_get_setting(p->algorithm, H_INVERSION);
+    _NT_uiData d = oc_ui_sim::make_uidata(0, 0, /*enc_l=*/1, /*enc_r=*/0);
+    p->factory->customUi(p->algorithm, d);
+
+    REQUIRE(h1200_get_setting(p->algorithm, H_INVERSION) == before + 1);
+    REQUIRE(p->algorithm->v[base + H_INVERSION] == before + 1);
 }

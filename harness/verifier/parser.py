@@ -54,3 +54,58 @@ def parse_numeric(screen: list[int], layout: Layout) -> dict[int, float]:
         y0 = layout.row_y0 + row * layout.row_h
         out[layout.first_bus + row] = _read_value(screen, layout.value_x, y0)
     return out
+
+
+@dataclass(frozen=True)
+class ScopeRegion:
+    x0: int
+    y0: int
+    width: int
+    height: int
+
+
+@dataclass(frozen=True)
+class ScopeResult:
+    samples: tuple[float, ...]
+    frequency_hz: float
+    shape: str
+
+
+def _column_centroid(screen: list[int], region: ScopeRegion, x: int) -> float | None:
+    ys = [y for y in range(region.height)
+          if screen[(region.y0 + y) * 256 + (region.x0 + x)]]
+    if not ys:
+        return None
+    mid = sum(ys) / len(ys)
+    # map pixel row to a normalized [-1, 1], row 0 top (+1), bottom (-1)
+    return 1.0 - 2.0 * (mid / (region.height - 1))
+
+
+def _classify(samples: tuple[float, ...]) -> str:
+    hi = max(samples)
+    lo = min(samples)
+    span = hi - lo
+    if span == 0:
+        return "flat"
+    near_rail = sum(1 for s in samples if s > hi - 0.1 * span or s < lo + 0.1 * span)
+    if near_rail / len(samples) > 0.7:
+        return "square"
+    return "wave"
+
+
+def parse_scope(screen: list[int], region: ScopeRegion,
+                sample_rate: float, timebase: int) -> ScopeResult:
+    cols = [_column_centroid(screen, region, x) for x in range(region.width)]
+    samples = tuple(c for c in cols if c is not None)
+    crossings = [
+        x for x in range(1, len(cols))
+        if cols[x - 1] is not None and cols[x] is not None
+        and cols[x - 1] < 0 <= cols[x]
+    ]
+    if len(crossings) >= 2:
+        period_px = (crossings[-1] - crossings[0]) / (len(crossings) - 1)
+        frequency_hz = sample_rate / (period_px * timebase)
+    else:
+        frequency_hz = 0.0
+    return ScopeResult(samples=samples, frequency_hz=frequency_hz,
+                       shape=_classify(samples))

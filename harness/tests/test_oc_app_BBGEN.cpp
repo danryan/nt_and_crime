@@ -63,12 +63,15 @@ TEST_CASE("BBGEN exposes 56 parameters with channel-prefixed setting names", "[o
     REQUIRE(p != nullptr);
 
     // 12 I/O routing rows + 44 settings.
-    REQUIRE(p->algorithm->parameters[bbgen_settings_param_base()].name != nullptr);
-    // Row 0 of the settings block is channel A, setting GRAVITY -> "A Gravity".
+    const int base = bbgen_settings_param_base();
+    REQUIRE(p->algorithm->parameters[base].name != nullptr);
+    // The channel-prefixed name override must reach the actual NT parameter
+    // table, not just the standalone builder seam. First and last settings rows.
+    REQUIRE(std::string(p->algorithm->parameters[base].name) == "A Gravity");
+    REQUIRE(std::string(p->algorithm->parameters[base + 43].name) == "D Hard reset");
+    // The standalone builder seam agrees (channel A/B GRAVITY, channel D last).
     REQUIRE(std::string(bbgen_param_name(0)) == "A Gravity");
-    // Channel B, GRAVITY -> "B Gravity".
     REQUIRE(std::string(bbgen_param_name(BB_LAST)) == "B Gravity");
-    // Channel D, HARD_RESET -> "D Hard reset" (last row).
     REQUIRE(std::string(bbgen_param_name(43)) == "D Hard reset");
 }
 
@@ -104,9 +107,20 @@ TEST_CASE("BBGEN gate-triggered envelope outputs within 0V..+5V and moves", "[oc
     // decays. Ball A -> CV out A -> default bus 13.
     float* trig1 = nt::bus_pointer(5, numFrames);
     float* outA  = nt::bus_pointer(13, numFrames);
+    // Ball C defaults to trigger DIGITAL_INPUT_3 -> TR in 3 -> bus 7 (left low)
+    // and outputs to CV out C -> bus 15. Ungated, with default amplitude 0, its
+    // envelope stays at the zero offset, so the bus stays at 0V. Proves the gate
+    // routing is per-ball, not a global fire.
+    float* outC  = nt::bus_pointer(15, numFrames);
     for (int i = 0; i < numFrames; ++i) trig1[i] = 5.0f;
 
     run_steps(p, numFrames, 40);
+
+    // The ungated ball C output never leaves 0V across the run.
+    for (int s = 0; s < 40; ++s) {
+        run_steps(p, numFrames, 1);
+        REQUIRE(outC[0] == Catch::Approx(0.0f).margin(0.05f));
+    }
 
     // Output must move (envelope is dynamic, not a static constant) and stay
     // within the unipolar 0V..+5V rails (modulation code space, not railed

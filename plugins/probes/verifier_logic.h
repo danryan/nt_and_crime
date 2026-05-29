@@ -46,4 +46,32 @@ inline float reduction_value(const Reduction& r, int mode) {
     return 0.0f;
 }
 
+inline int volts_to_millivolts(float v) {
+    return (int)(v * 1000.0f + (v >= 0.0f ? 0.5f : -0.5f));
+}
+
+// Writes the 7-char fixed-width form sNN.fff plus a NUL into out[8].
+// Overflow (|mv| > 99999) yields a sentinel with '#' glyphs.
+inline void format_mv(int mv, char out[8]) {
+    char sign = mv < 0 ? '-' : '+';
+    long a = mv < 0 ? -(long)mv : (long)mv;
+    if (a > 99999) {
+        out[0] = sign;
+        out[1] = '#'; out[2] = '#'; out[3] = '#';
+        out[4] = '#'; out[5] = '#'; out[6] = '#';
+        out[7] = 0;
+        return;
+    }
+    int ip = (int)(a / 1000);   // 0..99
+    int fr = (int)(a % 1000);   // 0..999
+    out[0] = sign;
+    out[1] = (char)('0' + (ip / 10));
+    out[2] = (char)('0' + (ip % 10));
+    out[3] = '.';
+    out[4] = (char)('0' + (fr / 100));
+    out[5] = (char)('0' + ((fr / 10) % 10));
+    out[6] = (char)('0' + (fr % 10));
+    out[7] = 0;
+}
+
 }  // namespace verifier

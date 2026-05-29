@@ -347,7 +347,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -374,6 +374,13 @@ VENDOR_DEP_HOST_SRCS_Low_rents := $(HEM_SRC_DIR)/streams_resources.cpp $(HEM_SRC
 # (bjorklund) and SemitoneQuantizer likewise ride the aggregation.
 VENDOR_DEPS_Harrington1200          :=
 VENDOR_DEP_HOST_SRCS_Harrington1200 :=
+
+# BBGEN (APP_BBGEN) links peaks_resources for lut_gravity (peaks_resources.cpp
+# defines it; peaks_bouncing_balls.h:102 reads it via Interpolate88). The
+# bouncing-ball DSP itself (peaks_bouncing_balls.h) is header-only. ARM side: the
+# partial-link object; host side: the vendor source compiled into the test.
+VENDOR_DEPS_BBGEN          := build/arm/vendor_src/peaks_resources.o
+VENDOR_DEP_HOST_SRCS_BBGEN := $(HEM_SRC_DIR)/peaks_resources.cpp
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

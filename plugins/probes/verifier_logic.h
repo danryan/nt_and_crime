@@ -97,6 +97,44 @@ inline int scope_trigger(const float* buf, int len) {
     return 0;
 }
 
+// 6x8 bitmap font. Index by glyph char via glyph_for(); each entry is 8 rows,
+// low 5 bits per row (bit 4 = leftmost column). Column 5 and row 7 are blank.
+struct Glyph { uint8_t rows[8]; };
+
+inline const Glyph& glyph_for(char c) {
+    static const Glyph blank   = {{0,0,0,0,0,0,0,0}};
+    static const Glyph digits[10] = {
+        {{0x0E,0x11,0x13,0x15,0x19,0x11,0x0E,0x00}}, // 0
+        {{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E,0x00}}, // 1
+        {{0x0E,0x11,0x01,0x02,0x04,0x08,0x1F,0x00}}, // 2
+        {{0x1F,0x02,0x04,0x02,0x01,0x11,0x0E,0x00}}, // 3
+        {{0x02,0x06,0x0A,0x12,0x1F,0x02,0x02,0x00}}, // 4
+        {{0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E,0x00}}, // 5
+        {{0x06,0x08,0x10,0x1E,0x11,0x11,0x0E,0x00}}, // 6
+        {{0x1F,0x01,0x02,0x04,0x08,0x08,0x08,0x00}}, // 7
+        {{0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E,0x00}}, // 8
+        {{0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C,0x00}}, // 9
+    };
+    static const Glyph plus     = {{0x00,0x04,0x04,0x1F,0x04,0x04,0x00,0x00}};
+    static const Glyph minus    = {{0x00,0x00,0x00,0x1F,0x00,0x00,0x00,0x00}};
+    static const Glyph dot      = {{0x00,0x00,0x00,0x00,0x00,0x06,0x06,0x00}};
+    static const Glyph sentinel = {{0x1F,0x1F,0x1F,0x1F,0x1F,0x1F,0x1F,0x1F}};
+    if (c >= '0' && c <= '9') return digits[c - '0'];
+    if (c == '+') return plus;
+    if (c == '-') return minus;
+    if (c == '.') return dot;
+    if (c == '#') return sentinel;
+    return blank;
+}
+
+inline void draw_glyph(int x0, int y0, char c) {
+    const Glyph& g = glyph_for(c);
+    for (int row = 0; row < 8; ++row)
+        for (int col = 0; col < 5; ++col)
+            if (g.rows[row] & (1 << (4 - col)))
+                NT_drawShapeI(kNT_point, x0 + col, y0 + row, x0 + col, y0 + row, 15);
+}
+
 inline int volts_to_y(float v, float vscale) {
     if (vscale <= 0.0f) vscale = 5.0f;
     float t = 0.5f - (v / (2.0f * vscale));   // +vscale -> top (0), -vscale -> bottom
@@ -108,15 +146,13 @@ inline int volts_to_y(float v, float vscale) {
 
 inline void render_numeric(const int* buses, const float* values, int count) {
     char buf[8];
-    char lbl[3];
     for (int row = 0; row < count; ++row) {
-        int y = row * kRowH + 8;
-        lbl[0] = (char)('0' + (buses[row] / 10) % 10);
-        lbl[1] = (char)('0' + (buses[row] % 10));
-        lbl[2] = 0;
-        NT_drawText(0, y, lbl);
+        int y0 = row * kRowH;
+        draw_glyph(0, y0, (char)('0' + (buses[row] / 10) % 10));
+        draw_glyph(kGlyphW, y0, (char)('0' + (buses[row] % 10)));
         format_mv(volts_to_millivolts(values[row]), buf);
-        NT_drawText(kValueX, y, buf);
+        for (int i = 0; i < kValueChars; ++i)
+            draw_glyph(kValueX + i * kGlyphW, y0, buf[i]);
     }
 }
 

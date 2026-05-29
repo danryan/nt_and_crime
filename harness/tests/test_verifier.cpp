@@ -81,13 +81,13 @@ TEST_CASE("scope_trigger falls back to 0 when no crossing", "[verifier][scope]")
 
 #include "nt_runtime.h"
 
-// Count lit pixels in a [x0,x1) x [y0,y1) screen window. Reads both nibbles;
-// any nonzero nibble is a lit pixel, matching test_draw_text's counter.
+// Count lit pixels in a [x0,x1) x [y0,y1) screen window, using the sim's nibble
+// convention (odd x -> high nibble), matching nt_runtime's set_pixel.
 static int lit_in_window(int x0, int y0, int x1, int y1) {
     int count = 0;
     for (int y = y0; y < y1; ++y) {
         for (int x = x0; x < x1; ++x) {
-            int byte = (y * 256 + x) / 2;
+            int byte = y * 128 + (x >> 1);
             uint8_t b = NT_screen[byte];
             uint8_t nib = (x & 1) ? (b >> 4) : (b & 0x0f);
             if (nib) ++count;
@@ -96,7 +96,7 @@ static int lit_in_window(int x0, int y0, int x1, int y1) {
     return count;
 }
 
-TEST_CASE("render_numeric places a value glyph block per row", "[verifier][render]") {
+TEST_CASE("render_numeric lights a glyph in each value cell per row", "[verifier][render]") {
     nt::reset_runtime();
     const int   buses[2]  = {13, 14};
     const float values[2] = {1.000f, -0.250f};
@@ -107,23 +107,26 @@ TEST_CASE("render_numeric places a value glyph block per row", "[verifier][rende
     REQUIRE(row1 > 0);
 }
 
-TEST_CASE("render_numeric is deterministic and value-dependent", "[verifier][render]") {
-    nt::reset_runtime();
+TEST_CASE("render_numeric is deterministic and digit-dependent per cell", "[verifier][render]") {
     const int buses[1] = {1};
-    const float v1[1] = {1.000f};
-    render_numeric(buses, v1, 1);
-    int a = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
+    const int cell_x   = kValueX + 6 * kGlyphW;   // 7th glyph (last fraction digit)
 
     nt::reset_runtime();
-    render_numeric(buses, v1, 1);
-    int a2 = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
-    REQUIRE(a == a2);
+    const float v0[1] = {0.000f};
+    render_numeric(buses, v0, 1);
+    int zero_cell  = lit_in_window(cell_x, 0, cell_x + kGlyphW, kRowH);
 
     nt::reset_runtime();
-    const float v2[1] = {-7.654f};
-    render_numeric(buses, v2, 1);
-    int b = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
-    REQUIRE(b != a);
+    render_numeric(buses, v0, 1);
+    int zero_again = lit_in_window(cell_x, 0, cell_x + kGlyphW, kRowH);
+    REQUIRE(zero_cell == zero_again);     // deterministic
+
+    nt::reset_runtime();
+    const float v1[1] = {0.001f};
+    render_numeric(buses, v1, 1);
+    int one_cell = lit_in_window(cell_x, 0, cell_x + kGlyphW, kRowH);
+    REQUIRE(one_cell != zero_cell);       // '1' glyph differs from '0' glyph
+    REQUIRE(one_cell > 0);
 }
 
 TEST_CASE("render_scope draws a trace within the screen", "[verifier][render]") {

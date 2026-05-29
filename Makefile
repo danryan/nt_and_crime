@@ -63,6 +63,14 @@ build/host/test_verifier: harness/tests/test_verifier.cpp plugins/probes/Verifie
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) -o $@ harness/tests/test_verifier.cpp plugins/probes/Verifier.cpp $(HARNESS_SRCS)
 
+build/host/dump_font: harness/tools/dump_font.cpp plugins/probes/verifier_logic.h
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ harness/tools/dump_font.cpp
+
+harness/verifier/fixtures/font.json: build/host/dump_font
+	mkdir -p harness/verifier/fixtures
+	./build/host/dump_font > $@
+
 .PHONY: test-draw
 test-draw: build/host/test_draw_text
 	./build/host/test_draw_text

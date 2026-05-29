@@ -24,7 +24,7 @@ The vendor tree has 28 `APP_*.h`. Excluded:
 - System and utility, not user-facing ports: `APP_Backup`, `APP_SETTINGS`,
   `APP_REFS`, `APP_CALIBR8OR`.
 
-That leaves 20 nominal candidates. Load-bearing audit finding: six of those 20
+That leaves 20 nominal candidates. Load-bearing audit finding: eight of those 20
 are NOT `OC::App` full-screen apps. They inherit `HSApplication` (the Hemisphere
 application framework) and depend on Teensy `usbMIDI`, `EEPROM`, or a hard
 `#include "src/drivers/display.h"`. They are out of scope for this foundation and
@@ -41,10 +41,14 @@ belong to a separate HSApplication track:
 - `APP_THEDARKESTTIMELINE` (`HSApplication + SystemExclusiveHandler +
   SettingsBase`; `<EEPROM.h>`, `src/drivers/display.h`, full `usbMIDI`). Added
   2026-05-28.
+- `APP_SCENES` (`ScenesAppPreset` wraps `HSApplication`). Added 2026-05-28 after a
+  full-catalog base-class re-grep.
+- `APP_WAVEFORMEDITOR` (`WaveformEditor : HSApplication,
+  SystemExclusiveHandler`). Added 2026-05-28.
 
-True `OC::App` candidate set: 14.
+True `OC::App` candidate set: 12.
 
-## Categorization (14 OC::App candidates)
+## Categorization (12 OC::App candidates plus 2 shipped)
 
 EASY means it fits the shipped recipe with no new shared shim subsystem. MEDIUM
 means it needs a bounded, reusable shim addition. HARD means a large new
@@ -64,8 +68,8 @@ subsystem or a custom full-screen editor beyond the settings-menu model.
 | ASR | MEDIUM | pitch quantizer | braids_quantizer, peaks_bytebeat | OC_visualfx, OC_scale_edit, OC_strings tables |
 | AUTOMATONNETZ | MEDIUM | pitch + triggers | none | util_sync critical-section stub, tonnetz headers, mode_names |
 | PASSENCORE | MEDIUM | pitch + gates | none (header tables) | OC_chords, OC_input_map, quantizer tables |
-| SCENES | MEDIUM | full-scale modulation | OC_input_map | FreqMeasure is Teensy-only (loses tempo-from-audio), preset I/O |
-| WAVEFORMEDITOR | MEDIUM | synthesis | none | HSVectorOscillator, pixel-grid canvas editor |
+| SCENES | OUT (HSApplication) | Hemisphere bus | OC_input_map | `ScenesAppPreset` wraps `HSApplication`; corrected 2026-05-28; HSApplication track |
+| WAVEFORMEDITOR | OUT (HSApplication) | synthesis | none | `WaveformEditor : HSApplication, SystemExclusiveHandler`; corrected 2026-05-28; HSApplication track |
 | CHORDS | HARD | pitch quantizer (4ch) | braids_quantizer, OC_chords | OC_chords_edit, OC_input_maps, 2-page menu |
 | QQ (Quantermain) | HARD | pitch quantizer (4ch) | braids_quantizer | OC_scale_edit template, 4 x 53 settings, MI generators |
 | SEQ | HARD | pitch + gate (4+4) | peaks_multistage_envelope, OC_patterns | OC_sequence_edit full-screen editor, 59 x 2 settings |
@@ -114,9 +118,9 @@ full-scale-modulation shape on more apps.
 
 Defer the MEDIUM tier to a follow-on phase whose Layer 0 builds `OC_scale_edit`
 and `OC_visualfx` first (they gate the quantizer cluster). Defer the HARD tier
-until the editor subsystems exist. Track the six HSApplication apps (ENIGMA, MIDI,
-NeuralNetwork, PONGGAME, SCALEEDITOR, THEDARKESTTIMELINE) under a separate
-HSApplication-apps initiative.
+until the editor subsystems exist. Track the eight HSApplication apps (ENIGMA,
+MIDI, NeuralNetwork, PONGGAME, SCALEEDITOR, THEDARKESTTIMELINE, SCENES,
+WAVEFORMEDITOR) under a separate HSApplication-apps initiative (issue #39).
 
 ## Spec follow-ups carried from #29 (separate small PR, before the pilot batch)
 

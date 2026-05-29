@@ -347,10 +347,17 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
+
+# FPART (APP_FPART) needs no net-new vendor .cpp: all headers it pulls
+# (OC_apps, OC_menus, OC_strings, OC_DAC/ADC, OC_digital_inputs, util_settings,
+# util_math) are header-only or shim-shadowed. Its scale/root tables are inline
+# in the vendor header.
+VENDOR_DEPS_FPART          :=
+VENDOR_DEP_HOST_SRCS_FPART :=
 
 # Low-rents (APP_LORENZ) links the streams Lorenz generator + its resource LUTs.
 # ARM side: the already-built partial-link objects (same pair the LowerRenz

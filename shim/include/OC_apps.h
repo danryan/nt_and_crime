@@ -1,5 +1,15 @@
 #pragma once
 
+// Include-guard poison (CLAUDE.md "Shadowing a vendor header quote-included
+// from inside another vendor header"). A vendor app header pulled into a per-app
+// TU quote-includes "OC_apps.h" from inside the vendor tree (APP_FPART.h:37),
+// which resolves to the vendor sibling, not this shim shadow. Defining the
+// vendor guard (OC_APP_H_) here makes that sibling self-suppress; this shim
+// shadow already provides the OC::App struct and OC::apps namespace the apps use.
+#ifndef OC_APP_H_
+#define OC_APP_H_
+#endif
+
 #include <cstdint>
 
 namespace OC {

@@ -99,11 +99,11 @@ required, which is the property that makes autonomous verification possible.
 | Param | Type | Purpose |
 | --- | --- | --- |
 | View | enum {Numeric, Scope} | Selects the active screen |
-| First bus | int 1..28 | First bus of the read subset (any bus, not only inputs) |
+| First bus | int 1..kNT_lastBus | First bus of the read subset (any bus, not only inputs) |
 | Count | int 1..6 | Number of consecutive buses to read |
 | Numeric mode | enum {Mean, Min, Max, PkPk} | Reduction shown in the numeric view |
 | Reset | enum {Off, Reset} | Pulsing to Reset clears all accumulators |
-| Scope bus | int 1..28 | Bus traced in the scope view |
+| Scope bus | int 1..kNT_lastBus | Bus traced in the scope view |
 | Timebase | int (samples/pixel) | Scope horizontal scale |
 
 `edit_parameter` over the nt_helper MCP rejects numeric values (CLAUDE.md), so
@@ -223,11 +223,12 @@ output, or a fixture).
   glyph cells at known positions, template-match Verifier's own font digit
   bitmaps, assemble the signed voltage. Returns bus -> volts.
 - `parse_scope(screen, region, sample_rate, timebase) -> ScopeResult`:
-  per-column lit-y to a sample series; derive coarse shape (sine, square, saw,
-  triangle) and a frequency estimate. Frequency = `sample_rate / (period_px *
-  timebase)`, where `period_px` is the zero-cross spacing in pixels; the
-  screenshot does not carry the sample rate or timebase, so the harness passes
-  them (it set the timebase and knows the rate).
+  per-column lit-y to a sample series; derive a coarse shape (`flat`, `square`,
+  or `wave`; sine, saw, and triangle all classify as `wave` at this resolution)
+  and a frequency estimate. Frequency = `sample_rate / (period_px * timebase)`,
+  where `period_px` is the zero-cross spacing in pixels; the screenshot does not
+  carry the sample rate or timebase, so the harness passes them (it set the
+  timebase and knows the rate).
 
 The font digit bitmaps are Verifier's own glyph table, the single source of
 truth in `verifier_logic.h`. A small C++ dump tool emits them to

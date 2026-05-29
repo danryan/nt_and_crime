@@ -229,3 +229,18 @@ TEST_CASE("OC::DAC exposes modulation full-scale constants", "[oc_menus][dac]") 
     REQUIRE(OC::DAC::get_zero_offset(DAC_CHANNEL_A) == 32768u);
     REQUIRE(OC::DAC::get_zero_offset(DAC_CHANNEL_D) == 32768u);
 }
+
+TEST_CASE("OC::scope_render plots the four-quadrant DAC scope", "[oc_menus][scope]") {
+    nt::reset_runtime();
+    for (int pass = 0; pass < (int)OC::DAC::kHistoryDepth + 4; ++pass) {
+        OC::DAC::set(DAC_CHANNEL_A, 10000);
+        OC::DAC::set(DAC_CHANNEL_B, 30000);
+        OC::DAC::set(DAC_CHANNEL_C, 50000);
+        OC::DAC::set(DAC_CHANNEL_D, 60000);
+    }
+    std::memset(NT_screen, 0, 128 * 64);
+    for (int i = 0; i < 64; ++i) OC::scope_render();
+    int lit = 0;
+    for (int i = 0; i < 128 * 64; ++i) if (NT_screen[i] != 0) ++lit;
+    REQUIRE(lit > 0);
+}

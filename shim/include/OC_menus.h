@@ -49,6 +49,11 @@ void visualize_pitch_classes(uint8_t *normalized, weegfx::coord_t centerx, weegf
 // Hand-ported in shim/src/oc/menus.cpp.
 void vectorscope_render();
 
+// Four-quadrant DAC output scope (vendor OC_menus.cpp:126). Averages each DAC
+// channel's history ring (scope_averaging<11,0x1f>) and plots channels 0..3 in
+// the four screen quadrants. Used by modulation-app screensavers (BBGEN).
+void scope_render();
+
 namespace menu {
 
 void Init();

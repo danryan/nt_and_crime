@@ -2,6 +2,17 @@
 #include <cstdint>
 #include <cstddef>
 
+// Include-guard poison (CLAUDE.md "Shadowing a vendor header quote-included
+// from inside another vendor header"). A vendor app header pulled into a per-app
+// TU quote-includes "OC_DAC.h" from inside the vendor tree (APP_FPART.h:41), and
+// the vendor body drags in OC_config/OC_gpio. Defining the vendor guard
+// (OC_DAC_H_) here makes that sibling self-suppress; this shim shadow already
+// provides the full OC::DAC surface (set_pitch, the 16-bit code constants, the
+// channel objects) the apps use.
+#ifndef OC_DAC_H_
+#define OC_DAC_H_
+#endif
+
 // Channel representation (load-bearing). Vendor OC_DAC.h:26-28 declares
 // `using DAC_CHANNEL = int;` plus extern channel objects, and the templated
 // accessors take the channel by reference (`template <DAC_CHANNEL &channel>`,

@@ -1,5 +1,17 @@
 #pragma once
 
+// Include-guard poison (CLAUDE.md "Shadowing a vendor header quote-included
+// from inside another vendor header"). A vendor app header pulled into a per-app
+// TU may quote-include "OC_menus.h" from inside the vendor tree (APP_FPART.h:39
+// does), which resolves to the vendor sibling, not this shim shadow, and that
+// vendor body hard-includes the Teensy display driver plus vendor
+// OC_DAC/OC_config/OC_gpio. Defining the vendor guard here makes the vendor
+// sibling self-suppress; this shim shadow already provides every menu:: widget
+// the apps use.
+#ifndef OC_MENUS_H
+#define OC_MENUS_H
+#endif
+
 // Hand-ported O_C menu widgets on shim::Graphics.
 //
 // Why a hand-port and not a vendor compile: vendor OC_menus.h:28 hard-includes

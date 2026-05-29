@@ -2,6 +2,17 @@
 #include <cstdint>
 #include <cstddef>
 
+// Include-guard poison (CLAUDE.md "Shadowing a vendor header quote-included
+// from inside another vendor header"). A vendor app header pulled into a per-app
+// TU quote-includes "OC_ADC.h" from inside the vendor tree (APP_FPART.h:43),
+// which resolves to the vendor sibling, not this shim shadow. Defining the
+// vendor guard (OC_ADC_H_) here makes that sibling self-suppress; this shim
+// shadow already provides the OC::ADC accessors (raw_pitch_value, the channel
+// objects) the apps use.
+#ifndef OC_ADC_H_
+#define OC_ADC_H_
+#endif
+
 // O_C-only shim ADC accessor. Net-new; the Hemisphere applets never include
 // this header. Backed by the NT input bus, refreshed into the O_C input store
 // (oc_io, defined in shim/src/oc/io.cpp) by the O_C runtime before each isr().

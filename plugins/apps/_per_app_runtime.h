@@ -92,9 +92,13 @@ constexpr int kMaxSettings = 64;
 // Total maximum parameter count.
 constexpr int kMaxParams = kIoParamCount + kMaxSettings;
 
-// Settings-blob upper bound (Harrington1200 packs 37 settings into ~80
-// bytes worst-case). The base64-encoded JSON member adds ~33% overhead.
-constexpr int kMaxBlobBytes = 256;
+// Settings-blob upper bound. Harrington1200 packs 37 settings into ~80 bytes,
+// but a large-table app stores far more: FPART (APP_FPART.h) packs 109 settings
+// (10 head bytes plus 99 U32 chord ints) into 406 bytes via SettingsBase::Save.
+// The bound must cover the largest app's storageSize(), or serialise() and
+// deserialise() bail out at the storage_size() > kMaxBlobBytes guard and
+// silently drop persistence. 512 covers FPART with headroom.
+constexpr int kMaxBlobBytes = 512;
 constexpr int kMaxBlobB64   = ((kMaxBlobBytes + 2) / 3) * 4 + 1;
 
 inline int settings_param_base() { return kIoParamCount; }

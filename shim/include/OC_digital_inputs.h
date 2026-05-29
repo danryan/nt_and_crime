@@ -35,6 +35,12 @@ enum DigitalInput {
 // directly to test the bitmask returned by clocked(). The shim's clocked()
 // mask uses the same (0x1u << input) bit layout, so a clocked() result ANDed
 // with DIGITAL_INPUT_n_MASK reports an edge on input n exactly as on hardware.
+// The function-like macro (vendor OC_digital_inputs.h:20) lets vendor apps
+// (BBGEN APP_BBGEN.h:173) mask a runtime-selected input; it is not namespaced,
+// matching the vendor call sites.
+#ifndef DIGITAL_INPUT_MASK
+#define DIGITAL_INPUT_MASK(x) (0x1u << (x))
+#endif
 static constexpr uint32_t DIGITAL_INPUT_1_MASK = 0x1u << DIGITAL_INPUT_1;
 static constexpr uint32_t DIGITAL_INPUT_2_MASK = 0x1u << DIGITAL_INPUT_2;
 static constexpr uint32_t DIGITAL_INPUT_3_MASK = 0x1u << DIGITAL_INPUT_3;

@@ -197,6 +197,7 @@ public:
 // Common, default types (vendor OC_menus.h:273-274).
 using DefaultTitleBar = TitleBar<kDefaultMenuStartX, 1, 2>;
 using DualTitleBar = TitleBar<kDefaultMenuStartX, 2, 2>;
+using QuadTitleBar = TitleBar<kDefaultMenuStartX, 4, 6>;  // vendor OC_menus.h:275
 
 // A single drawn settings row (vendor OC_menus.h:283-407). The name renders at
 // the left, the value (or its enum label) right-aligned at endx, an edit icon

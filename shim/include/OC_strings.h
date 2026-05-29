@@ -28,6 +28,11 @@ extern const char* const scale_names_short[];
 // Harrington 1200 app dependencies. Vendor OC_strings.h:38,47,70.
 extern const char* const cv_input_names_none[];
 extern const char* const trigger_delay_times[kNumDelayTimes];
+// BBGEN (APP_BBGEN) settings labels. Vendor OC_strings.h:35,39.
+// trigger_input_names labels the per-ball Trigger-input enum (TR1..TR4); no_yes
+// labels the Hard-reset bool.
+extern const char* const trigger_input_names[];
+extern const char* const no_yes[];
 }
 
 // Harrington 1200 trigger delay ticks lookup. Vendor OC_strings.h:70.

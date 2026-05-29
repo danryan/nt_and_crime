@@ -11,8 +11,11 @@
 #include <distingnt/api.h>
 
 #include "OC_menus.h"
+#include "OC_DAC.h"
 
 #include "util/util_settings.h"
+
+#include <cstring>
 
 // The widgets live in OC::menu, as the vendor lays them out; the vendor apps
 // reach them as `menu::` from inside `namespace OC` or via `using namespace OC`.
@@ -216,4 +219,13 @@ TEST_CASE("visualize_pitch_classes draws the tonnetz circle in bounds", "[oc_men
     OC::visualize_pitch_classes(normalized, 64, 32);
     // The circle is drawn around the center; some pixels are lit near it.
     REQUIRE(any_lit(32, 0, 96, 64));
+}
+
+TEST_CASE("OC::DAC exposes modulation full-scale constants", "[oc_menus][dac]") {
+    // Vendor OC_DAC.h:53,237. NT 16-bit convention: 0V at code 32768, full
+    // scale 65535. Modulation apps (BBGEN) bias their unipolar envelope by
+    // get_zero_offset and scale against MAX_VALUE.
+    REQUIRE(OC::DAC::MAX_VALUE == 65535);
+    REQUIRE(OC::DAC::get_zero_offset(DAC_CHANNEL_A) == 32768u);
+    REQUIRE(OC::DAC::get_zero_offset(DAC_CHANNEL_D) == 32768u);
 }

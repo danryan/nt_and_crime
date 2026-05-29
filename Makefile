@@ -136,6 +136,15 @@ build/host/test_loader: harness/tests/test_loader.cpp \
 test-loader: build/host/test_loader
 	./build/host/test_loader
 
+# Verifier: host C++ tests plus the python parser tests. Prefers the local
+# .venv (uv) if present, else system python3; pytest must be installed.
+PYTEST ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3) -m pytest
+
+.PHONY: test-verifier
+test-verifier: build/host/test_verifier
+	./build/host/test_verifier
+	$(PYTEST) harness/verifier/tests -q
+
 build/host/sim_gainCustomUI: $(HARNESS_LIB_SRCS) vendor/distingNT_API/examples/gainCustomUI.cpp harness/src/main.cpp
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^

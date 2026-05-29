@@ -74,4 +74,27 @@ inline void format_mv(int mv, char out[8]) {
     out[7] = 0;
 }
 
+// Fills buf left-to-right, keeping every decim-th sample, until kScopeWidth
+// samples are captured, then freezes (one-shot). Re-arm by resetting wr/phase/
+// filled to 0/0/false.
+inline void scope_push(float* buf, int& wr, int& phase, bool& filled,
+                       const float* samples, int n, int decim) {
+    if (filled) return;
+    if (decim < 1) decim = 1;
+    for (int i = 0; i < n; ++i) {
+        if (phase == 0 && wr < kScopeWidth) buf[wr++] = samples[i];
+        phase = (phase + 1) % decim;
+        if (wr >= kScopeWidth) { filled = true; break; }
+    }
+}
+
+// Returns the index of the first rising zero-crossing (prev < 0 <= cur), or 0
+// when none exists (untriggered fallback for DC or silence).
+inline int scope_trigger(const float* buf, int len) {
+    for (int i = 1; i < len; ++i) {
+        if (buf[i - 1] < 0.0f && buf[i] >= 0.0f) return i;
+    }
+    return 0;
+}
+
 }  // namespace verifier

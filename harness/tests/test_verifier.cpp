@@ -53,3 +53,28 @@ TEST_CASE("format_mv flags overflow with sentinel", "[verifier][fmt]") {
     REQUIRE(b[0] == '+');
     REQUIRE(std::string(b).find('#') != std::string::npos);
 }
+
+TEST_CASE("scope_push decimates and freezes when full", "[verifier][scope]") {
+    float buf[kScopeWidth];
+    int wr = 0, phase = 0; bool filled = false;
+    // 512 samples at decim=2 -> exactly 256 kept, then frozen.
+    float chunk[64];
+    for (int i = 0; i < 64; ++i) chunk[i] = (float)i;
+    int pushed = 0;
+    while (!filled && pushed < 16) { scope_push(buf, wr, phase, filled, chunk, 64, 2); ++pushed; }
+    REQUIRE(filled);
+    REQUIRE(wr == kScopeWidth);
+    // first kept sample is chunk[0]=0, decim=2 keeps even indices
+    REQUIRE(buf[0] == Catch::Approx(0.0f));
+    REQUIRE(buf[1] == Catch::Approx(2.0f));
+}
+
+TEST_CASE("scope_trigger finds first rising zero-cross", "[verifier][scope]") {
+    float buf[8] = {-1, -0.5f, 0.5f, 1, 0.5f, -0.5f, -1, 0.2f};
+    REQUIRE(scope_trigger(buf, 8) == 2);   // buf[1]<0, buf[2]>=0
+}
+
+TEST_CASE("scope_trigger falls back to 0 when no crossing", "[verifier][scope]") {
+    float buf[4] = {1, 1, 1, 1};   // DC, no rising zero-cross
+    REQUIRE(scope_trigger(buf, 4) == 0);
+}

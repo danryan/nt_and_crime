@@ -59,6 +59,10 @@ build/host/test_draw_text: harness/tests/test_draw_text.cpp $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
 
+build/host/test_verifier: harness/tests/test_verifier.cpp $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
+
 .PHONY: test-draw
 test-draw: build/host/test_draw_text
 	./build/host/test_draw_text

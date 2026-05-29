@@ -86,8 +86,11 @@ constexpr int kNumCvOutputs  = 4;
 constexpr int kNumTrigInputs = 4;
 constexpr int kIoParamCount  = kNumCvInputs + kNumCvOutputs + kNumTrigInputs;
 
-// Maximum app settings supported (Harrington1200 stores 37; cover headroom).
-constexpr int kMaxSettings = 64;
+// Maximum app settings supported. BYTEBEATGEN (APP_BYTEBEATGEN.h) is the first
+// app to exceed 64: it flattens 4 channels x 19 settings = 76 NT parameter rows.
+// 80 covers it with headroom. Raising this only enlarges the static per-instance
+// v_storage/parameters_storage arrays; no behavior change for smaller apps.
+constexpr int kMaxSettings = 80;
 
 // Total maximum parameter count.
 constexpr int kMaxParams = kIoParamCount + kMaxSettings;

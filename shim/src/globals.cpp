@@ -97,6 +97,11 @@ const char* const trigger_delay_times[kNumDelayTimes] = {
 // BBGEN (APP_BBGEN) settings labels. Vendor OC_strings.cpp:73,115.
 const char* const trigger_input_names[4] = { "TR1", "TR2", "TR3", "TR4" };
 const char* const no_yes[] = { "No", "Yes" };
+// BYTEBEATGEN (APP_BYTEBEATGEN) Equation setting labels. Vendor OC_strings.cpp:127.
+const char* const bytebeat_equation_names[] = {
+    "hope", "love", "life", "age", "clysm", "monk", "NERV", "Trurl",
+    "Pirx", "Snaut", "Hari", "Kris", "Tichy", "Bregg", "Avon", "Orac"
+};
 }
 // Trigger-delay tick counts. Vendor OC_strings.cpp:341 (namespace OC, not
 // OC::Strings). Harrington 1200's TriggerDelays::Process indexes this by the

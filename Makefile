@@ -378,7 +378,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -412,6 +412,13 @@ VENDOR_DEP_HOST_SRCS_Harrington1200 :=
 # partial-link object; host side: the vendor source compiled into the test.
 VENDOR_DEPS_BBGEN          := build/arm/vendor_src/peaks_resources.o
 VENDOR_DEP_HOST_SRCS_BBGEN := $(HEM_SRC_DIR)/peaks_resources.cpp
+
+# BYTEBEATGEN (APP_BYTEBEATGEN) links peaks_bytebeat.cpp (the bytebeat DSP
+# ProcessSingleSample/Clock implementation). The header peaks_bytebeat.h is not
+# header-only; the .cpp defines the equation engine. ARM side: the partial-link
+# object; host side: the vendor source compiled into the test.
+VENDOR_DEPS_BYTEBEATGEN          := build/arm/vendor_src/peaks_bytebeat.o
+VENDOR_DEP_HOST_SRCS_BYTEBEATGEN := $(HEM_SRC_DIR)/peaks_bytebeat.cpp
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

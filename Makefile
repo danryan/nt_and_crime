@@ -59,9 +59,9 @@ build/host/test_draw_text: harness/tests/test_draw_text.cpp $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
 
-build/host/test_verifier: harness/tests/test_verifier.cpp $(HARNESS_SRCS)
+build/host/test_verifier: harness/tests/test_verifier.cpp plugins/probes/Verifier.cpp plugins/probes/verifier_logic.h $(HARNESS_SRCS)
 	mkdir -p build/host
-	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ harness/tests/test_verifier.cpp plugins/probes/Verifier.cpp $(HARNESS_SRCS)
 
 .PHONY: test-draw
 test-draw: build/host/test_draw_text
@@ -151,6 +151,10 @@ build/arm/gain.o: vendor/distingNT_API/examples/gain.cpp
 build/arm/bus_probe.o: plugins/probes/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+
+build/arm/Verifier.o: plugins/probes/Verifier.cpp plugins/probes/verifier_logic.h
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ plugins/probes/Verifier.cpp
 
 build/arm/reentrancy_probe.o: plugins/probes/reentrancy_probe.cpp
 	mkdir -p build/arm
@@ -623,7 +627,7 @@ test-oc-app-%: build/host/test_oc_app_%
 test-oc-apps-all: $(addprefix build/host/test_oc_app_, $(PRESENT_OC_APPS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS) $(OC_APP_OBJS)
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Verifier.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS) $(OC_APP_OBJS)
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

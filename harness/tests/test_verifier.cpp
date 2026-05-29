@@ -1,9 +1,16 @@
 #include "catch.hpp"
 #include <string>
 #include <cstring>
+#include <cstdint>
 #include "../../plugins/probes/verifier_logic.h"
 
 using namespace verifier;
+
+// Declared by Verifier.cpp for host tests.
+enum { kP_View, kP_First, kP_Count, kP_Mode, kP_Reset, kP_ScopeBus, kP_Timebase };
+enum { kReset_Off = 0, kReset_On = 1 };
+extern "C" uintptr_t pluginEntry(_NT_selector selector, uint32_t data);
+float verifier_mean_for_test(_NT_algorithm* self, int row);
 
 TEST_CASE("reduction accumulates mean min max pkpk", "[verifier][reduce]") {
     Reduction r;
@@ -136,4 +143,50 @@ TEST_CASE("render_scope draws a trace within the screen", "[verifier][render]") 
         buf[i] = (i % 32 < 16) ? 1.0f : -1.0f;
     render_scope(buf, kScopeWidth, scope_trigger(buf, kScopeWidth), 5.0f);
     REQUIRE(lit_in_window(0, 0, 256, 64) > 0);
+}
+
+static const _NT_factory* verifier_factory() {
+    return (const _NT_factory*)pluginEntry(kNT_selector_factoryInfo, 0);
+}
+
+TEST_CASE("verifier registers a factory with the Vrfy guid", "[verifier][wrap]") {
+    const _NT_factory* f = verifier_factory();
+    REQUIRE(f != nullptr);
+    REQUIRE(f->guid == NT_MULTICHAR('V','r','f','y'));
+}
+
+TEST_CASE("verifier step accumulates the read bus; reset clears", "[verifier][wrap]") {
+    nt::reset_runtime();
+    const _NT_factory* f = verifier_factory();
+
+    _NT_algorithmRequirements req{};
+    int32_t specs[1] = {0};
+    f->calculateRequirements(req, specs);
+    static uint8_t sram[8192];
+    _NT_algorithmMemoryPtrs ptrs{};
+    ptrs.sram = sram;
+    _NT_algorithm* alg = f->construct(ptrs, req, specs);
+    REQUIRE(alg != nullptr);
+
+    int16_t v[16] = {0};
+    alg->v = v;
+    v[kP_View]     = 0;   // Numeric
+    v[kP_First]    = 13;
+    v[kP_Count]    = 1;
+    v[kP_Mode]     = 0;   // Mean
+    v[kP_Reset]    = 0;
+    v[kP_ScopeBus] = 13;
+    v[kP_Timebase] = 1;
+
+    int nf = nt::bus_frame_count();
+    float* b13 = nt::bus_pointer(13, nf);
+    for (int i = 0; i < nf; ++i) b13[i] = 2.0f;
+
+    f->step(alg, nt::bus_frames_base(), nf / 4);
+    f->step(alg, nt::bus_frames_base(), nf / 4);
+    REQUIRE(verifier_mean_for_test(alg, 0) == Catch::Approx(2.0f));
+
+    v[kP_Reset] = kReset_On;
+    f->parameterChanged(alg, kP_Reset);
+    REQUIRE(verifier_mean_for_test(alg, 0) == Catch::Approx(0.0f));
 }

@@ -42,3 +42,14 @@ def test_parse_scope_estimates_frequency_and_shape() -> None:
     # period 32 px, timebase 1 -> 48000 / 32 = 1500 Hz, within 10 percent.
     assert abs(result.frequency_hz - 1500.0) / 1500.0 < 0.1
     assert result.shape == "square"
+
+
+def test_parse_scope_blank_screen_is_flat_not_crash() -> None:
+    # A silent or disconnected scope bus leaves no lit pixels. The parser must
+    # report flat with zero frequency, not raise on max() of an empty series.
+    screen = _blank()
+    region = parser.ScopeRegion(x0=0, y0=0, width=256, height=64)
+    result = parser.parse_scope(screen, region, sample_rate=48000, timebase=1)
+    assert result.samples == ()
+    assert result.shape == "flat"
+    assert result.frequency_hz == 0.0

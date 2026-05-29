@@ -85,6 +85,8 @@ def _column_centroid(screen: list[int], region: ScopeRegion, x: int) -> float | 
 
 
 def _classify(samples: tuple[float, ...]) -> str:
+    if not samples:
+        return "flat"
     hi = max(samples)
     lo = min(samples)
     span = hi - lo

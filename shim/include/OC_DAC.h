@@ -119,6 +119,17 @@ inline void set(DAC_CHANNEL channel, uint32_t value) {
     detail::advance_history_tail();
 }
 
+// Vendor-named modulation aliases (vendor OC_DAC.h:53,237). MAX_VALUE is the
+// full-scale 16-bit code; get_zero_offset is the 0V code. The NT has no
+// per-channel calibration, so the offset ignores the channel; the parameter
+// exists for vendor signature parity. Modulation apps (BBGEN) write
+// get_zero_offset(ch) + value(0..MAX_VALUE-zero) for a unipolar 0V..+5V
+// envelope, which route_cv_output maps onto the bus.
+static constexpr uint16_t MAX_VALUE = kMaxValue;
+inline uint32_t get_zero_offset(DAC_CHANNEL /*channel*/) {
+    return static_cast<uint32_t>(kDacZeroCode);
+}
+
 template <DAC_CHANNEL &channel>
 inline void set(uint32_t value) {
     set(channel, value);

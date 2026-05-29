@@ -94,6 +94,9 @@ const char* const cv_input_names_none[] = {
 const char* const trigger_delay_times[kNumDelayTimes] = {
     "off", "120us", "240us", "360us", "480us", "1ms", "2ms", "4ms"
 };
+// BBGEN (APP_BBGEN) settings labels. Vendor OC_strings.cpp:73,115.
+const char* const trigger_input_names[4] = { "TR1", "TR2", "TR3", "TR4" };
+const char* const no_yes[] = { "No", "Yes" };
 }
 // Trigger-delay tick counts. Vendor OC_strings.cpp:341 (namespace OC, not
 // OC::Strings). Harrington 1200's TriggerDelays::Process indexes this by the

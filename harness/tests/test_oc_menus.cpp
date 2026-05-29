@@ -11,8 +11,11 @@
 #include <distingnt/api.h>
 
 #include "OC_menus.h"
+#include "OC_DAC.h"
 
 #include "util/util_settings.h"
+
+#include <cstring>
 
 // The widgets live in OC::menu, as the vendor lays them out; the vendor apps
 // reach them as `menu::` from inside `namespace OC` or via `using namespace OC`.
@@ -216,4 +219,28 @@ TEST_CASE("visualize_pitch_classes draws the tonnetz circle in bounds", "[oc_men
     OC::visualize_pitch_classes(normalized, 64, 32);
     // The circle is drawn around the center; some pixels are lit near it.
     REQUIRE(any_lit(32, 0, 96, 64));
+}
+
+TEST_CASE("OC::DAC exposes modulation full-scale constants", "[oc_menus][dac]") {
+    // Vendor OC_DAC.h:53,237. NT 16-bit convention: 0V at code 32768, full
+    // scale 65535. Modulation apps (BBGEN) bias their unipolar envelope by
+    // get_zero_offset and scale against MAX_VALUE.
+    REQUIRE(OC::DAC::MAX_VALUE == 65535);
+    REQUIRE(OC::DAC::get_zero_offset(DAC_CHANNEL_A) == 32768u);
+    REQUIRE(OC::DAC::get_zero_offset(DAC_CHANNEL_D) == 32768u);
+}
+
+TEST_CASE("OC::scope_render plots the four-quadrant DAC scope", "[oc_menus][scope]") {
+    nt::reset_runtime();
+    for (int pass = 0; pass < (int)OC::DAC::kHistoryDepth + 4; ++pass) {
+        OC::DAC::set(DAC_CHANNEL_A, 10000);
+        OC::DAC::set(DAC_CHANNEL_B, 30000);
+        OC::DAC::set(DAC_CHANNEL_C, 50000);
+        OC::DAC::set(DAC_CHANNEL_D, 60000);
+    }
+    std::memset(NT_screen, 0, 128 * 64);
+    for (int i = 0; i < 64; ++i) OC::scope_render();
+    int lit = 0;
+    for (int i = 0; i < 128 * 64; ++i) if (NT_screen[i] != 0) ++lit;
+    REQUIRE(lit > 0);
 }

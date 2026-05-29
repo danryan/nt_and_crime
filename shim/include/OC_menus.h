@@ -49,6 +49,11 @@ void visualize_pitch_classes(uint8_t *normalized, weegfx::coord_t centerx, weegf
 // Hand-ported in shim/src/oc/menus.cpp.
 void vectorscope_render();
 
+// Four-quadrant DAC output scope (vendor OC_menus.cpp:126). Averages each DAC
+// channel's history ring (scope_averaging<11,0x1f>) and plots channels 0..3 in
+// the four screen quadrants. Used by modulation-app screensavers (BBGEN).
+void scope_render();
+
 namespace menu {
 
 void Init();
@@ -192,6 +197,7 @@ public:
 // Common, default types (vendor OC_menus.h:273-274).
 using DefaultTitleBar = TitleBar<kDefaultMenuStartX, 1, 2>;
 using DualTitleBar = TitleBar<kDefaultMenuStartX, 2, 2>;
+using QuadTitleBar = TitleBar<kDefaultMenuStartX, 4, 6>;  // vendor OC_menus.h:275
 
 // A single drawn settings row (vendor OC_menus.h:283-407). The name renders at
 // the left, the value (or its enum label) right-aligned at endx, an edit icon

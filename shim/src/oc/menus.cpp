@@ -155,6 +155,22 @@ void vectorscope_render() {
   }
 }
 
+// Four-quadrant DAC output scope (vendor OC_menus.cpp:126-154, non-Teensy
+// non-NorthernLightModular branch). Averages each DAC channel's history ring
+// and plots channels 0..3 in the four screen quadrants. Used by modulation-app
+// screensavers (BBGEN).
+void scope_render() {
+  scope_averaging<11, 0x1f>();
+
+  for (weegfx::coord_t x = 0; x < static_cast<weegfx::coord_t>(kScopeDepth) - 1; ++x) {
+    size_t index = (x + averaged_scope_tail + 1) % kScopeDepth;
+    graphics.setPixel(x, 0 + averaged_scope_history[0][index]);
+    graphics.setPixel(64 + x, 0 + averaged_scope_history[2][index]);
+    graphics.setPixel(x, 32 + averaged_scope_history[1][index]);
+    graphics.setPixel(64 + x, 32 + averaged_scope_history[3][index]);
+  }
+}
+
 namespace menu {
 
 void Init() { }

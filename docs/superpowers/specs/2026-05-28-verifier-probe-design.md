@@ -3,7 +3,7 @@
 Date: 2026-05-28
 Issue: danryan/nt_and_crime#37
 Vendor SHA (O_C-Phazerville): 7800d929 (not consumed by this work; Verifier is bespoke, no vendor applet)
-NT API: vendor/distingNT_API (bus float ABI, NT_drawText, NT_drawShapeI, NT_screen)
+NT API: vendor/distingNT_API (bus float ABI, NT_drawShapeI, NT_screen)
 
 ## Purpose
 
@@ -74,7 +74,6 @@ Deferred to a hardware session:
 - Real fixture capture from the device.
 - The loopback assertion (plug-in-under-test output to Verifier input).
 - Device ADC/DAC tolerance characterization.
-- Custom font templates only if the firmware font proves ambiguous (see Font).
 
 Out of scope (Tier 2, issue #35):
 
@@ -154,8 +153,8 @@ Numeric view layout (fixed, parser-designed):
 - One row per selected bus, top to bottom, row height 10 px (fits 6 rows in 64).
 - Each row: bus label at a fixed x, then the signed voltage formatted `sNN.fff`
   (sign, two integer digits, decimal point, three fractional digits), one glyph
-  per fixed 6 px column slot using the firmware fixed font (6x8) via
-  `NT_drawText`. Seven glyph cells, fixed positions.
+  per fixed 6 px column slot using Verifier's own 6x8 bitmap font (see Font).
+  Seven glyph cells, fixed positions.
 - Leading zeros are printed, never trimmed, so every glyph cell stays at a fixed
   x for the parser (for example `+01.000`, `-00.250`).
 - Two integer digits cover the full NT bus swing (+-10 V and beyond, up to
@@ -170,10 +169,10 @@ division and render it. This follows the manual integer-formatting precedent in
 available for whole-number labels but does not produce the fixed-width
 fractional layout, so the digit extraction is hand-rolled.
 
-The parser recovers each digit by template-matching the firmware font glyph at
-its known `(x, y)` cell. Because the firmware font is a fixed bitmap rendered
-pixel-exact (the repo's byte-identical .text discipline and `test_draw_text`
-guarantee determinism), the template match is unambiguous.
+The parser recovers each digit by template-matching Verifier's own font glyph at
+its known `(x, y)` cell. Because Verifier defines the font and draws it pixel by
+pixel, the bitmap is identical in the host sim and on hardware, and the template
+match is unambiguous.
 
 Scope view layout:
 
@@ -186,21 +185,33 @@ Scope view layout:
   silence), fall back to rendering untriggered from the buffer start, so a flat
   or non-periodic signal still draws a well-defined trace.
 
-### Font decision (flagged for review)
+### Font decision
 
-Recommendation: use the firmware fixed font through `NT_drawText` rather than a
-hand-rolled bitmap font. Rationale:
+Verifier draws its own fixed 6x8 bitmap font, not the firmware font through
+`NT_drawText`. The glyph table (digits `0`-`9`, `+`, `-`, `.`, and a `#`
+overflow sentinel) lives in `verifier_logic.h`; each glyph is a 5-wide pattern
+in a 6 px cell, 7 rows tall in an 8 px cell. `draw_glyph` lights each set pixel
+via `NT_drawShapeI(kNT_point, x, y, x, y)`.
 
-- It is already a fixed, deterministic bitmap font (6x8), rendered pixel-exact.
-- `test_draw_text` already exercises its rendering in the sim.
-- Less code on the device, smaller `.text`.
-- The parser-triviality goal (template-match at known positions) is met by
-  controlling the layout, which Verifier does regardless of which font draws
-  the glyphs.
+Why not `NT_drawText`:
 
-Fallback: hand-roll a custom digit font only if the firmware font's digit
-glyphs prove ambiguous at this resolution. Deferred to the hardware session,
-where a real fixture settles it.
+- The host sim's `NT_drawText` font (`harness/src/font_placeholder.cpp`) is a
+  placeholder: every glyph is an identical solid block. In-sim digit recovery
+  cannot be tested against it.
+- The firmware's own font bitmaps are opaque to the host parser, so an
+  `NT_drawText` readout could never be hardware-valid without a separate
+  font-capture step on hardware.
+
+A self-drawn font removes both problems: the glyph bitmaps are identical in the
+sim and on hardware (Verifier writes the pixels itself), so the parser templates
+are repo-defined and hardware-valid immediately, with no deferred font
+confirmation.
+
+Nibble order: Verifier never hand-packs `NT_screen`. It draws through
+`NT_drawShapeI`, whose `set_pixel` is supplied by the active backend (the sim in
+tests, the firmware on hardware), so pixels land correctly on both despite the
+sim and shim packing opposite nibbles. The parser is immune regardless: it reads
+the firmware-unpacked 16384-byte screenshot, one byte per pixel.
 
 ## Host parser (python)
 
@@ -209,7 +220,7 @@ Pure functions over a 256x64 grayscale array (the `nt_screenshot.capture`
 output, or a fixture).
 
 - `parse_numeric(screen, layout) -> dict[int, float]`: for each row, read the
-  glyph cells at known positions, template-match the firmware font digit
+  glyph cells at known positions, template-match Verifier's own font digit
   bitmaps, assemble the signed voltage. Returns bus -> volts.
 - `parse_scope(screen, region, sample_rate, timebase) -> ScopeResult`:
   per-column lit-y to a sample series; derive coarse shape (sine, square, saw,
@@ -218,10 +229,12 @@ output, or a fixture).
   screenshot does not carry the sample rate or timebase, so the harness passes
   them (it set the timebase and knows the rate).
 
-The firmware font digit bitmaps are a small checked-in template set
-(`harness/verifier/font.py` or a data file), extracted once from a known
-rendering. This session builds them from the sim's rendering of the firmware
-font; the hardware session confirms them against a real screenshot.
+The font digit bitmaps are Verifier's own glyph table, the single source of
+truth in `verifier_logic.h`. A small C++ dump tool emits them to
+`harness/verifier/fixtures/font.json`, which `harness/verifier/font.py` loads as
+the parser's templates. Because Verifier draws exactly these bitmaps on both the
+sim and hardware, the templates are hardware-valid with no deferred confirmation
+step.
 
 Transport: the harness captures via `harness/scripts/nt_screenshot.py`
 (`capture()`, direct SysEx), not the `show_screen` MCP tool. The MCP tool is
@@ -238,11 +251,12 @@ C++ (Catch2, nt_runtime sim), new `harness/tests/test_verifier.cpp`:
   into `busFrames` before Verifier's `step` models the upstream plug-in-under-
   test, so the in-preset direct-read topology is fully sim-testable without a
   multi-slot sim. Assert that a Reset edge clears the accumulators.
-- Numeric render: set known voltages, run `draw`, assert the lit pixels at each
-  glyph cell match the expected firmware font digit bitmap. Account for the sim
-  nibble order (see [[project_nt_runtime_nibble_order]]: the host sim packs
-  NT_screen nibbles opposite to shim/hardware; read the shim convention in
-  pixel assertions).
+- Numeric render: set known voltages, run `draw`, assert glyph cells are lit and
+  that two values differing in one digit produce a different lit pattern in that
+  digit's cell (value-dependence). Verifier draws via `NT_drawShapeI(kNT_point)`,
+  so the sim/shim opposite-nibble packing (see
+  [[project_nt_runtime_nibble_order]]) does not bite: the pixel-read helper uses
+  the sim's own convention, matching what the sim's `set_pixel` wrote.
 - Scope render: inject a known periodic buffer, run `draw`, assert the trace
   lit-pixel column profile matches the expected mapping.
 
@@ -252,8 +266,8 @@ rule). Mirror `test_applet_%`. The plan settles the exact rule.
 python (pytest), new `harness/verifier/tests/test_parser.py`:
 
 - `parse_numeric` recovers known voltages from synthetic fixtures built by
-  rendering the firmware font glyphs at the layout positions. Faithful because
-  the layout and font are the ones Verifier renders.
+  stamping Verifier's own font glyphs (from font.json) at the layout positions.
+  Faithful because the layout and font are the ones Verifier renders.
 - `parse_scope` recovers shape and frequency from synthetic traces.
 
 pytest is added as a dev dependency (first python test suite in the repo).
@@ -300,7 +314,7 @@ Recipe spot-check:
 - Verifier mirrors `plugins/probes/bus_probe.cpp` structurally
   (struct/params/pages/calculateRequirements/construct/parameterChanged/step/
   draw/factory/pluginEntry). Confirmed against the file in this repo.
-- `NT_screen`, `NT_drawText`, `NT_drawShapeI`, `NT_intToString` confirmed in
+- `NT_screen`, `NT_drawShapeI` (with `kNT_point`) confirmed in
   `vendor/distingNT_API/include/distingnt/api.h`.
 
 Per-entry verification (three readings traced end to end):
@@ -320,9 +334,9 @@ build, audit the layout and measurement math before proceeding.
 Shim prereq verification:
 
 - No new shim surface is required. Verifier uses only the NT API
-  (`NT_screen`, `NT_drawText`, `NT_drawShapeI`, `NT_intToString`) and the bus
-  float ABI, all already present. Confirmed: no `shim/include` additions, no
-  icon stubs, no manifest (Verifier is not an applet or O_C app).
+  (`NT_screen`, `NT_drawShapeI`) and the bus float ABI, all already present.
+  Confirmed: no `shim/include` additions, no icon stubs, no manifest (Verifier
+  is not an applet or O_C app).
 
 ## Canonical recipe recap (adding a similar instrument later)
 
@@ -330,8 +344,8 @@ Shim prereq verification:
 2. Define parameters covering View and the read subset; keep every behavior
    parameter-driven for SysEx control.
 3. `step` reads input buses (volts) and reduces over the window; no bus writes.
-4. `draw` renders a fixed, parser-designed layout via `NT_drawText` and
-   `NT_drawShapeI`.
+4. `draw` renders a fixed, parser-designed layout with a self-drawn bitmap font
+   via `NT_drawShapeI(kNT_point)`.
 5. Add the ARM build rule and the `arm:` target slot.
 6. Add a Catch2 host test (measurement math plus rendered pixels) and a python
    parser with pytest fixtures.

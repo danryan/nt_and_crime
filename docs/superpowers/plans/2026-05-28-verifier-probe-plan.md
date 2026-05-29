@@ -4,7 +4,7 @@
 
 **Goal:** Build the Verifier, an on-device NT measurement plug-in that reads any bus and renders a deterministic, screenshot-parseable readout, plus the host python parser that recovers the values.
 
-**Architecture:** Pure measurement and formatting logic in a header (`verifier_logic.h`), a thin `_NT_algorithm` wrapper (`Verifier.cpp`) that wires parameters and buses to that logic and renders via `NT_drawText`/`NT_drawShapeI`, a C++ font-dump tool that captures the harness font as the parser's template source, and a python parser package that template-matches the readout. TDD throughout: pure logic and pixel positioning in Catch2, digit and shape recovery in pytest.
+**Architecture:** Pure measurement and formatting logic in a header (`verifier_logic.h`), including a self-drawn 6x8 bitmap font rendered via `NT_drawShapeI(kNT_point)`; a thin `_NT_algorithm` wrapper (`Verifier.cpp`) that wires parameters and buses to that logic; a C++ tool that emits the glyph table to font.json as the parser's template source; and a python parser package that template-matches the readout. TDD throughout: pure logic and pixel rendering in Catch2, digit and shape recovery in pytest.
 
 **Tech Stack:** C++17 (shim toolchain, Catch2, nt_runtime sim), python3 (pytest, the existing `mido` screenshot path), Make.
 
@@ -21,7 +21,7 @@ Sequential, not parallel. This is one cohesive unit (one plug-in, one parser) wi
 - Create `plugins/probes/verifier_logic.h`: pure reductions, millivolt formatting, scope decimation and trigger, plus the two render helpers that call the NT draw API. One responsibility: the measurement and rendering primitives, free of the `_NT_algorithm` lifecycle.
 - Create `plugins/probes/Verifier.cpp`: the `_NT_algorithm` wrapper. Struct, parameter table, lifecycle callbacks, `pluginEntry`. Wires params and buses to the header.
 - Create `harness/tests/test_verifier.cpp`: Catch2 tests for the pure logic and the rendered pixels.
-- Create `harness/tools/dump_font.cpp`: renders the glyph set via `NT_drawText` and writes `harness/verifier/fixtures/font.json`.
+- Create `harness/tools/dump_font.cpp`: emits Verifier's own glyph table to `harness/verifier/fixtures/font.json`.
 - Create `harness/verifier/__init__.py`, `harness/verifier/font.py`, `harness/verifier/parser.py`: the python parser package.
 - Create `harness/verifier/tests/test_parser.py`: pytest for the parser.
 - Create `harness/verifier/fixtures/font.json`: generated, the parser's template source.
@@ -346,7 +346,7 @@ git commit -m "feat(verifier): scope decimation and zero-cross trigger"
 - Modify: `plugins/probes/verifier_logic.h`
 - Modify: `harness/tests/test_verifier.cpp`
 
-The render helpers call `NT_drawText`/`NT_drawShapeI`, provided in the host build by `harness/src/nt_runtime.cpp`. The C++ test asserts positioning and determinism, not exact glyph bitmaps; digit recovery is the python parser's job (Task 7). `NT_screen` is `128*64` bytes, 4 bits per pixel, two pixels per byte. The sim packs nibbles in the opposite order to hardware (see the project memory note on nt_runtime nibble order); the helper below reads a pixel through the sim's own convention, so it stays correct regardless.
+Verifier draws its own fixed 6x8 bitmap font, not the firmware font through `NT_drawText`. The sim's `NT_drawText` font is a placeholder (every glyph an identical solid block, `harness/src/font_placeholder.cpp`), and the firmware font is opaque to the parser, so a self-drawn font is required for in-sim and hardware-valid digit recovery. Verifier lights each glyph pixel via `NT_drawShapeI(kNT_point, x, y, x, y)`, routing through the active backend's `set_pixel` (the sim in tests, the firmware on hardware), so it is correct on both despite the sim and shim packing opposite nibbles. `render_scope` uses `kNT_line`. The C++ test asserts cells are lit and value-dependent; full digit recovery is the python parser's job (Task 7). The `lit_in_window` reader uses the sim's nibble convention (odd x -> high nibble), matching the sim's `set_pixel`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -355,13 +355,13 @@ Append to `harness/tests/test_verifier.cpp`:
 ```cpp
 #include "nt_runtime.h"
 
-// Count lit pixels in a [x0,x1) x [y0,y1) screen window. Reads both nibbles;
-// any nonzero nibble is a lit pixel, matching test_draw_text's counter.
+// Count lit pixels in a [x0,x1) x [y0,y1) screen window, using the sim's nibble
+// convention (odd x -> high nibble), matching nt_runtime's set_pixel.
 static int lit_in_window(int x0, int y0, int x1, int y1) {
     int count = 0;
     for (int y = y0; y < y1; ++y) {
         for (int x = x0; x < x1; ++x) {
-            int byte = (y * 256 + x) / 2;
+            int byte = y * 128 + (x >> 1);
             uint8_t b = NT_screen[byte];
             uint8_t nib = (x & 1) ? (b >> 4) : (b & 0x0f);
             if (nib) ++count;
@@ -370,35 +370,39 @@ static int lit_in_window(int x0, int y0, int x1, int y1) {
     return count;
 }
 
-TEST_CASE("render_numeric places a value glyph block per row", "[verifier][render]") {
+TEST_CASE("render_numeric lights a glyph in each value cell per row", "[verifier][render]") {
     nt::reset_runtime();
     const int   buses[2]  = {13, 14};
     const float values[2] = {1.000f, -0.250f};
     render_numeric(buses, values, 2);
-    // Row 0 value glyphs occupy x in [kValueX, kValueX + kValueChars*kGlyphW).
     int row0 = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
     int row1 = lit_in_window(kValueX, kRowH, kValueX + kValueChars * kGlyphW, 2 * kRowH);
     REQUIRE(row0 > 0);
     REQUIRE(row1 > 0);
 }
 
-TEST_CASE("render_numeric is deterministic and value-dependent", "[verifier][render]") {
-    nt::reset_runtime();
-    const int buses[1] = {1};
-    const float v1[1] = {1.000f};
-    render_numeric(buses, v1, 1);
-    int a = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
+TEST_CASE("render_numeric is deterministic and digit-dependent per cell", "[verifier][render]") {
+    // The last fraction cell holds '0' for +00.000 and '1' for +00.001.
+    // Distinct glyphs -> distinct lit-pixel counts in that one cell.
+    const int   buses[1] = {1};
+    const int   cell_x   = kValueX + 6 * kGlyphW;   // 7th glyph (last fraction digit)
 
     nt::reset_runtime();
-    render_numeric(buses, v1, 1);
-    int a2 = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
-    REQUIRE(a == a2);   // deterministic
+    const float v0[1] = {0.000f};
+    render_numeric(buses, v0, 1);
+    int zero_cell  = lit_in_window(cell_x, 0, cell_x + kGlyphW, kRowH);
 
     nt::reset_runtime();
-    const float v2[1] = {-7.654f};
-    render_numeric(buses, v2, 1);
-    int b = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
-    REQUIRE(b != a);    // different value, different glyphs
+    render_numeric(buses, v0, 1);
+    int zero_again = lit_in_window(cell_x, 0, cell_x + kGlyphW, kRowH);
+    REQUIRE(zero_cell == zero_again);     // deterministic
+
+    nt::reset_runtime();
+    const float v1[1] = {0.001f};
+    render_numeric(buses, v1, 1);
+    int one_cell = lit_in_window(cell_x, 0, cell_x + kGlyphW, kRowH);
+    REQUIRE(one_cell != zero_cell);       // '1' glyph differs from '0' glyph
+    REQUIRE(one_cell > 0);
 }
 
 TEST_CASE("render_scope draws a trace within the screen", "[verifier][render]") {
@@ -414,13 +418,51 @@ TEST_CASE("render_scope draws a trace within the screen", "[verifier][render]") 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `make build/host/test_verifier`
-Expected: FAIL, `render_numeric` / `render_scope` / `volts_to_y` undefined.
+Expected: FAIL, `render_numeric` / `render_scope` / `volts_to_y` / `glyph_for` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `plugins/probes/verifier_logic.h` inside the namespace:
+Add to `plugins/probes/verifier_logic.h` inside the namespace. The font is a 5-wide pattern in a 6 px cell, 7 rows in an 8 px cell; each row's low 5 bits are columns (bit 4 = leftmost). This table is the single source of truth the font-dump tool (Task 6) emits to font.json.
 
 ```cpp
+// 6x8 bitmap font. Index by glyph char via glyph_for(); each entry is 8 rows,
+// low 5 bits per row (bit 4 = leftmost column). Column 5 and row 7 are blank.
+struct Glyph { uint8_t rows[8]; };
+
+inline const Glyph& glyph_for(char c) {
+    static const Glyph blank   = {{0,0,0,0,0,0,0,0}};
+    static const Glyph digits[10] = {
+        {{0x0E,0x11,0x13,0x15,0x19,0x11,0x0E,0x00}}, // 0
+        {{0x04,0x0C,0x04,0x04,0x04,0x04,0x0E,0x00}}, // 1
+        {{0x0E,0x11,0x01,0x02,0x04,0x08,0x1F,0x00}}, // 2
+        {{0x1F,0x02,0x04,0x02,0x01,0x11,0x0E,0x00}}, // 3
+        {{0x02,0x06,0x0A,0x12,0x1F,0x02,0x02,0x00}}, // 4
+        {{0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E,0x00}}, // 5
+        {{0x06,0x08,0x10,0x1E,0x11,0x11,0x0E,0x00}}, // 6
+        {{0x1F,0x01,0x02,0x04,0x08,0x08,0x08,0x00}}, // 7
+        {{0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E,0x00}}, // 8
+        {{0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C,0x00}}, // 9
+    };
+    static const Glyph plus    = {{0x00,0x04,0x04,0x1F,0x04,0x04,0x00,0x00}};
+    static const Glyph minus   = {{0x00,0x00,0x00,0x1F,0x00,0x00,0x00,0x00}};
+    static const Glyph dot     = {{0x00,0x00,0x00,0x00,0x00,0x06,0x06,0x00}};
+    static const Glyph sentinel= {{0x1F,0x1F,0x1F,0x1F,0x1F,0x1F,0x1F,0x1F}};
+    if (c >= '0' && c <= '9') return digits[c - '0'];
+    if (c == '+') return plus;
+    if (c == '-') return minus;
+    if (c == '.') return dot;
+    if (c == '#') return sentinel;
+    return blank;
+}
+
+inline void draw_glyph(int x0, int y0, char c) {
+    const Glyph& g = glyph_for(c);
+    for (int row = 0; row < 8; ++row)
+        for (int col = 0; col < 5; ++col)
+            if (g.rows[row] & (1 << (4 - col)))
+                NT_drawShapeI(kNT_point, x0 + col, y0 + row, x0 + col, y0 + row, 15);
+}
+
 inline int volts_to_y(float v, float vscale) {
     if (vscale <= 0.0f) vscale = 5.0f;
     float t = 0.5f - (v / (2.0f * vscale));   // +vscale -> top (0), -vscale -> bottom
@@ -432,15 +474,13 @@ inline int volts_to_y(float v, float vscale) {
 
 inline void render_numeric(const int* buses, const float* values, int count) {
     char buf[8];
-    char lbl[3];
     for (int row = 0; row < count; ++row) {
-        int y = row * kRowH + 8;
-        lbl[0] = (char)('0' + (buses[row] / 10) % 10);
-        lbl[1] = (char)('0' + (buses[row] % 10));
-        lbl[2] = 0;
-        NT_drawText(0, y, lbl);
+        int y0 = row * kRowH;
+        draw_glyph(0, y0, (char)('0' + (buses[row] / 10) % 10));
+        draw_glyph(kGlyphW, y0, (char)('0' + (buses[row] % 10)));
         format_mv(volts_to_millivolts(values[row]), buf);
-        NT_drawText(kValueX, y, buf);
+        for (int i = 0; i < kValueChars; ++i)
+            draw_glyph(kValueX + i * kGlyphW, y0, buf[i]);
     }
 }
 
@@ -458,7 +498,7 @@ inline void render_scope(const float* buf, int len, int trig, float vscale) {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `make build/host/test_verifier && ./build/host/test_verifier '[render]'`
-Expected: PASS, 3 cases.
+Expected: PASS, 3 cases. Then full suite `./build/host/test_verifier`, expect 12 cases.
 
 - [ ] **Step 5: Commit**
 
@@ -733,39 +773,31 @@ git commit -m "feat(verifier): _NT_algorithm wrapper, params, ARM build"
 - Modify: `Makefile` (add `build/host/dump_font` rule)
 - Create: `harness/verifier/fixtures/font.json` (generated)
 
-The python parser needs the firmware font glyph bitmaps as templates. This tool renders the glyph set via the harness `NT_drawText` and emits each glyph's 6x8 cell so the parser template-matches against the same font the device renders. The dump is sim-derived now; the hardware session confirms it against a real screenshot.
+The python parser needs Verifier's glyph bitmaps as templates. Verifier's `glyph_for` table (Task 4) is the single source of truth. This tool includes `verifier_logic.h` and emits each glyph's 6x8 cell (expanded from the 5-bit rows: column 5 and row 7 blank) to font.json. No rendering or screen readback is involved, so there is no nibble-order concern, and because Verifier draws exactly this table on both sim and hardware, the templates are hardware-valid.
 
 - [ ] **Step 1: Write the tool**
 
 Create `harness/tools/dump_font.cpp`:
 
 ```cpp
-// Renders the Verifier glyph set via NT_drawText and prints a JSON map of
-// glyph -> 6x8 bitmap (row-major, 1 per lit pixel). Stdout is redirected to
-// harness/verifier/fixtures/font.json by the Makefile.
+// Emits Verifier's own glyph table (verifier_logic.h glyph_for) as a JSON map
+// of glyph -> 6x8 bitmap (row-major, 48 ints). Single source of truth shared
+// with the device render. Stdout is redirected to font.json by the Makefile.
 #include <cstdio>
-#include <cstdint>
-#include <distingnt/api.h>
-#include "nt_runtime.h"
+#include "../../plugins/probes/verifier_logic.h"
 
-static int pixel(int x, int y) {
-    int byte = (y * 256 + x) / 2;
-    uint8_t b = NT_screen[byte];
-    uint8_t nib = (x & 1) ? (b >> 4) : (b & 0x0f);
-    return nib ? 1 : 0;
-}
+using namespace verifier;
 
 int main() {
     const char* glyphs = "0123456789+-.#";
     printf("{\n");
     for (const char* g = glyphs; *g; ++g) {
-        nt::reset_runtime();
-        char s[2] = { *g, 0 };
-        NT_drawText(0, 8, s);   // same baseline y as render_numeric row 0
+        const Glyph& gl = glyph_for(*g);
         printf("  \"%c\": [", *g);
         for (int y = 0; y < 8; ++y) {
             for (int x = 0; x < 6; ++x) {
-                printf("%d", pixel(x, y));
+                int bit = (x < 5) ? ((gl.rows[y] >> (4 - x)) & 1) : 0;
+                printf("%d", bit);
                 if (!(y == 7 && x == 5)) printf(",");
             }
         }
@@ -778,12 +810,12 @@ int main() {
 
 - [ ] **Step 2: Add the Makefile rule and generate**
 
-Add near the host-test rules:
+This tool needs no harness sources (pure header). Add near the host-test rules:
 
 ```makefile
-build/host/dump_font: harness/tools/dump_font.cpp $(HARNESS_SRCS)
+build/host/dump_font: harness/tools/dump_font.cpp plugins/probes/verifier_logic.h
 	mkdir -p build/host
-	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ harness/tools/dump_font.cpp
 
 harness/verifier/fixtures/font.json: build/host/dump_font
 	mkdir -p harness/verifier/fixtures
@@ -791,15 +823,13 @@ harness/verifier/fixtures/font.json: build/host/dump_font
 ```
 
 Run: `make harness/verifier/fixtures/font.json && cat harness/verifier/fixtures/font.json`
-Expected: a JSON object with keys `0`-`9`, `+`, `-`, `.`, `#`, each a 48-int array. Each digit has at least one lit pixel.
-
-Note: the glyph baseline y used here (`NT_drawText(0, 8, ...)`) must match the y `render_numeric` uses for row 0 (`row*kRowH + 8` = 8). If the font cell spans rows differently, widen the dump window; the python layout (Task 7) reads the same cell geometry.
+Expected: a JSON object with keys `0`-`9`, `+`, `-`, `.`, `#`, each a 48-int array (6 wide, 8 tall, row-major). Each digit has at least one lit pixel; the four glyphs `0`,`1`,`8`,`#` are all distinct.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add harness/tools/dump_font.cpp harness/verifier/fixtures/font.json Makefile
-git commit -m "feat(verifier): font-dump tool and sim-derived font fixture"
+git commit -m "feat(verifier): font-dump tool emitting the glyph table"
 ```
 
 ---
@@ -871,9 +901,10 @@ Expected: FAIL, `harness.verifier.font` / `parser` import error.
 Create `harness/verifier/font.py`:
 
 ```python
-"""Firmware font glyph templates, loaded from the sim-derived font.json.
+"""Verifier's own font glyph templates, loaded from font.json.
 
-Hardware-confirm: re-dump from a real screenshot if on-device parsing misses.
+font.json is emitted from the verifier_logic.h glyph table, which the device
+draws verbatim on both sim and hardware, so these templates are hardware-valid.
 """
 from __future__ import annotations
 
@@ -1116,7 +1147,7 @@ git commit -m "chore(verifier): test-verifier target and suite wiring"
 - Deploy `build/arm/Verifier.o` via `make deploy-sysex`, confirm it registers (GUID `Vrfy`) and ADDs to a preset.
 - In-preset direct read: load a plug-in-under-test plus Verifier (Verifier after it in slot order), screenshot, parse, assert. (Sim coverage exists via bus injection; hardware confirms slot-order behavior.)
 - Physical loopback: patch an output jack to a Verifier input jack, assert the analog path.
-- Confirm `font.json` (sim-derived) matches a real screenshot; regenerate from a real capture if digits misparse.
+- Confirm the device renders the glyph table to the screen as expected (the font is repo-defined and identical sim/hardware by construction, so no font regeneration is expected; this is a transport sanity check, not a font-capture step).
 - Confirm the bus-to-volts assumption (1.0f equals 1 V) by feeding a known DC level through `bus_probe`.
 
 ## Self-review
@@ -1126,9 +1157,9 @@ Spec coverage:
 - Reductions (Mean/Min/Max/PkPk), latched, double sum: Task 1.
 - Millivolt fixed-width formatting, no snprintf, overflow sentinel: Task 2.
 - Scope decimation to a bounded 256-sample buffer, zero-cross trigger with fallback: Task 3.
-- Numeric and scope render via NT_drawText/NT_drawShapeI; firmware fixed font: Task 4.
+- Numeric and scope render via a self-drawn 6x8 bitmap font and `NT_drawShapeI`: Task 4.
 - `_NT_algorithm` wrapper, all SysEx params, Reset edge in parameterChanged, ARM build, GUID Vrfy: Task 5.
-- Font templates from the firmware font: Task 6.
+- Font templates emitted from the glyph table to font.json: Task 6.
 - parse_numeric template match: Task 7. parse_scope shape and frequency with sample_rate plus timebase: Task 8.
 - Build wiring (ARM rule, arm: target, host-test rule, pytest dep, convenience target): Tasks 1, 5, 9.
 - Hazards: numParameters = ARRAY_SIZE (Task 5), no NT_setParameterFromUi (Task 5), no serialise (none added), bounded SRAM (Task 3/5), .text budget check (Task 9).

@@ -78,3 +78,59 @@ TEST_CASE("scope_trigger falls back to 0 when no crossing", "[verifier][scope]")
     float buf[4] = {1, 1, 1, 1};   // DC, no rising zero-cross
     REQUIRE(scope_trigger(buf, 4) == 0);
 }
+
+#include "nt_runtime.h"
+
+// Count lit pixels in a [x0,x1) x [y0,y1) screen window. Reads both nibbles;
+// any nonzero nibble is a lit pixel, matching test_draw_text's counter.
+static int lit_in_window(int x0, int y0, int x1, int y1) {
+    int count = 0;
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            int byte = (y * 256 + x) / 2;
+            uint8_t b = NT_screen[byte];
+            uint8_t nib = (x & 1) ? (b >> 4) : (b & 0x0f);
+            if (nib) ++count;
+        }
+    }
+    return count;
+}
+
+TEST_CASE("render_numeric places a value glyph block per row", "[verifier][render]") {
+    nt::reset_runtime();
+    const int   buses[2]  = {13, 14};
+    const float values[2] = {1.000f, -0.250f};
+    render_numeric(buses, values, 2);
+    int row0 = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
+    int row1 = lit_in_window(kValueX, kRowH, kValueX + kValueChars * kGlyphW, 2 * kRowH);
+    REQUIRE(row0 > 0);
+    REQUIRE(row1 > 0);
+}
+
+TEST_CASE("render_numeric is deterministic and value-dependent", "[verifier][render]") {
+    nt::reset_runtime();
+    const int buses[1] = {1};
+    const float v1[1] = {1.000f};
+    render_numeric(buses, v1, 1);
+    int a = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
+
+    nt::reset_runtime();
+    render_numeric(buses, v1, 1);
+    int a2 = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
+    REQUIRE(a == a2);
+
+    nt::reset_runtime();
+    const float v2[1] = {-7.654f};
+    render_numeric(buses, v2, 1);
+    int b = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
+    REQUIRE(b != a);
+}
+
+TEST_CASE("render_scope draws a trace within the screen", "[verifier][render]") {
+    nt::reset_runtime();
+    float buf[kScopeWidth];
+    for (int i = 0; i < kScopeWidth; ++i)
+        buf[i] = (i % 32 < 16) ? 1.0f : -1.0f;
+    render_scope(buf, kScopeWidth, scope_trigger(buf, kScopeWidth), 5.0f);
+    REQUIRE(lit_in_window(0, 0, 256, 64) > 0);
+}

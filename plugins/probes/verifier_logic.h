@@ -97,4 +97,37 @@ inline int scope_trigger(const float* buf, int len) {
     return 0;
 }
 
+inline int volts_to_y(float v, float vscale) {
+    if (vscale <= 0.0f) vscale = 5.0f;
+    float t = 0.5f - (v / (2.0f * vscale));   // +vscale -> top (0), -vscale -> bottom
+    int y = (int)(t * 63.0f + 0.5f);
+    if (y < 0) y = 0;
+    if (y > 63) y = 63;
+    return y;
+}
+
+inline void render_numeric(const int* buses, const float* values, int count) {
+    char buf[8];
+    char lbl[3];
+    for (int row = 0; row < count; ++row) {
+        int y = row * kRowH + 8;
+        lbl[0] = (char)('0' + (buses[row] / 10) % 10);
+        lbl[1] = (char)('0' + (buses[row] % 10));
+        lbl[2] = 0;
+        NT_drawText(0, y, lbl);
+        format_mv(volts_to_millivolts(values[row]), buf);
+        NT_drawText(kValueX, y, buf);
+    }
+}
+
+inline void render_scope(const float* buf, int len, int trig, float vscale) {
+    int prev_y = volts_to_y(buf[trig % len], vscale);
+    for (int x = 1; x < len && x < 256; ++x) {
+        int idx = (trig + x) % len;
+        int y = volts_to_y(buf[idx], vscale);
+        NT_drawShapeI(kNT_line, x - 1, prev_y, x, y);
+        prev_y = y;
+    }
+}
+
 }  // namespace verifier

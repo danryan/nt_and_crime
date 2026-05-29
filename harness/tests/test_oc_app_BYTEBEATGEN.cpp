@@ -20,6 +20,7 @@
 #include "OC_core.h"
 
 #include <cstring>
+#include <cmath>
 #include <string>
 
 // Test seams defined in plugins/apps/BYTEBEATGEN.cpp.
@@ -121,7 +122,7 @@ TEST_CASE("BYTEBEATGEN settings round-trip per channel and gap-free", "[oc_app][
     }
 }
 
-TEST_CASE("BYTEBEATGEN free-running output stays in +-5V and moves", "[oc_app][bytebeatgen][isr]") {
+TEST_CASE("BYTEBEATGEN free-running output is full-scale within +-5V", "[oc_app][bytebeatgen][isr]") {
     nt::reset_runtime();
     nt::LoadedPlugin* p = nt::load_plugin();
     REQUIRE(p != nullptr);
@@ -130,26 +131,33 @@ TEST_CASE("BYTEBEATGEN free-running output stays in +-5V and moves", "[oc_app][b
     nt::set_bus_frame_count(numFrames);
 
     // Channel A -> CV out A -> default bus 13. Bytebeat is free-running (step_mode
-    // off by default), so the output advances every sample without a trigger. It
-    // is BIPOLAR full-scale modulation: value = zero_offset(32768) + (int16_t)b,
-    // spanning -5V..+5V. This guards the 16-bit DAC code model (not the pitch
-    // /1536 path, which would rail the output).
+    // off by default), so the output advances every sample without a trigger. The
+    // sample reaches the DAC as value = zero_offset(32768) + (int16_t)b, routed by
+    // the 16-bit code model to +-5V full scale. The default equation ("hope")
+    // occupies the positive half of that span; what matters for the regression
+    // guard is that the output is FULL-SCALE modulation, not the pitch /1536 path.
     float* outA = nt::bus_pointer(13, numFrames);
 
     run_steps(p, numFrames, 40);
 
-    const float sample0 = outA[0];
+    // Sample over a long window; assert it stays in the +-5V rails, genuinely
+    // moves, AND reaches a substantial amplitude (> 1V). The amplitude floor is
+    // the specific guard: a reintroduced /1536 pitch conversion would rail or
+    // collapse the signal, and a mere "moved within range" check would pass for a
+    // near-zero signal.
+    const float first = outA[0];
     bool moved = false;
-    for (int s = 0; s < 120 && !moved; ++s) {
+    float peak_abs = 0.0f;
+    for (int s = 0; s < 400; ++s) {
         run_steps(p, numFrames, 1);
-        if (outA[0] != Catch::Approx(sample0).margin(1e-6)) moved = true;
+        const float v = outA[0];
+        REQUIRE(v >= -5.1f);
+        REQUIRE(v <= 5.1f);
+        if (v != Catch::Approx(first).margin(1e-6)) moved = true;
+        if (std::fabs(v) > peak_abs) peak_abs = std::fabs(v);
     }
     REQUIRE(moved);
-    for (int s = 0; s < 80; ++s) {
-        run_steps(p, numFrames, 1);
-        REQUIRE(outA[0] >= -5.1f);
-        REQUIRE(outA[0] <= 5.1f);
-    }
+    REQUIRE(peak_abs > 1.0f);
 }
 
 TEST_CASE("BYTEBEATGEN conditional menu toggles enabled-settings count with loop mode", "[oc_app][bytebeatgen][menu]") {

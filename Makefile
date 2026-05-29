@@ -59,6 +59,24 @@ build/host/test_draw_text: harness/tests/test_draw_text.cpp $(HARNESS_SRCS)
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
 
+build/host/test_verifier: harness/tests/test_verifier.cpp plugins/probes/Verifier.cpp plugins/probes/verifier_logic.h $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ harness/tests/test_verifier.cpp plugins/probes/Verifier.cpp $(HARNESS_SRCS)
+
+build/host/dump_font: harness/tools/dump_font.cpp plugins/probes/verifier_logic.h
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ harness/tools/dump_font.cpp
+
+harness/verifier/fixtures/font.json: build/host/dump_font
+	mkdir -p harness/verifier/fixtures
+	./build/host/dump_font > $@
+
+# render_dump.cpp owns its own main(), so link against HARNESS_LIB_SRCS
+# (the harness sans catch_main.cpp) to avoid a duplicate _main symbol.
+build/host/render_dump: harness/tools/render_dump.cpp plugins/probes/verifier_logic.h $(HARNESS_LIB_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ harness/tools/render_dump.cpp $(HARNESS_LIB_SRCS)
+
 .PHONY: test-draw
 test-draw: build/host/test_draw_text
 	./build/host/test_draw_text
@@ -124,6 +142,15 @@ build/host/test_loader: harness/tests/test_loader.cpp \
 test-loader: build/host/test_loader
 	./build/host/test_loader
 
+# Verifier: host C++ tests plus the python parser tests. Prefers the local
+# .venv (uv) if present, else system python3; pytest must be installed.
+PYTEST ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3) -m pytest
+
+.PHONY: test-verifier
+test-verifier: build/host/test_verifier build/host/render_dump
+	./build/host/test_verifier
+	$(PYTEST) harness/verifier/tests -q
+
 build/host/sim_gainCustomUI: $(HARNESS_LIB_SRCS) vendor/distingNT_API/examples/gainCustomUI.cpp harness/src/main.cpp
 	mkdir -p build/host
 	$(HOST_CXX) $(HOST_FLAGS) -o $@ $^
@@ -147,6 +174,10 @@ build/arm/gain.o: vendor/distingNT_API/examples/gain.cpp
 build/arm/bus_probe.o: plugins/probes/bus_probe.cpp
 	mkdir -p build/arm
 	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ $<
+
+build/arm/Verifier.o: plugins/probes/Verifier.cpp plugins/probes/verifier_logic.h
+	mkdir -p build/arm
+	$(ARM_CXX) $(ARM_FLAGS) -c -o $@ plugins/probes/Verifier.cpp
 
 build/arm/reentrancy_probe.o: plugins/probes/reentrancy_probe.cpp
 	mkdir -p build/arm
@@ -619,7 +650,7 @@ test-oc-app-%: build/host/test_oc_app_%
 test-oc-apps-all: $(addprefix build/host/test_oc_app_, $(PRESENT_OC_APPS))
 	@for t in $^; do echo "Running $$t"; ./$$t || exit 1; done
 
-arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS) $(OC_APP_OBJS)
+arm: build/arm/gainCustomUI.o build/arm/gain.o build/arm/bus_probe.o build/arm/Verifier.o build/arm/aeabi_probe.o build/arm/reentrancy_probe.o $(PILOT_APPLET_OBJS) $(HOST_PLUGIN_OBJS) $(OC_APP_OBJS)
 
 DEVICE ?= /Volumes/NT
 PLUGIN_DIR := programs/plug-ins

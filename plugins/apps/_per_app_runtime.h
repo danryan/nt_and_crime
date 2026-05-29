@@ -120,6 +120,10 @@ struct SettingsFacade {
     size_t (*restore)(void* self, const void* blob) = nullptr;
     size_t (*storage_size)() = nullptr;
     const settings::value_attr* (*value_attr_at)(int idx) = nullptr;
+    // Optional per-row name override. When non-null, construct uses
+    // param_name(instance, idx) as the NT parameter name instead of the
+    // value_attr name. Quad-channel apps (BBGEN) use it for "A Gravity" etc.
+    const char* (*param_name)(void* self, int idx) = nullptr;
 };
 
 template <typename Settings>
@@ -253,9 +257,10 @@ inline void emit_io_params(_NT_parameter* dst) {
 // enum-label offset rule lives here: pass value_names + min_ as the NT
 // string array because vendor menus index value_names[value] absolutely
 // while NT enum parameters index min-relative (strings[value - min]).
-inline _NT_parameter param_from_value_attr(const settings::value_attr& va) {
+inline _NT_parameter param_from_value_attr(const settings::value_attr& va,
+                                           const char* name_override = nullptr) {
     _NT_parameter p{};
-    p.name = va.name;
+    p.name = name_override != nullptr ? name_override : va.name;
     p.min  = static_cast<int16_t>(va.min_);
     p.max  = static_cast<int16_t>(va.max_);
     p.def  = static_cast<int16_t>(va.default_);
@@ -305,27 +310,37 @@ inline void construct(AppAlgorithm& alg, const OC::App* app) {
     if (app && app->HandleAppEvent) app->HandleAppEvent(OC::APP_EVENT_RESUME);
 }
 
-// Construct with a typed settings instance. The facade captures the typed
-// call sites; the parameter table extends with one row per setting.
-template <typename Settings>
-inline void construct(AppAlgorithm& alg, const OC::App* app,
-                      Settings* settings, int num_settings) {
+// Construct with a prebuilt facade (single-instance via make_facade, or a
+// hand-built quad facade for multi-channel apps like BBGEN). Appends one
+// parameter row per setting after the I/O block, applying any param_name
+// override. value_attr_ is read through the facade, so this body stays
+// decoupled from the concrete Settings type.
+inline void construct_with_facade(AppAlgorithm& alg, const OC::App* app,
+                                  SettingsFacade facade, int num_settings) {
     construct(alg, app);
-    alg.settings_facade = make_facade(settings);
+    alg.settings_facade = facade;
     alg.settings_facade.num_settings = num_settings;
 
-    // Append settings parameters after the I/O block. value_attr_ is a static
-    // member of SettingsBase<clazz, N>; read it through the facade so this
-    // function's body stays decoupled from the concrete Settings type for
-    // anything below the make_facade<> call.
     for (int i = 0; i < num_settings; ++i) {
         const auto* va = alg.settings_facade.value_attr_at(i);
-        alg.parameters_storage[kIoParamCount + i] = param_from_value_attr(*va);
+        const char* nm = alg.settings_facade.param_name != nullptr
+            ? alg.settings_facade.param_name(alg.settings_facade.instance, i)
+            : nullptr;
+        alg.parameters_storage[kIoParamCount + i] =
+            param_from_value_attr(*va, nm);
         // Seed v[] from the current Settings value (after InitDefaults).
         alg.v_storage[kIoParamCount + i] =
             static_cast<int16_t>(alg.settings_facade.get_value(
                 alg.settings_facade.instance, i));
     }
+}
+
+// Construct with a typed settings instance. Thin wrapper that builds the
+// single-instance facade and delegates to construct_with_facade.
+template <typename Settings>
+inline void construct(AppAlgorithm& alg, const OC::App* app,
+                      Settings* settings, int num_settings) {
+    construct_with_facade(alg, app, make_facade(settings), num_settings);
 }
 
 // ---------------------------------------------------------------------------

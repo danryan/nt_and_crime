@@ -240,7 +240,11 @@ TEST_CASE("FPART isr outputs pitch at 1V/oct on the routed voice buses",
     // = 896 + 3*1536 = 5504 pitch units. The runtime converts a DAC code back to
     // volts as pitch/kIntervalSize + octave, i.e. 5504/1536 = 3.5833 V at oct 0.
     const float expect_oct0 = 5504.0f / 1536.0f;
-    REQUIRE(voiceA[0] == Catch::Approx(expect_oct0).margin(0.02f));
+    // The only rounding in the code -> volts round-trip is the int32 DAC code
+    // (pitch_to_dac rounds with + 0.5f), bounded by 0.5 / kCodesPerVolt ~= 8e-5 V.
+    // A 0.002 V margin clears that comfortably while still catching a scaling
+    // regression a looser margin would mask.
+    REQUIRE(voiceA[0] == Catch::Approx(expect_oct0).margin(0.002f));
 
     // 1V/oct: raise voice A's octave by one and the routed output must rise by
     // exactly 1.0 V. Arm the sentinel so the parameterChanged path applies the
@@ -253,7 +257,7 @@ TEST_CASE("FPART isr outputs pitch at 1V/oct on the routed voice buses",
     REQUIRE(fpart_get_setting(p->algorithm, F_A_OCTAVE) == 1);
 
     run_steps(p, numFrames, 4);
-    REQUIRE(voiceA[0] == Catch::Approx(expect_oct0 + 1.0f).margin(0.02f));
+    REQUIRE(voiceA[0] == Catch::Approx(expect_oct0 + 1.0f).margin(0.002f));
 }
 
 TEST_CASE("FPART NT parameter add-on syncs bidirectionally over the head settings",

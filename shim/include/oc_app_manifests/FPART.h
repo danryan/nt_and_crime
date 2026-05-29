@@ -21,6 +21,19 @@
 // The guid uses the "OC" prefix so it never collides with the Hemisphere "Hm"
 // space or the composer host guids (HmHh / QdHh). Shipped OC guids: OCLR, OCHA,
 // OCSb; OCFP is unique.
+//
+// Inherited vendor behavior worth knowing on hardware (NOT port defects; the
+// vendor source is not edited):
+//   * The active-chord setting (head param index 9) is advanced by the ISR
+//     (trigger/CV stepping). step() never pushes app-side changes into the NT
+//     parameter store (only customUi does), so the "active chord" parameter row
+//     can lag the live sequencer position until the next UI interaction. The app
+//     reads the vendor values_, not alg->v, so playback is unaffected.
+//   * FPART_isr divides by (7800 / loop_length) where loop_length =
+//     loopend - loopstart (APP_FPART.h:602-604). With loopend == loopstart and a
+//     CV2 input patched above the 90-unit floor, loop_length is 0 and the divide
+//     traps. Safe at defaults (loopend 3, loopstart 0); a hardware tester driving
+//     CV2 against a zero-length loop should expect the inherited vendor fault.
 #include "../applet_manifest.h"
 #include <distingnt/api.h>
 

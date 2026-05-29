@@ -43,8 +43,11 @@ def _read_value(screen: list[int], x0: int, y0: int) -> float:
     ]
     text = "".join(chars)
     sign = -1.0 if text[0] == "-" else 1.0
-    integer = int(text[1:3])
-    frac = int(text[4:7])
+    try:
+        integer = int(text[1:3])
+        frac = int(text[4:7])
+    except ValueError:
+        return float("nan")
     return sign * (integer + frac / 1000.0)
 
 

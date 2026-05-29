@@ -71,6 +71,12 @@ harness/verifier/fixtures/font.json: build/host/dump_font
 	mkdir -p harness/verifier/fixtures
 	./build/host/dump_font > $@
 
+# render_dump.cpp owns its own main(), so link against HARNESS_LIB_SRCS
+# (the harness sans catch_main.cpp) to avoid a duplicate _main symbol.
+build/host/render_dump: harness/tools/render_dump.cpp plugins/probes/verifier_logic.h $(HARNESS_LIB_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) -o $@ harness/tools/render_dump.cpp $(HARNESS_LIB_SRCS)
+
 .PHONY: test-draw
 test-draw: build/host/test_draw_text
 	./build/host/test_draw_text
@@ -141,7 +147,7 @@ test-loader: build/host/test_loader
 PYTEST ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3) -m pytest
 
 .PHONY: test-verifier
-test-verifier: build/host/test_verifier
+test-verifier: build/host/test_verifier build/host/render_dump
 	./build/host/test_verifier
 	$(PYTEST) harness/verifier/tests -q
 

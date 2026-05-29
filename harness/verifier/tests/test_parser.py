@@ -41,4 +41,4 @@ def test_parse_scope_estimates_frequency_and_shape() -> None:
     result = parser.parse_scope(screen, region, sample_rate=48000, timebase=1)
     # period 32 px, timebase 1 -> 48000 / 32 = 1500 Hz, within 10 percent.
     assert abs(result.frequency_hz - 1500.0) / 1500.0 < 0.1
-    assert result.shape in {"square", "pulse"}
+    assert result.shape == "square"

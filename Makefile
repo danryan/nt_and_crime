@@ -628,6 +628,15 @@ build/host/test_oc_router: harness/tests/test_oc_router.cpp shim/src/oc/io.cpp $
 test-oc-router: build/host/test_oc_router
 	./build/host/test_oc_router
 
+# Unit test for the consolidated customUI dispatch (oc_customui_dispatch.h).
+build/host/test_oc_dispatch: harness/tests/test_oc_dispatch.cpp shim/src/oc/io.cpp $(SHIM_CORE_SRCS) $(HARNESS_SRCS)
+	mkdir -p build/host
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+
+.PHONY: test-oc-dispatch
+test-oc-dispatch: build/host/test_oc_dispatch
+	./build/host/test_oc_dispatch
+
 # Per-app O_C host test binaries. Each binary links the per-app .cpp (which
 # aggregates the OC shim impl into its single TU) plus the matching test .cpp
 # and the harness. It deliberately does NOT add SHIM_CORE_SRCS or oc/io.cpp:

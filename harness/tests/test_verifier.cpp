@@ -108,8 +108,10 @@ TEST_CASE("render_numeric lights a glyph in each value cell per row", "[verifier
     const int   buses[2]  = {13, 14};
     const float values[2] = {1.000f, -0.250f};
     render_numeric(buses, values, 2);
-    int row0 = lit_in_window(kValueX, 0, kValueX + kValueChars * kGlyphW, kRowH);
-    int row1 = lit_in_window(kValueX, kRowH, kValueX + kValueChars * kGlyphW, 2 * kRowH);
+    int row0 = lit_in_window(kValueX, kTitleBarH,
+                             kValueX + kValueChars * kGlyphW, kTitleBarH + kRowH);
+    int row1 = lit_in_window(kValueX, kTitleBarH + kRowH,
+                             kValueX + kValueChars * kGlyphW, kTitleBarH + 2 * kRowH);
     REQUIRE(row0 > 0);
     REQUIRE(row1 > 0);
 }
@@ -121,17 +123,17 @@ TEST_CASE("render_numeric is deterministic and digit-dependent per cell", "[veri
     nt::reset_runtime();
     const float v0[1] = {0.000f};
     render_numeric(buses, v0, 1);
-    int zero_cell  = lit_in_window(cell_x, 0, cell_x + kGlyphW, kRowH);
+    int zero_cell  = lit_in_window(cell_x, kTitleBarH, cell_x + kGlyphW, kTitleBarH + kRowH);
 
     nt::reset_runtime();
     render_numeric(buses, v0, 1);
-    int zero_again = lit_in_window(cell_x, 0, cell_x + kGlyphW, kRowH);
+    int zero_again = lit_in_window(cell_x, kTitleBarH, cell_x + kGlyphW, kTitleBarH + kRowH);
     REQUIRE(zero_cell == zero_again);     // deterministic
 
     nt::reset_runtime();
     const float v1[1] = {0.001f};
     render_numeric(buses, v1, 1);
-    int one_cell = lit_in_window(cell_x, 0, cell_x + kGlyphW, kRowH);
+    int one_cell = lit_in_window(cell_x, kTitleBarH, cell_x + kGlyphW, kTitleBarH + kRowH);
     REQUIRE(one_cell != zero_cell);       // '1' glyph differs from '0' glyph
     REQUIRE(one_cell > 0);
 }
@@ -143,6 +145,18 @@ TEST_CASE("render_scope draws a trace within the screen", "[verifier][render]") 
         buf[i] = (i % 32 < 16) ? 1.0f : -1.0f;
     render_scope(buf, kScopeWidth, scope_trigger(buf, kScopeWidth), 5.0f);
     REQUIRE(lit_in_window(0, 0, 256, 64) > 0);
+}
+
+TEST_CASE("render_numeric clears the firmware title bar band", "[verifier][render]") {
+    nt::reset_runtime();
+    const int   buses[1]  = {13};
+    const float values[1] = {1.000f};
+    render_numeric(buses, values, 1);
+    // Nothing may land in the top band the firmware overpaints with its title.
+    REQUIRE(lit_in_window(0, 0, 256, kTitleBarH) == 0);
+    // Row 0 content lands just below the band, where it is visible on device.
+    REQUIRE(lit_in_window(kValueX, kTitleBarH,
+                          kValueX + kValueChars * kGlyphW, kTitleBarH + kRowH) > 0);
 }
 
 static const _NT_factory* verifier_factory() {

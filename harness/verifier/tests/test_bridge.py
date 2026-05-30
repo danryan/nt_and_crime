@@ -18,7 +18,7 @@ def _screen(mode: str) -> list[int]:
 
 def test_bridge_numeric_render_parses_back() -> None:
     screen = _screen("numeric")
-    layout = parser.Layout(first_bus=13, count=2, value_x=12, row_h=10, row_y0=0)
+    layout = parser.Layout(first_bus=13, count=2, value_x=12, row_h=10, row_y0=12)
     assert parser.parse_numeric(screen, layout) == {13: 1.0, 14: -0.25}
 
 

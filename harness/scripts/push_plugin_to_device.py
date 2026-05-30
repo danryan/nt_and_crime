@@ -46,6 +46,7 @@ python push_plugin_to_device 0 "/local/plugin/path/plugin.o" "devpreset"
 
 
 import mido
+import os
 import sys
 from pathlib import PurePath
 import time
@@ -60,13 +61,37 @@ if len(sys.argv) > 3:
 
 nt_plugin_path = "/programs/plug-ins/" + PurePath(local_plugin_path).name
 
-# this finds the first port that has "disting NT" in the name
-# Windows port names can come back with a numeric suffix, i.e. "disting NT 5"
-outPortName = [name for name in mido.get_output_names() if "disting NT" in name][0]
-inPortName = [name for name in mido.get_input_names() if "disting NT" in name][0]
+# Local modification (not upstream): select a free disting NT USB-MIDI port
+# instead of always the first match, so the upload can run alongside another
+# MIDI client (e.g. nt_helper) when the NT exposes more than one port. The
+# substring stays "disting NT"; port names may carry a numeric suffix, i.e.
+# "disting NT 5". Set NT_SYSEX_PORT to force a specific port name.
+def _nt_ports( names ):
+    forced = os.environ.get( "NT_SYSEX_PORT" )
+    if forced:
+        return [ n for n in names if forced in n ]
+    return [ n for n in names if "disting NT" in n ]
 
-outPort = mido.open_output( outPortName )
-inPort = mido.open_input( inPortName )
+out_candidates = _nt_ports( mido.get_output_names() )
+in_names = _nt_ports( mido.get_input_names() )
+if not out_candidates or not in_names:
+    sys.exit( "No 'disting NT' MIDI port found (set NT_SYSEX_PORT to override)." )
+
+outPort = inPort = outPortName = inPortName = None
+for name in out_candidates:
+    in_match = name if name in in_names else in_names[ 0 ]
+    try:
+        o = mido.open_output( name )
+        i = mido.open_input( in_match )
+    except ( IOError, OSError ):
+        # Port busy under an exclusive-open backend; try the next one.
+        continue
+    outPort, inPort, outPortName, inPortName = o, i, name, in_match
+    break
+
+if outPort is None:
+    sys.exit( "All 'disting NT' MIDI ports are busy; free one (disconnect the "
+              "other MIDI client) or expose another NT port, then retry." )
 
 
 def addCheckSum( arr ):

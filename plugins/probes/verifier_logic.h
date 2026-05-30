@@ -10,6 +10,11 @@ constexpr int kGlyphW     = 6;
 constexpr int kRowH       = 10;
 constexpr int kValueChars = 7;   // sNN.fff
 constexpr int kValueX     = 12;  // value glyph origin x (after a 2-digit label)
+// The firmware paints its algorithm/parameter title bar over the top of the
+// screen after draw() returns, occluding anything drawn there. Numeric rows
+// start below this band so row 0 is visible on device. Scope is unaffected
+// (it draws around the vertical center).
+constexpr int kTitleBarH  = 12;
 
 enum NumericMode { kMean = 0, kMin = 1, kMax = 2, kPkPk = 3 };
 enum ViewMode    { kNumeric = 0, kScope = 1 };
@@ -147,7 +152,7 @@ inline int volts_to_y(float v, float vscale) {
 inline void render_numeric(const int* buses, const float* values, int count) {
     char buf[8];
     for (int row = 0; row < count; ++row) {
-        int y0 = row * kRowH;
+        int y0 = kTitleBarH + row * kRowH;
         draw_glyph(0, y0, (char)('0' + (buses[row] / 10) % 10));
         draw_glyph(kGlyphW, y0, (char)('0' + (buses[row] % 10)));
         format_mv(volts_to_millivolts(values[row]), buf);

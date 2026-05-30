@@ -12,6 +12,7 @@
 #define NT_OC_APP_TU 1
 
 #include "_per_app_runtime.h"
+#include "oc_customui_dispatch.h"
 
 #include "OC_apps.h"
 #include "OC_ui.h"
@@ -142,59 +143,6 @@ _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
     return inst;
 }
 
-void emit_button(const BYTEBEATGENInstance* inst, uint16_t oc_control, uint8_t ev_type) {
-    ::UI::Event e(static_cast<::UI::EventType>(ev_type), oc_control, 0,
-                  oc_runtime::last_controls_of(*inst));
-    inst->app->HandleButtonEvent(reinterpret_cast<const OC::UI::Event&>(e));
-}
-
-void emit_encoder(const BYTEBEATGENInstance* inst, uint16_t oc_control, int delta) {
-    ::UI::Event e(::UI::EVENT_ENCODER, oc_control, static_cast<int16_t>(delta),
-                  oc_runtime::last_controls_of(*inst));
-    inst->app->HandleEncoderEvent(reinterpret_cast<const OC::UI::Event&>(e));
-}
-
-void push_settings_to_params(BYTEBEATGENInstance* inst) {
-    if (!inst->alive) return;
-    const int32_t idx = NT_algorithmIndex(inst);
-    if (idx < 0) return;
-    const int base = oc_runtime::settings_param_base();
-    const int n = inst->settings_facade.num_settings;
-    for (int s = 0; s < n; ++s) {
-        const int v = inst->settings_facade.get_value(inst->settings_facade.instance, s);
-        if (inst->v[base + s] != static_cast<int16_t>(v)) {
-            // NT_setParameterFromUi takes the GLOBAL index: add
-            // NT_parameterOffset() (CLAUDE.md offset gotcha).
-            NT_setParameterFromUi(static_cast<uint32_t>(idx),
-                                  static_cast<uint32_t>(base + s) + NT_parameterOffset(),
-                                  static_cast<int16_t>(v));
-        }
-    }
-}
-
-void customUi_impl(_NT_algorithm* self, const _NT_uiData& data) {
-    auto* inst = static_cast<BYTEBEATGENInstance*>(self);
-    if (!inst->app) return;
-
-    int n = 0;
-    const oc_runtime::ControlMapping* tbl = oc_runtime::button_mapping_table(n);
-    const uint16_t edges = data.controls ^ data.lastButtons;
-    for (int i = 0; i < n; ++i) {
-        const uint16_t bit = tbl[i].nt_bit;
-        const int bi = oc_runtime::bit_index(bit);
-        const bool now_down = (data.controls & bit) != 0;
-        if ((edges & bit) && !now_down) {
-            const uint8_t ev = oc_runtime::classify_release(inst, bi);
-            emit_button(inst, tbl[i].oc_control, ev);
-        }
-    }
-    if (data.encoders[0] != 0) emit_encoder(inst, OC::CONTROL_ENCODER_L, data.encoders[0]);
-    if (data.encoders[1] != 0) emit_encoder(inst, OC::CONTROL_ENCODER_R, data.encoders[1]);
-
-    push_settings_to_params(inst);
-    oc_runtime::customUi(*inst, data);
-}
-
 const _NT_factory factory = {
     .guid        = ManifestNS::guid,
     .name        = ManifestNS::name,
@@ -206,7 +154,7 @@ const _NT_factory factory = {
     .draw                  = oc_runtime::draw_factory,
     .tags                  = kNT_tagUtility,
     .hasCustomUi           = oc_runtime::hasCustomUi_factory,
-    .customUi              = customUi_impl,
+    .customUi              = oc_runtime::dispatch_custom_ui_factory<false>,
     .serialise             = oc_runtime::serialise_factory,
     .deserialise           = oc_runtime::deserialise_factory,
 };

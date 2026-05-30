@@ -22,6 +22,7 @@
 #define NT_OC_APP_TU 1
 
 #include "_per_app_runtime.h"
+#include "oc_customui_dispatch.h"
 
 #include "OC_apps.h"
 #include "OC_ui.h"
@@ -147,102 +148,6 @@ _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
 }
 
 // ---------------------------------------------------------------------------
-// customUi emit glue (copied from Low_rents; the runtime owns the control-edge
-// bookkeeping, the per-app TU constructs the concrete ::UI::Event and bridges
-// it to the vendor OC::UI::Event the app handlers expect).
-//
-// Harrington 1200 handlers act on EVENT_BUTTON_PRESS for UP/DOWN/L/R, on
-// EVENT_BUTTON_LONG_PRESS for L (InitDefaults), and on EVENT_ENCODER for
-// ENCODER_L/R. Both can mutate the vendor settings (the encoders edit
-// inversion or the cursor's setting). After dispatching, the push-back step
-// mirrors any changed setting into the NT parameter store via
-// NT_setParameterFromUi.
-// ---------------------------------------------------------------------------
-
-void emit_button(const H1200Instance* inst, uint16_t oc_control, uint8_t ev_type) {
-    ::UI::Event e(static_cast<::UI::EventType>(ev_type), oc_control, 0,
-                  oc_runtime::last_controls_of(*inst));
-    inst->app->HandleButtonEvent(reinterpret_cast<const OC::UI::Event&>(e));
-}
-
-void emit_encoder(const H1200Instance* inst, uint16_t oc_control, int delta) {
-    ::UI::Event e(::UI::EVENT_ENCODER, oc_control, static_cast<int16_t>(delta),
-                  oc_runtime::last_controls_of(*inst));
-    inst->app->HandleEncoderEvent(reinterpret_cast<const OC::UI::Event&>(e));
-}
-
-// Push any setting whose app-side value diverged from the NT parameter store
-// back into the store. Guarded by the construct-time sentinel (alg.alive) and a
-// valid algorithm index, matching the runtime's parameterChanged guard. The
-// vendor event handlers edit h1200_settings.values_[] directly; this mirrors
-// the post-event state into alg->v via NT_setParameterFromUi so the NT
-// parameter page stays in sync with the customUI.
-void push_settings_to_params(H1200Instance* inst) {
-    if (!inst->alive) return;
-    const int32_t idx = NT_algorithmIndex(inst);
-    if (idx < 0) return;
-    const int base = oc_runtime::settings_param_base();
-    const int n    = inst->settings_facade.num_settings;
-    for (int s = 0; s < n; ++s) {
-        const int v = inst->settings_facade.get_value(
-            inst->settings_facade.instance, s);
-        if (inst->v[base + s] != static_cast<int16_t>(v)) {
-            // NT_setParameterFromUi indexes the GLOBAL parameter table, which
-            // includes the firmware's common-parameter prefix. inst->v above is
-            // plug-in-relative, so the store compare uses base + s, but the
-            // push target must add NT_parameterOffset() (api.h:571). Omitting it
-            // writes one global index low and the firmware re-applies the edit to
-            // the setting above the edited one.
-            NT_setParameterFromUi(static_cast<uint32_t>(idx),
-                                  static_cast<uint32_t>(base + s) + NT_parameterOffset(),
-                                  static_cast<int16_t>(v));
-        }
-    }
-}
-
-void customUi_impl(_NT_algorithm* self, const _NT_uiData& data) {
-    auto* inst = static_cast<H1200Instance*>(self);
-    if (!inst->app) return;
-
-    int n = 0;
-    const oc_runtime::ControlMapping* tbl = oc_runtime::button_mapping_table(n);
-    const uint16_t edges = data.controls ^ data.lastButtons;
-
-    // Buttons: emit on the release edge, classified short vs long by the
-    // runtime. The long-release classification carries the vendor
-    // EVENT_BUTTON_LONG_PRESS semantics Harrington 1200 reads on CONTROL_BUTTON_L.
-    for (int i = 0; i < n; ++i) {
-        const uint16_t bit  = tbl[i].nt_bit;
-        const int      bi   = oc_runtime::bit_index(bit);
-        const bool now_down = (data.controls & bit) != 0;
-        if ((edges & bit) && !now_down) {
-            const uint8_t ev = oc_runtime::classify_release(inst, bi);
-            // A long release maps to the vendor LONG_PRESS the app handler
-            // tests for; a short release maps to PRESS.
-            const uint8_t mapped = (ev == oc_runtime::EVENT_BUTTON_LONG_RELEASE)
-                                       ? oc_runtime::EVENT_BUTTON_LONG_PRESS
-                                       : oc_runtime::EVENT_BUTTON_PRESS;
-            emit_button(inst, tbl[i].oc_control, mapped);
-        }
-    }
-
-    // Encoders: one EVENT_ENCODER per non-zero delta.
-    if (data.encoders[0] != 0) {
-        emit_encoder(inst, OC::CONTROL_ENCODER_L, data.encoders[0]);
-    }
-    if (data.encoders[1] != 0) {
-        emit_encoder(inst, OC::CONTROL_ENCODER_R, data.encoders[1]);
-    }
-
-    // Mirror any app-side setting edit back into the NT parameter store.
-    push_settings_to_params(inst);
-
-    // Advance the runtime bookkeeping AFTER emitting so held_since/last_controls
-    // reflect the post-event state.
-    oc_runtime::customUi(*inst, data);
-}
-
-// ---------------------------------------------------------------------------
 // The factory. Field order follows _NT_factory (api.h:468): tags BEFORE
 // hasCustomUi/customUi, serialise/deserialise after. See aeabi_probe.cpp.
 // ---------------------------------------------------------------------------
@@ -257,7 +162,7 @@ const _NT_factory factory = {
     .draw                  = oc_runtime::draw_factory,
     .tags                  = kNT_tagUtility,
     .hasCustomUi           = oc_runtime::hasCustomUi_factory,
-    .customUi              = customUi_impl,
+    .customUi              = oc_runtime::dispatch_custom_ui_factory<true>,
     .serialise             = oc_runtime::serialise_factory,
     .deserialise           = oc_runtime::deserialise_factory,
 };

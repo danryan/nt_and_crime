@@ -19,6 +19,7 @@
 #define NT_OC_APP_TU 1
 
 #include "_per_app_runtime.h"
+#include "oc_customui_dispatch.h"
 
 #include "OC_apps.h"
 #include "OC_ui.h"
@@ -158,65 +159,14 @@ _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
 }
 
 // ---------------------------------------------------------------------------
-// 5b. customUi emit glue. THE TEMPLATE FOR REAL APPS. The runtime owns the
-//     control-edge bookkeeping (held_since timestamps, last_controls, idle
-//     reset) but cannot construct a ::UI::Event because it deliberately does
-//     not pull vendor UI/ui_events.h. So the per-app TU builds the event from
-//     the runtime's classification + the mapping table and forwards it to the
-//     vendor app, THEN calls oc_runtime::customUi to advance the bookkeeping.
-//
-//     OC::App::HandleButtonEvent takes a const OC::UI::Event& (forward-declared
-//     in OC_apps.h); the concrete event is the top-level ::UI::Event from
-//     ui_events.h. They are layout-identical, so reinterpret_cast bridges the
-//     two distinct-but-compatible types the way the runtime's documented
-//     composition pseudocode prescribes.
+// 5b. customUi dispatch. THE TEMPLATE FOR REAL APPS. The consolidated dispatch
+//     in oc_customui_dispatch.h owns the whole customUI path: it constructs the
+//     ::UI::Event from the runtime's classification + mapping table, bridges it
+//     to the vendor OC::UI::Event (layout-identical reinterpret_cast), mirrors
+//     setting edits back into the NT store, and advances the runtime
+//     bookkeeping. A per-app TU only forwards its map_long_press flag. The stub
+//     has no long-press path, so it passes <false>.
 // ---------------------------------------------------------------------------
-void emit_button(const StubInstance* inst, uint16_t oc_control, uint8_t ev_type) {
-    ::UI::Event e(static_cast<::UI::EventType>(ev_type), oc_control, 0,
-                  oc_runtime::last_controls_of(*inst));
-    inst->app->HandleButtonEvent(reinterpret_cast<const OC::UI::Event&>(e));
-}
-
-void emit_encoder(const StubInstance* inst, uint16_t oc_control, int delta) {
-    ::UI::Event e(::UI::EVENT_ENCODER, oc_control, static_cast<int16_t>(delta),
-                  oc_runtime::last_controls_of(*inst));
-    inst->app->HandleEncoderEvent(reinterpret_cast<const OC::UI::Event&>(e));
-}
-
-void customUi_impl(_NT_algorithm* self, const _NT_uiData& data) {
-    auto* inst = static_cast<StubInstance*>(self);
-    if (!inst->app) return;
-
-    int n = 0;
-    const oc_runtime::ControlMapping* tbl = oc_runtime::button_mapping_table(n);
-    const uint16_t edges = data.controls ^ data.lastButtons;
-
-    // Buttons: emit on the release edge, classified short vs long by the
-    // runtime. (LONG_PRESS-while-held emission is left to real apps that need
-    // it; the foundation covers the short/long release path.)
-    for (int i = 0; i < n; ++i) {
-        const uint16_t bit  = tbl[i].nt_bit;
-        const int      bi   = oc_runtime::bit_index(bit);
-        const bool now_down = (data.controls & bit) != 0;
-        if ((edges & bit) && !now_down) {
-            const uint8_t ev = oc_runtime::classify_release(inst, bi);
-            emit_button(inst, tbl[i].oc_control, ev);
-        }
-    }
-
-    // Encoders: the runtime does not store deltas; read them straight from the
-    // _NT_uiData and emit one EVENT_ENCODER per non-zero delta.
-    if (data.encoders[0] != 0) {
-        emit_encoder(inst, OC::CONTROL_ENCODER_L, data.encoders[0]);
-    }
-    if (data.encoders[1] != 0) {
-        emit_encoder(inst, OC::CONTROL_ENCODER_R, data.encoders[1]);
-    }
-
-    // Advance the runtime bookkeeping AFTER emitting so held_since/last_controls
-    // reflect the post-event state, matching the runtime's documented contract.
-    oc_runtime::customUi(*inst, data);
-}
 
 // ---------------------------------------------------------------------------
 // 5c. The factory. Field order follows _NT_factory (api.h:468): tags comes
@@ -234,7 +184,7 @@ const _NT_factory factory = {
     .draw                  = oc_runtime::draw_factory,
     .tags                  = kNT_tagUtility,
     .hasCustomUi           = oc_runtime::hasCustomUi_factory,
-    .customUi              = customUi_impl,
+    .customUi              = oc_runtime::dispatch_custom_ui_factory<false>,
     .serialise             = oc_runtime::serialise_factory,
     .deserialise           = oc_runtime::deserialise_factory,
 };

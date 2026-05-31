@@ -1,0 +1,24 @@
+diff --git a/software/src/APP_QQ.h b/software/src/APP_QQ.h
+index 46cc7a9..4758c92 100644
+--- a/software/src/APP_QQ.h
++++ b/software/src/APP_QQ.h
+@@ -42,7 +42,6 @@
+ #include "OC_scales.h"
+ #include "OC_scale_edit.h"
+ #include "OC_strings.h"
+-#include "HSIOFrame.h"
+ 
+ // unsigned long LAST_REDRAW_TIME = 0;
+ extern uint_fast8_t MENU_REDRAW;
+diff --git a/software/src/APP_SEQ.h b/software/src/APP_SEQ.h
+index b6b5d6f..e5cc77e 100644
+--- a/software/src/APP_SEQ.h
++++ b/software/src/APP_SEQ.h
+@@ -39,7 +39,6 @@
+ #include "extern/dspinst.h"
+ #include "util/util_arp.h"
+ #include "peaks_multistage_envelope.h"
+-#include "HSIOFrame.h"
+ 
+ using OC::DUMMY;
+ 

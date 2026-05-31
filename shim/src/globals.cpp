@@ -142,6 +142,8 @@ const char* const integer_sequence_names[] = {
     "pi", "vnEck", "ssdn", "Dress", "PNinf", "Dsum", "Dsum4", "Dsum5", "CDn2", "Frcti"
 };
 const char* const integer_sequence_dirs[] = { "swing", "loop" };
+// QQ (APP_QQ.h) octave-constraint enum labels (vendor OC_strings.cpp:164).
+const char* const octave_constraint[] = { "Off", "Up", "Down" };
 // ASR integer-sequence digit tables (vendor OC_strings.cpp:168+, verbatim).
 // Each holds the first kIntSeqLen terms the IntegerSequence source indexes.
 const uint8_t pi_digits[kIntSeqLen] = {

@@ -379,7 +379,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE DQ ASR
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE DQ ASR QQ
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -478,6 +478,15 @@ VENDOR_DEP_HOST_SRCS_DQ :=
 # duplicate note_names).
 VENDOR_DEPS_ASR          := build/arm/vendor_src/peaks_bytebeat.o
 VENDOR_DEP_HOST_SRCS_ASR := $(HEM_SRC_DIR)/peaks_bytebeat.cpp
+
+# QQ (APP_QQ / Quantermain) links peaks_bytebeat.cpp (one of its four sources),
+# same vendor .cpp ASR/BYTEBEATGEN link. braids_quantizer + OC_scales ride the OC
+# aggregation; util_logistic_map, util_turing, util_integer_sequences,
+# OC_visualfx, OC_scale_edit are header-only. The integer-sequence digit tables
+# and scale_names / scale_names_short / label tables are shim-owned (added for
+# ASR), so no vendor OC_strings.cpp link.
+VENDOR_DEPS_QQ          := build/arm/vendor_src/peaks_bytebeat.o
+VENDOR_DEP_HOST_SRCS_QQ := $(HEM_SRC_DIR)/peaks_bytebeat.cpp
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

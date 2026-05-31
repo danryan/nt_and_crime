@@ -125,6 +125,12 @@ const char* const scale_id[] = { ">#1", ">#2", ">#3", ">#4", " #1", " #2", " #3"
 const char* const channel_id[4] = { "#A", "#B", "#C", "#D" };
 const char* const scaling_string[] = { "scaling " };
 const char* const chord_property_names[] = { "Q", "V", "I", "B", "O" };
+// DQ (APP_DQ / Meta-Q) setting value labels. Bytes verbatim from vendor
+// OC_strings.cpp (cv_input_names:86, channel_trigger_sources:55,
+// TM_aux_cv_destinations:152).
+const char* const cv_input_names[] = { "CV1", "CV2", "CV3", "CV4" };
+const char* const channel_trigger_sources[] = { "TR1", "TR2", "TR3", "TR4", "cnt+", "cnt-" };
+const char* const TM_aux_cv_destinations[] = { "-", "rng", "len", "prb" };
 }
 // Trigger-delay tick counts. Vendor OC_strings.cpp:341 (namespace OC, not
 // OC::Strings). Harrington 1200's TriggerDelays::Process indexes this by the

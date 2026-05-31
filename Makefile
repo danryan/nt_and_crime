@@ -378,7 +378,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE DQ
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -457,6 +457,16 @@ VENDOR_DEP_HOST_SRCS_AUTOMATONNETZ :=
 # .cpp reaches ARM-only asm (util/util_math.h, arm_math.h), so no force-include.
 VENDOR_DEPS_PASSENCORE          := build/arm/vendor_src/OC_chords.o build/arm/vendor_src/OC_input_map.o
 VENDOR_DEP_HOST_SRCS_PASSENCORE := $(HEM_SRC_DIR)/OC_chords.cpp $(HEM_SRC_DIR)/OC_input_map.cpp
+
+# DQ (APP_DQ / Meta-Q) needs no net-new vendor .cpp. braids_quantizer + OC_scales
+# ride the OC shim-impl aggregation; OC_visualfx.h (OC::vfx::ScrollingHistory),
+# util/util_history.h, and extern/dspinst.h (ARM-asm with a portable C #else
+# fallback) are all header-only. The scale-editor, trigger-delay, and braids-
+# scales headers are header-only and portable as-is. The dq_* enum-string tables
+# are file-scope in the vendor app header; the OC::Strings tables it reads
+# (cv_input_names, channel_trigger_sources, TM_aux_cv_destinations) are shim-owned.
+VENDOR_DEPS_DQ          :=
+VENDOR_DEP_HOST_SRCS_DQ :=
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

@@ -56,6 +56,13 @@ extern const char* const scale_id[];
 extern const char* const channel_id[];
 extern const char* const scaling_string[];
 extern const char* const chord_property_names[];
+// DQ (APP_DQ / Meta-Q) setting value labels. Vendor OC_strings.h:23,37,50.
+// cv_input_names is the no-leading-none CV source list; channel_trigger_sources
+// labels the per-channel trigger setting; TM_aux_cv_destinations labels the
+// Turing-machine aux-CV destination.
+extern const char* const cv_input_names[];
+extern const char* const channel_trigger_sources[];
+extern const char* const TM_aux_cv_destinations[];
 }
 
 // Harrington 1200 trigger delay ticks lookup. Vendor OC_strings.h:70.

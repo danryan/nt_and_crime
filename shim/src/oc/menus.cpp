@@ -62,6 +62,11 @@ const uint8_t circle_disk_bitmap_8x8[] = {
   0x3c, 0x7e, 0xff, 0xff, 0xff, 0xff, 0x7e, 0x3c,
 };
 
+// Freq-multiplier-active indicator (vendor OC_bitmaps.cpp:36, bytes verbatim).
+const uint8_t bitmap_indicator_4x8[] = {
+  0x00, 0x18, 0x18, 0x00,
+};
+
 // --- Tonnetz note-circle LUT (vendor OC_menus.cpp:14-35) ----------------------
 
 namespace {

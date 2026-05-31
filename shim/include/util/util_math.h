@@ -39,6 +39,24 @@ constexpr int Proportion(const int numerator, const int denominator, const int m
 #define USAT16(x) ((x) > 65535 ? 65535 : ((x) < 0 ? 0 : (x)))
 #endif
 
+// Host-safe equivalents of the ARM-asm fixed-point multiplies vendor
+// util/util_math.h defines with `umull` (vendor lines 89-100). Suppressing the
+// vendor body (the guard above) drops them, but POLYLFO's Frames engine
+// (frames_poly_lfo.cpp) calls multiply_u32xu32_rshift24, so re-provide both with
+// a 64-bit intermediate. On the ARM target the vendor asm versions are used
+// (the app TU poisons the guard, but the standalone frames_poly_lfo.o ARM
+// compile sees the real vendor header); these host shims only stand in when this
+// shadow wins, i.e. the host build. Identical numeric result.
+#ifndef SHIM_UTIL_MATH_MULTIPLY
+#define SHIM_UTIL_MATH_MULTIPLY
+static inline uint32_t multiply_u32xu32_rshift24(uint32_t a, uint32_t b) {
+  return static_cast<uint32_t>((static_cast<uint64_t>(a) * b) >> 24);
+}
+static inline uint32_t multiply_u32xu32_rshift(uint32_t a, uint32_t b, uint32_t shift) {
+  return static_cast<uint32_t>((static_cast<uint64_t>(a) * b) >> shift);
+}
+#endif
+
 // SmoothedValue mirrors vendor util/util_math.h:105 verbatim. The shim suppresses
 // the vendor body (the guard above) to avoid the Proportion ODR clash, which also
 // drops this header-only template; the O_C apps need it (APP_LORENZ.h:135-138 holds

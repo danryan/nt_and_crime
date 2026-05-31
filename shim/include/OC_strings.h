@@ -11,6 +11,10 @@
 
 #include <cstdint>
 
+// Integer-sequence length (vendor OC_strings.h:6, global scope). ASR's
+// IntegerSequence source and its SETTINGS_DECLARE reach for it unqualified.
+static const int kIntSeqLen = 128;
+
 namespace OC {
 
 // Harrington 1200 trigger delay lookup. Vendor OC_strings.h:10.
@@ -63,6 +67,24 @@ extern const char* const chord_property_names[];
 extern const char* const cv_input_names[];
 extern const char* const channel_trigger_sources[];
 extern const char* const TM_aux_cv_destinations[];
+// ASR (APP_ASR) setting value labels. Vendor OC_strings.h:36,53,54. `mult` is
+// the 0.05..2.00 input-gain ratio list; integer_sequence_names/dirs label the
+// IntegerSequence source.
+extern const char* const mult[];
+extern const char* const integer_sequence_names[];
+extern const char* const integer_sequence_dirs[];
+// ASR integer-sequence digit tables (vendor OC_strings.h:55+, defined in
+// OC_strings.cpp). Each is the first kIntSeqLen terms of an OEIS-style sequence;
+// the IntegerSequence source indexes them. The commented-out vendor variants
+// (phi/tau/eul/rt2 digits) are unreferenced and not ported.
+extern const uint8_t pi_digits[];
+extern const uint8_t van_eck[];
+extern const uint8_t sum_of_squares_of_digits_of_n[];
+extern const uint8_t digsum_of_n[];
+extern const uint8_t digsum_of_n_base4[];
+extern const uint8_t digsum_of_n_base5[];
+extern const uint8_t count_down_by_2[];
+extern const uint8_t interspersion_of_A163253[];
 }
 
 // Harrington 1200 trigger delay ticks lookup. Vendor OC_strings.h:70.

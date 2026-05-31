@@ -63,4 +63,7 @@ extern const uint8_t bitmap_loop_markers_8[];
 extern const uint8_t bitmap_empty_frame4x8[];
 extern const uint8_t bitmap_end_marker4x8[];
 
+// 4x8 hold/freeze indicator drawn by ASR's menu (vendor OC_bitmaps.cpp:40).
+extern const uint8_t bitmap_hold_indicator_4x8[];
+
 }  // namespace OC

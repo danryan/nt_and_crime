@@ -189,10 +189,32 @@ const char* const scale_names[] = {
     "Lydian #9",
     "Ultralocrian",
 };
-// scale_names_short and voltage_scalings stay omitted: the NT shim renders no
-// short labels and applies no per-output voltage scaling. nullptr stubs satisfy
-// the externs.
-const char* const scale_names_short[] = { nullptr };
+// scale_names_short is the full vendor short-label table (vendor OC_scales.cpp:101,
+// verbatim). ASR's SCALE setting uses it as its enum value_names, so the prior
+// {nullptr} stub read out of bounds. Entry count matches scale_names (>= NUM_SCALES).
+const char* const scale_names_short[] = {
+    "USR1", "USR2", "USR3", "USR4",
+    "OFF ", "SEMI", "IONI", "DORI", "PHRY", "LYDI", "MIXO", "AEOL", "LOCR",
+    "BLU+", "BLU-", "PEN+", "PEN-", "FOLK", "JAPA", "GAME", "GYPS", "ARAB",
+    "FLAM", "WHOL", "PYTH", "EB/4", "E /4", "EA/4", "BHAI", "GUNA", "MARW",
+    "SHRI", "PURV", "BILA", "YAMA", "KAFI", "BHIM", "DARB", "RAGE", "KHAM",
+    "MIMA", "PARA", "RANG", "GANG", "KAME", "PAKA", "NATB", "KAUN", "BAIR",
+    "BTOD", "CHAN", "KTOD", "JOGE",
+    "VALL", "1322", "MANF", "MAGC", "QUAR", "ARMO", "HIRA", "SCOT", "THAI",
+    "SEVI", "MACH", "FATH", "BLAC", "MAV7", "MAV9", "SPYT", "22OR", "PAJS",
+    "PAJP", "PORC", "FLAT", "LEMB", "SENS", "53OR", "1272", "TRIZ", "2028",
+    "MADG", "MARV", "PARA",
+    "16ED", "15ED", "14ED", "13ED", "11ED", "10ED", "9ED", "8ED", "7ED",
+    "6ED", "5ED", "16H2", "15H2", "14H2", "13H2", "12H2", "11H2", "10H2",
+    "9H2", "8H2", "7H2", "6H2", "5H2", "4H2", "16S2", "15S2", "14S2", "13S2",
+    "12S2", "11S2", "10S2", "9S2", "8S2", "7S2", "6S2", "5S2", "4S2",
+    "B-Pe", "B-Pj", "B-Pl", "16H3", "14H3", "12H3", "10H3", "8H3", "16S3",
+    "14S3", "12S3", "10S3", "8S3",
+    "5+7", "5+6", "3b7-", "3b7+", "3b6-", "3b6+", "5th", "3b+", "3b-", "HAR-",
+    "LOn6", "IAUG", "MBKH", "FREY", "LY#9", "UTLO",
+};
+// voltage_scalings stays omitted: the NT shim applies no per-output voltage
+// scaling. nullptr stub satisfies the extern.
 const char* const voltage_scalings[] = { nullptr };
 
 }; // namespace OC

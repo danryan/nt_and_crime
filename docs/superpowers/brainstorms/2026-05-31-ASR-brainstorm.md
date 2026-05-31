@@ -1,7 +1,7 @@
 # Brainstorm: port ASR (Analog Shift Register) to an NT plug-in
 
 Date: 2026-05-31
-Status: audited, deferred to a fresh-context session for implementation
+Status: implemented (see ../specs/2026-05-31-ASR-design.md)
 Vendor SHA: 7800d929f25868f9a8b7d3d50514532ee001649b
 Issue: #49 (part of the #36 remaining-OC-apps track)
 

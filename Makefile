@@ -219,6 +219,7 @@ COMPILER_RT_SRCS := \
     $(COMPILER_RT_DIR)/udivmoddi4.c \
     $(COMPILER_RT_DIR)/fixdfdi.c \
     $(COMPILER_RT_DIR)/fixunsdfdi.c \
+    $(COMPILER_RT_DIR)/popcountdi2.c \
     $(COMPILER_RT_DIR)/arm/aeabi_div0.c \
     $(COMPILER_RT_DIR)/arm/aeabi_ldivmod.S \
     $(COMPILER_RT_DIR)/arm/aeabi_uldivmod.S
@@ -378,7 +379,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE DQ
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE DQ ASR
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -467,6 +468,16 @@ VENDOR_DEP_HOST_SRCS_PASSENCORE := $(HEM_SRC_DIR)/OC_chords.cpp $(HEM_SRC_DIR)/O
 # (cv_input_names, channel_trigger_sources, TM_aux_cv_destinations) are shim-owned.
 VENDOR_DEPS_DQ          :=
 VENDOR_DEP_HOST_SRCS_DQ :=
+
+# ASR (APP_ASR) links peaks_bytebeat.cpp (the bytebeat source, the same vendor
+# .cpp BYTEBEATGEN links). braids_quantizer + OC_scales ride the OC aggregation;
+# OC_visualfx, util_turing, util_ringbuffer, util_integer_sequences, and dspinst
+# are header-only. The integer-sequence digit tables (pi_digits etc.) and the
+# scale_names_short / mult / integer_sequence_* label tables are shim-owned
+# (globals.cpp + OC_scales.cpp), so no vendor OC_strings.cpp link (which would
+# duplicate note_names).
+VENDOR_DEPS_ASR          := build/arm/vendor_src/peaks_bytebeat.o
+VENDOR_DEP_HOST_SRCS_ASR := $(HEM_SRC_DIR)/peaks_bytebeat.cpp
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

@@ -69,6 +69,41 @@ inline uint32_t micros() { return (uint32_t)OC::CORE::ticks; }
 // math and other vendor compat headers that track wall-clock-ish deltas.
 inline uint32_t millis() { return (uint32_t)(OC::CORE::ticks / 1000); }
 
+// Arduino-style random(). Vendor O_C apps call random(howbig) -> [0, howbig)
+// and random(howsmall, howbig) -> [howsmall, howbig) for non-deterministic
+// content (Automatonnetz randomizes its grid cell transforms). The host libc
+// declares only `long random(void)`; these are arity-distinct overloads that
+// coexist with it. A small self-contained LCG keeps host tests reproducible and
+// behaves identically on ARM, which has no libc `random` at all.
+//
+// Guarded by #ifndef random because the Hemisphere applet path defines
+// `random` as a function-like macro (HemisphereApplet.h -> hem_shim_random). A
+// Hemisphere TU that pulls Arduino.h after HemisphereApplet.h would otherwise
+// rewrite these definitions through that macro. O_C app TUs never include
+// HemisphereApplet.h, so the macro is undefined there and these compile.
+#ifndef random
+namespace shim_detail {
+inline uint32_t& rng_state() {
+    static uint32_t s = 0x12345678u;
+    return s;
+}
+inline uint32_t rng_next() {
+    uint32_t& s = rng_state();
+    s = s * 1664525u + 1013904223u;
+    return s;
+}
+}  // namespace shim_detail
+
+inline long random(long howbig) {
+    if (howbig <= 0) return 0;
+    return static_cast<long>(shim_detail::rng_next() % static_cast<uint32_t>(howbig));
+}
+inline long random(long howsmall, long howbig) {
+    if (howbig <= howsmall) return howsmall;
+    return howsmall + random(howbig - howsmall);
+}
+#endif  // random
+
 // Arduino elapsedMillis idiom. Construct captures the current millis();
 // implicit-cast to uint32_t returns (millis() - base). Assignment resets
 // the baseline so the value reads as the assigned figure. Used by vendor

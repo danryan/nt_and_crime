@@ -62,6 +62,12 @@ const uint8_t circle_disk_bitmap_8x8[] = {
   0x3c, 0x7e, 0xff, 0xff, 0xff, 0xff, 0x7e, 0x3c,
 };
 
+// 8x8 circle outline (vendor OC_bitmaps.cpp:67, bytes verbatim), plotted at
+// each grid node in the Automatonnetz screensaver.
+const uint8_t circle_bitmap_8x8[] = {
+  0, 0x18, 0x24, 0x42, 0x42, 0x24, 0x18, 0
+};
+
 // Freq-multiplier-active indicator (vendor OC_bitmaps.cpp:36, bytes verbatim).
 const uint8_t bitmap_indicator_4x8[] = {
   0x00, 0x18, 0x18, 0x00,

@@ -21,4 +21,15 @@ enum UiControl : uint16_t {
 const UiControl CONTROL_BUTTON_A = CONTROL_BUTTON_UP;
 const UiControl CONTROL_BUTTON_B = CONTROL_BUTTON_DOWN;
 
+// Minimal stand-in for the vendor OC::ui object. On hardware OC_ui.cpp owns a
+// global Ui that, among much else, toggles encoder acceleration. Vendor apps
+// call ui.encoder_enable_acceleration(control, enabled) from their app-event
+// handlers (Automatonnetz disables left-encoder acceleration on RESUME). The
+// shim drives encoders through the per-app customUi router with no acceleration
+// model, so this is a no-op. Defined inline so no globals.cpp entry is needed.
+struct UiOps {
+  void encoder_enable_acceleration(UiControl /*control*/, bool /*enabled*/) {}
+};
+inline UiOps ui;
+
 } // namespace OC

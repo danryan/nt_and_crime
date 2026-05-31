@@ -378,7 +378,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -427,6 +427,15 @@ VENDOR_DEP_HOST_SRCS_BYTEBEATGEN := $(HEM_SRC_DIR)/peaks_bytebeat.cpp
 # objects; host side: the vendor sources compiled into the test.
 VENDOR_DEPS_POLYLFO          := build/arm/vendor_src/frames_poly_lfo.o build/arm/vendor_src/frames_resources.o
 VENDOR_DEP_HOST_SRCS_POLYLFO := $(HEM_SRC_DIR)/frames_poly_lfo.cpp $(HEM_SRC_DIR)/frames_resources.cpp
+
+# ENVGEN (APP_ENVGEN) links the peaks multistage-envelope engine and the peaks
+# resource LUTs (peaks_multistage_envelope.cpp reads lut_env_increments from
+# peaks_resources.cpp, the same resource BBGEN already links). The euclidean
+# pattern generator (EuclideanPattern) is shim-owned (shim/src/cv_map/bjorklund.cpp,
+# aggregated via oc_shim_impl.h), so no vendor bjorklund.cpp dep. ARM side: the
+# partial-link objects; host side: the vendor sources compiled into the test.
+VENDOR_DEPS_ENVGEN          := build/arm/vendor_src/peaks_multistage_envelope.o build/arm/vendor_src/peaks_resources.o
+VENDOR_DEP_HOST_SRCS_ENVGEN := $(HEM_SRC_DIR)/peaks_multistage_envelope.cpp $(HEM_SRC_DIR)/peaks_resources.cpp
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

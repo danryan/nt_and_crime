@@ -18,6 +18,10 @@
 // sample rate.
 static constexpr uint32_t OC_CORE_ISR_FREQ = 16666U;
 
+// Microseconds per ISR tick (vendor OC_config.h:24). ENVGEN's trigger-delay
+// queue converts millisecond/second delay settings into tick counts with it.
+static constexpr uint32_t OC_CORE_TIMER_RATE = (1000000UL / OC_CORE_ISR_FREQ);
+
 namespace OC {
 // Harrington 1200's TriggerDelays bound (vendor OC_config.h:38, namespace OC).
 static constexpr size_t kMaxTriggerDelayTicks = 96;

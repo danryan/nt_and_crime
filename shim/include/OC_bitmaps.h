@@ -48,4 +48,10 @@ extern const uint8_t circle_disk_bitmap_8x8[];
 // OC_bitmaps.h:33 / OC_bitmaps.cpp:36).
 extern const uint8_t bitmap_indicator_4x8[];
 
+// Loop start/end markers drawn on ENVGEN's envelope preview (vendor
+// OC_bitmaps.h:41 / OC_bitmaps.cpp:58). Two 2-column glyphs back to back: the
+// loop-start marker then the loop-end marker.
+static constexpr int16_t kBitmapLoopMarkerW = 2;
+extern const uint8_t bitmap_loop_markers_8[];
+
 }  // namespace OC

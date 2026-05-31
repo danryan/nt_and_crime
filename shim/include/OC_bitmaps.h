@@ -44,4 +44,8 @@ extern const uint8_t *const bitmap_gate_indicators_8;
 // (vendor OC_bitmaps.h:44).
 extern const uint8_t circle_disk_bitmap_8x8[];
 
+// 4x8 freq-multiplier-active indicator drawn in POLYLFO_menu (vendor
+// OC_bitmaps.h:33 / OC_bitmaps.cpp:36).
+extern const uint8_t bitmap_indicator_4x8[];
+
 }  // namespace OC

@@ -36,6 +36,8 @@ extern const char* const no_yes[];
 // BYTEBEATGEN (APP_BYTEBEATGEN) Equation-setting value labels. Vendor
 // OC_strings.cpp:127. Sixteen bytebeat-equation names ("hope" .. "Orac").
 extern const char* const bytebeat_equation_names[];
+// POLYLFO (APP_POLYLFO) Tap-tempo bool label. Vendor OC_strings.cpp:117.
+extern const char* const off_on[];
 }
 
 // Harrington 1200 trigger delay ticks lookup. Vendor OC_strings.h:70.

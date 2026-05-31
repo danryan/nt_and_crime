@@ -378,7 +378,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -419,6 +419,14 @@ VENDOR_DEP_HOST_SRCS_BBGEN := $(HEM_SRC_DIR)/peaks_resources.cpp
 # object; host side: the vendor source compiled into the test.
 VENDOR_DEPS_BYTEBEATGEN          := build/arm/vendor_src/peaks_bytebeat.o
 VENDOR_DEP_HOST_SRCS_BYTEBEATGEN := $(HEM_SRC_DIR)/peaks_bytebeat.cpp
+
+# POLYLFO (APP_POLYLFO) links the Frames quadrature-LFO engine and its wavetable
+# resource LUTs. frames_poly_lfo.h is not header-only (frames_poly_lfo.cpp
+# defines Render/RenderPreview/Init) and reads frames_resources.cpp's
+# lut_increments_med / wt_lfo_waveforms tables. ARM side: the partial-link
+# objects; host side: the vendor sources compiled into the test.
+VENDOR_DEPS_POLYLFO          := build/arm/vendor_src/frames_poly_lfo.o build/arm/vendor_src/frames_resources.o
+VENDOR_DEP_HOST_SRCS_POLYLFO := $(HEM_SRC_DIR)/frames_poly_lfo.cpp $(HEM_SRC_DIR)/frames_resources.cpp
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with
@@ -654,7 +662,7 @@ test-oc-dispatch: build/host/test_oc_dispatch
 .SECONDEXPANSION:
 build/host/test_oc_app_%: harness/tests/test_oc_app_%.cpp plugins/apps/%.cpp $(HARNESS_SRCS) $$(VENDOR_DEP_HOST_SRCS_$$*)
 	mkdir -p build/host
-	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -o $@ $^
+	$(HOST_CXX) $(HOST_FLAGS) $(SHIM_INCLUDE) $(HEM_APPLET_INCLUDE) -include shim/include/util/util_math.h -o $@ $^
 
 # Convenience target for a single app's host test (e.g. make test-oc-app-StubApp).
 .PHONY: test-oc-app-%

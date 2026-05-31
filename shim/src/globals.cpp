@@ -102,6 +102,8 @@ const char* const bytebeat_equation_names[] = {
     "hope", "love", "life", "age", "clysm", "monk", "NERV", "Trurl",
     "Pirx", "Snaut", "Hari", "Kris", "Tichy", "Bregg", "Avon", "Orac"
 };
+// POLYLFO (APP_POLYLFO) Tap-tempo bool label. Vendor OC_strings.cpp:117.
+const char* const off_on[] = { "off", "on" };
 }
 // Trigger-delay tick counts. Vendor OC_strings.cpp:341 (namespace OC, not
 // OC::Strings). Harrington 1200's TriggerDelays::Process indexes this by the

@@ -331,6 +331,27 @@ struct SettingsListItem {
       graphics.invertRect(x, y, kDisplayWidth - x, kMenuLineH - 1);
   }
 
+  // Pulse-width value row (vendor OC_menus.h:338). DQ's PULSEWIDTH setting uses
+  // it: value 0 prints "echo", 255 prints "50%", else the numeric value.
+  inline void Draw_PW_Value(int value, const settings::value_attr &attr) const {
+    DrawName(attr);
+
+    graphics.setPrintPos(endx, y + kTextDy);
+    if (attr.value_names)
+      graphics.print_right(attr.value_names[value]);
+    else if (value == 0x0)
+      graphics.print_right("echo");
+    else if (value == 0xFF)
+      graphics.print_right("50%");
+    else
+      graphics.pretty_print_right(value);
+
+    if (editing)
+      menu::DrawEditIcon(valuex, y, value, attr);
+    if (selected)
+      graphics.invertRect(x, y, kDisplayWidth - x, kMenuLineH - 1);
+  }
+
   inline void SetPrintPos() const {
     graphics.setPrintPos(x + kIndentDx, y + kTextDy);
   }

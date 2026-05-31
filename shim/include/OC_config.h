@@ -22,6 +22,13 @@ static constexpr uint32_t OC_CORE_ISR_FREQ = 16666U;
 // queue converts millisecond/second delay settings into tick counts with it.
 static constexpr uint32_t OC_CORE_TIMER_RATE = (1000000UL / OC_CORE_ISR_FREQ);
 
+// Output pitch range in octaves (vendor OC_config.h:41, `#define OCTAVES 10`).
+// OC_DAC.h's pitch-to-dac clamp (max_pitch = OCTAVES * interval_size) reaches
+// for it. A macro, matching the vendor form so vendor call sites compile.
+#ifndef OCTAVES
+#define OCTAVES 10
+#endif
+
 namespace OC {
 // Harrington 1200's TriggerDelays bound (vendor OC_config.h:38, namespace OC).
 static constexpr size_t kMaxTriggerDelayTicks = 96;

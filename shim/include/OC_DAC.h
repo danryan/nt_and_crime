@@ -189,6 +189,22 @@ inline uint8_t get_voltage_scaling(uint8_t /*channel_id*/) {
 // a no-op kept for vendor call-site compatibility.
 inline void set_scaling(uint8_t /*scaling*/, uint8_t /*channel_id*/) {}
 
+// Voltage-scaled pitch conversion (vendor OC_DAC.h:154). Every alternate scaling
+// collapses to 1V/oct on the NT bus, so this falls through to pitch_to_dac and
+// ignores voltage_scaling. DQ's quantizer channels reach it through set_pitch.
+inline int32_t pitch_to_scaled_voltage_dac(DAC_CHANNEL channel, int32_t pitch,
+                                           int32_t octave_offset,
+                                           uint8_t /*voltage_scaling*/) {
+    return pitch_to_dac(channel, pitch, octave_offset);
+}
+
+// The DAC code for an integer octave offset from 0V (vendor OC_DAC.h:241 uses
+// the per-channel calibration table; the NT bus is uncalibrated 1V/oct, so the
+// shim returns the pitch-to-dac code for `octave` octaves at zero pitch).
+inline uint32_t get_octave_offset(DAC_CHANNEL channel, int octave) {
+    return static_cast<uint32_t>(pitch_to_dac(channel, 0, octave));
+}
+
 // Falls through to the standard semitone path: every alternate scaling is
 // collapsed to 1V/oct, so voltage_scaling is ignored.
 template <DAC_CHANNEL &channel>

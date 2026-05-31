@@ -55,6 +55,10 @@ static inline uint32_t multiply_u32xu32_rshift24(uint32_t a, uint32_t b) {
 static inline uint32_t multiply_u32xu32_rshift(uint32_t a, uint32_t b, uint32_t shift) {
   return static_cast<uint32_t>((static_cast<uint64_t>(a) * b) >> shift);
 }
+// NOTE: the >>32 variant (multiply_u32xu32_rshift32) is intentionally NOT defined
+// here. Vendor extern/dspinst.h defines it, and apps that include dspinst.h
+// (ASR, DQ) would get a redefinition. Apps that need it without dspinst (QQ)
+// define it locally in their own TU.
 #endif
 
 // Atten mirrors vendor util/util_math.h:55 (the exponential attenuverter curve).

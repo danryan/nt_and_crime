@@ -73,6 +73,9 @@ extern const char* const TM_aux_cv_destinations[];
 extern const char* const mult[];
 extern const char* const integer_sequence_names[];
 extern const char* const integer_sequence_dirs[];
+// QQ (APP_QQ) octave-constraint enum labels ("Off","Up","Down"). Vendor
+// OC_strings.cpp:164.
+extern const char* const octave_constraint[];
 // ASR integer-sequence digit tables (vendor OC_strings.h:55+, defined in
 // OC_strings.cpp). Each is the first kIntSeqLen terms of an OEIS-style sequence;
 // the IntegerSequence source indexes them. The commented-out vendor variants

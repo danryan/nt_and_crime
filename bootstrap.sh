@@ -44,6 +44,29 @@ if [ -e vendor/llvm-project/.git ]; then
     git submodule update --init vendor/llvm-project
 fi
 
+# Vendor provisioning patches. The project's standing rule is that vendor sources
+# are never hand-edited; this is the one documented exception, applied at
+# provision time (not committed into the submodule, so the pin SHA is unchanged).
+# It removes two dead `#include "HSIOFrame.h"` lines from APP_QQ.h / APP_SEQ.h:
+# the Hemisphere I/O-frame header is vestigial in both apps (no HS:: symbol is
+# used), but its vendor copy collides irreconcilably with the shim's own HSUtils
+# shadow that every OC-app translation unit pulls via globals.cpp. See
+# CLAUDE.md "Vendor provisioning patches" and vendor-patches/.
+# The block is idempotent: --reverse --check skips an already-applied patch, so
+# fresh clones, re-runs, and worktrees are all safe.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for PATCH in "$REPO_ROOT"/vendor-patches/*.patch; do
+    [ -e "$PATCH" ] || break
+    if git -C vendor/O_C-Phazerville apply --reverse --check "$PATCH" 2>/dev/null; then
+        :  # already applied
+    elif git -C vendor/O_C-Phazerville apply --check "$PATCH" 2>/dev/null; then
+        git -C vendor/O_C-Phazerville apply "$PATCH"
+        echo "bootstrap: applied vendor patch $(basename "$PATCH")"
+    else
+        echo "bootstrap: WARNING vendor patch $(basename "$PATCH") did not apply cleanly (vendor SHA moved?)" >&2
+    fi
+done
+
 # vendor/llvm-project sparse-checkout: compiler-rt/lib/builtins only.
 # The default git submodule update --init --recursive does NOT carry
 # sparse-checkout config, so the bootstrap must apply it explicitly.

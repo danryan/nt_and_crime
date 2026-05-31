@@ -378,7 +378,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -436,6 +436,16 @@ VENDOR_DEP_HOST_SRCS_POLYLFO := $(HEM_SRC_DIR)/frames_poly_lfo.cpp $(HEM_SRC_DIR
 # partial-link objects; host side: the vendor sources compiled into the test.
 VENDOR_DEPS_ENVGEN          := build/arm/vendor_src/peaks_multistage_envelope.o build/arm/vendor_src/peaks_resources.o
 VENDOR_DEP_HOST_SRCS_ENVGEN := $(HEM_SRC_DIR)/peaks_multistage_envelope.cpp $(HEM_SRC_DIR)/peaks_resources.cpp
+
+# AUTOMATONNETZ (APP_AUTOMATONNETZ) needs no net-new vendor .cpp. The tonnetz
+# engine (tonnetz/tonnetz_state.h + tonnetz.h + tonnetz_abstract_triad.h), the
+# grid walker (util/util_grid.h), the ring buffer (util/util_ringbuffer.h), and
+# the shim shadow of util/util_sync.h are all header-only. The string tables it
+# reads (mode_names, outputa_mode_names, clear_mode_names, cell_event_masks) are
+# defined file-scope in the vendor app header; trigger-delay ticks and note_name
+# are shim-owned (globals.cpp), like Harrington1200.
+VENDOR_DEPS_AUTOMATONNETZ          :=
+VENDOR_DEP_HOST_SRCS_AUTOMATONNETZ :=
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

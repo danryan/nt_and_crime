@@ -144,6 +144,8 @@ const char* const integer_sequence_names[] = {
 const char* const integer_sequence_dirs[] = { "swing", "loop" };
 // QQ (APP_QQ.h) octave-constraint enum labels (vendor OC_strings.cpp:164).
 const char* const octave_constraint[] = { "Off", "Up", "Down" };
+// CHORDS (APP_CHORDS.h) Direction-setting value labels (vendor OC_strings.cpp:57).
+const char* const seq_directions[] = { "fwd", "rev", "pnd1", "pnd2", "rnd", "brwn" };
 // ASR integer-sequence digit tables (vendor OC_strings.cpp:168+, verbatim).
 // Each holds the first kIntSeqLen terms the IntegerSequence source indexes.
 const uint8_t pi_digits[kIntSeqLen] = {

@@ -379,7 +379,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE DQ ASR QQ
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE DQ ASR QQ CHORDS
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -487,6 +487,14 @@ VENDOR_DEP_HOST_SRCS_ASR := $(HEM_SRC_DIR)/peaks_bytebeat.cpp
 # ASR), so no vendor OC_strings.cpp link.
 VENDOR_DEPS_QQ          := build/arm/vendor_src/peaks_bytebeat.o
 VENDOR_DEP_HOST_SRCS_QQ := $(HEM_SRC_DIR)/peaks_bytebeat.cpp
+
+# CHORDS (APP_CHORDS) links the same two vendor deps as PASSENCORE: OC_chords.cpp
+# (the chord-presets table + GetChord accessor) and OC_input_map.cpp (the CV-to-
+# index input maps the S+H / CV playmodes use). braids_quantizer + OC_scales ride
+# the OC shim-impl aggregation; the scale-editor, chord-editor, trigger-delay,
+# input-maps, and braids-scales headers are header-only and portable as-is.
+VENDOR_DEPS_CHORDS          := build/arm/vendor_src/OC_chords.o build/arm/vendor_src/OC_input_map.o
+VENDOR_DEP_HOST_SRCS_CHORDS := $(HEM_SRC_DIR)/OC_chords.cpp $(HEM_SRC_DIR)/OC_input_map.cpp
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

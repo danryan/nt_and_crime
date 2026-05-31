@@ -27,8 +27,14 @@
 // it touches graphics; the only substitutions are:
 //   - kDisplayWidth/kDisplayHeight: vendor reads weegfx::Graphics::kWidth/kHeight
 //     (128/64); the shim hardcodes those, since it has no weegfx::Graphics.
-//   - DrawChord / DrawMiniChord / DrawMask are dropped: neither validation app
-//     uses them and they pull vendor OC_chords.h. They can be added later.
+//   - DrawMask was re-added for ENVGEN; DrawChord / DrawMiniChord are re-added
+//     for CHORDS. They read the vendor chord-presets data (OC::Chord,
+//     OC::user_chords, OC::qualities, OC::voicing), so this shadow pulls
+//     OC_chords_presets.h. That header is pure data (a struct plus const tables)
+//     over the shim-shadowed OC_scales.h / OC_chords.h / Arduino.h, so it costs
+//     nothing for a non-chord app: the inline widgets are emitted only where
+//     called, so user_chords (the one extern) is never odr-used unless an app
+//     actually draws a chord (and those apps link OC_chords.o).
 
 #include <cstdint>
 
@@ -36,6 +42,10 @@
 #include "util/util_macros.h"      // CONSTRAIN, DISALLOW_COPY_AND_ASSIGN
 #include "util/util_settings.h"    // settings::value_attr
 #include "OC_DAC.h"                // OC::DAC::get_voltage_scaling, DAC_CHANNEL_*
+#include "OC_chords.h"             // OC::Chord / user_chords / qualities / voicing
+                                   // (OC_chords.h and OC_chords_presets.h are
+                                   // mutually recursive; including OC_chords.h
+                                   // first resolves struct Chord before GetChord).
 #include "hem_graphics.h"          // shim::Graphics + weegfx compat namespace
 
 namespace OC {
@@ -193,6 +203,45 @@ void DrawMask(weegfx::coord_t x, weegfx::coord_t y, uint32_t mask, size_t count,
       graphics.drawRect(x, y + height, 2, 1);
     if (clock_indicator == i)
       graphics.drawRect(x, y + height + 2, 2, 2);
+  }
+}
+
+// Chord-shape widget (vendor OC_menus.h:151). Draws a four-voice chord as a base
+// rectangle plus three framed boxes offset by the chord quality + voicing tables.
+// CHORDS draws it for the active progression slot. Reads the vendor chord-presets
+// data (OC_chords_presets.h). Byte-for-byte the vendor body on shim::Graphics.
+inline void DrawChord(weegfx::coord_t x, weegfx::coord_t y, int width, int value, int mem_offset) {
+   OC::Chord *active_chord = &OC::user_chords[value + mem_offset * OC::Chords::NUM_CHORDS_PER_CHAN];
+   int8_t _quality = active_chord->quality;
+   int8_t _voicing = active_chord->voicing;
+   int y_pos;
+
+   y -= active_chord->base_note * 2;
+   graphics.drawRect(x, y, width, width);
+   y -= OC::qualities[_quality][1] * 3;
+   y_pos = y + OC::voicing[_voicing][1] * 16;
+   CONSTRAIN(y_pos, 8, 64);
+   graphics.drawFrame(x, y_pos, width, width);
+   y -= OC::qualities[_quality][2] * 3;
+   y_pos = y + OC::voicing[_voicing][2] * 16;
+   CONSTRAIN(y_pos, 8, 64);
+   graphics.drawFrame(x, y_pos, width, width);
+   y -= OC::qualities[_quality][3] * 3;
+   y_pos = y + OC::voicing[_voicing][3] * 16;
+   CONSTRAIN(y_pos, 8, 64);
+   graphics.drawFrame(x, y_pos, width, width);
+}
+
+// Mini chord-count indicator (vendor OC_menus.h:178). Draws `count + 1` small
+// boxes, marking the active one. Byte-for-byte the vendor body.
+inline void DrawMiniChord(weegfx::coord_t x, weegfx::coord_t y, uint8_t count, uint8_t indicator) {
+  int8_t _x = x - count * 3 - 4;
+  int8_t _y = y + 4;
+  int8_t _w = 2;
+  for (int i = 0; i < count + 1; i++, _x += 3) {
+    graphics.drawRect(_x, _y, _w, _w);
+    if (i == indicator)
+      graphics.drawRect(_x, _y + 3, _w, _w);
   }
 }
 

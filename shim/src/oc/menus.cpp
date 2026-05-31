@@ -87,6 +87,10 @@ const uint8_t bitmap_empty_frame4x8[] = {
 const uint8_t bitmap_end_marker4x8[] = {
   0x66, 0x6f, 0x6f, 0x66
 };
+// Hold/freeze indicator (vendor OC_bitmaps.cpp:40, bytes verbatim). ASR menu.
+const uint8_t bitmap_hold_indicator_4x8[] = {
+  0x00, 0x66, 0x66, 0x00
+};
 
 // --- Tonnetz note-circle LUT (vendor OC_menus.cpp:14-35) ----------------------
 

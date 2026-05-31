@@ -57,6 +57,57 @@ static inline uint32_t multiply_u32xu32_rshift(uint32_t a, uint32_t b, uint32_t 
 }
 #endif
 
+// Atten mirrors vendor util/util_math.h:55 (the exponential attenuverter curve).
+// Suppressing the vendor body drops it; ASR's SlewedValue::get(atten) calls it.
+// Shared ATTEN_DEFINED sentinel with shim/include/CVInputMap.h (which defines
+// the identical global Atten): whichever header is included first in a TU wins,
+// so the two never collide.
+#ifndef ATTEN_DEFINED
+#define ATTEN_DEFINED
+constexpr int Atten(int8_t att) {
+  return 10 * att * (att < 0 ? -att : att) / 36;
+}
+#endif
+
+// SlewedValue mirrors vendor util/util_math.h:124 verbatim. The shim suppresses
+// the vendor body (the Proportion guard), which drops this header-only struct;
+// ASR holds four SlewedValue slew processors. Header-only, additive; Hemisphere
+// applets never use it. CONSTRAIN and abs are in scope (util_macros / cstdlib).
+struct SlewedValue {
+  static constexpr int EXTRA_PRECISION = 4;
+  int target_, value_;
+
+  void set(int val, bool override = false) {
+    target_ = val << EXTRA_PRECISION;
+    if (override) value_ = target_;
+  }
+
+  void push(uint8_t slew) {
+    if (slew) {
+      int diff = target_ - value_;
+      int delta = 1;
+      if (slew <= 50)
+        delta += 250 - 4 * slew;
+      else
+        delta += 100 - slew;
+      CONSTRAIN(delta, 0, abs(diff));
+      if (diff < 0) delta = -delta;
+      value_ += delta;
+    } else
+      value_ = target_;
+  }
+
+  int get(int8_t atten) const {
+    return get() * Atten(atten) / 1000;
+  }
+  int get() const {
+    return value_ >> EXTRA_PRECISION;
+  }
+  int get_target() const {
+    return target_ >> EXTRA_PRECISION;
+  }
+};
+
 // SmoothedValue mirrors vendor util/util_math.h:105 verbatim. The shim suppresses
 // the vendor body (the guard above) to avoid the Proportion ODR clash, which also
 // drops this header-only template; the O_C apps need it (APP_LORENZ.h:135-138 holds

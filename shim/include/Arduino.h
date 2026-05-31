@@ -104,6 +104,18 @@ inline long random(long howsmall, long howbig) {
 }
 #endif  // random
 
+// Arduino-style randomSeed(). Vendor ASR / SEQ seed the LCG from accumulated
+// CV. Defined ONLY for O_C-app TUs (NT_OC_APP_TU): the shim Hemisphere path
+// already defines randomSeed in HemisphereApplet.h:505 as an inline function
+// (not a macro, so an #ifndef guard cannot dodge it), and a hem TU pulls both
+// headers; gating on NT_OC_APP_TU keeps the two definitions in disjoint TUs. It
+// seeds the same shim_detail LCG that random() draws from.
+#ifdef NT_OC_APP_TU
+inline void randomSeed(uint32_t seed) {
+    shim_detail::rng_state() = seed ? seed : 0x12345678u;
+}
+#endif
+
 // Arduino elapsedMillis idiom. Construct captures the current millis();
 // implicit-cast to uint32_t returns (millis() - base). Assignment resets
 // the baseline so the value reads as the assigned figure. Used by vendor

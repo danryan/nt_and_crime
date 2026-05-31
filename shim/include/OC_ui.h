@@ -1,5 +1,18 @@
 #pragma once
 
+// Include-guard poison: define the vendor OC_ui.h guard so that when a vendor app
+// header quote-includes "OC_ui.h" from inside the vendor tree (APP_SEQ.h does),
+// the vendor body self-suppresses. The vendor OC_ui.h hard-includes the whole
+// non-portable UI chain (OC_config.h, OC_gpio.h, OC_debug.h, UI/ui_button.h,
+// UI/ui_encoder.h, util_profiling.h) and redefines UiControl / CONTROL_BUTTON_*;
+// shadowing by -Ishim/include cannot win there because the includer sits in the
+// vendor dir. This shim header provides everything the vendor body would (the
+// UiControl enum, the CONTROL_BUTTON_* aliases, the OC::ui no-op object). Same
+// poison technique as OC_menus.h / OC_config.h / OC_strings.h.
+#ifndef OC_UI_H_
+#define OC_UI_H_
+#endif
+
 #include <cstdint>
 
 namespace OC {

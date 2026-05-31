@@ -36,6 +36,11 @@ public:
 
     void print(const char* s);
     void print(int n);
+    // Vendor weegfx::Graphics::print(int, unsigned) (weegfx.cpp:512): render the
+    // integer right-justified in a field of `width` characters, left-padded with
+    // spaces, advancing the print pos. SEQ's pattern editor (OC_sequence_edit.h)
+    // aligns its sequence-length readout with it.
+    void print(int n, unsigned width);
 
     // Vendor weegfx::Graphics::printf. Relabi::View calls it for status
     // text. Variadic printf-style format; shim implementation delegates to

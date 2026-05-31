@@ -39,6 +39,23 @@ void Graphics::print(int n) {
     print(buf);
 }
 
+void Graphics::print(int n, unsigned width) {
+    char digits[12];
+    int written = NT_intToString(digits, n);
+    digits[written] = 0;
+    char buf[16];
+    unsigned pad = width > static_cast<unsigned>(written)
+                       ? width - static_cast<unsigned>(written)
+                       : 0;
+    if (pad > sizeof(buf) - 1u - static_cast<unsigned>(written))
+        pad = sizeof(buf) - 1u - static_cast<unsigned>(written);
+    unsigned i = 0;
+    for (; i < pad; ++i) buf[i] = ' ';
+    for (int j = 0; j < written; ++j) buf[i++] = digits[j];
+    buf[i] = 0;
+    print(buf);
+}
+
 void Graphics::setPixel(int x, int y) { set_pixel(x, y, 15); }
 
 void Graphics::drawLine(int x0, int y0, int x1, int y1, uint8_t pattern) {

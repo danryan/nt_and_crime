@@ -39,6 +39,8 @@ extern const char* const trigger_input_names[];
 extern const char* const no_yes[];
 // CHORDS (APP_CHORDS) Direction-setting value labels. Vendor OC_strings.cpp:57.
 extern const char* const seq_directions[];
+// SEQ (APP_SEQ / Sequins) Playmode-setting value labels. Vendor OC_strings.cpp:53.
+extern const char* const seq_playmodes[];
 // BYTEBEATGEN (APP_BYTEBEATGEN) Equation-setting value labels. Vendor
 // OC_strings.cpp:127. Sixteen bytebeat-equation names ("hope" .. "Orac").
 extern const char* const bytebeat_equation_names[];

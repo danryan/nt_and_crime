@@ -66,6 +66,14 @@ public:
     return static_cast<uint32_t>(oc_io::input(channel));
   }
 
+  // SEQ (APP_SEQ.h:1432) reads smoothed_raw_value for its S+H playmode address
+  // input. On hardware this is the DMA-smoothed unsigned 12-bit ADC reading
+  // (vendor OC_ADC.h:72); the shim has no separate smoothing pipeline, so it
+  // collapses to raw_value (the same routed input value).
+  static uint32_t smoothed_raw_value(ADC_CHANNEL channel) {
+    return raw_value(channel);
+  }
+
   static int32_t pitch_value(ADC_CHANNEL channel) {
     return value(channel);
   }

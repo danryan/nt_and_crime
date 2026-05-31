@@ -146,6 +146,8 @@ const char* const integer_sequence_dirs[] = { "swing", "loop" };
 const char* const octave_constraint[] = { "Off", "Up", "Down" };
 // CHORDS (APP_CHORDS.h) Direction-setting value labels (vendor OC_strings.cpp:57).
 const char* const seq_directions[] = { "fwd", "rev", "pnd1", "pnd2", "rnd", "brwn" };
+// SEQ (APP_SEQ.h / Sequins) Playmode-setting value labels (vendor OC_strings.cpp:53).
+const char* const seq_playmodes[] = {" -", "SEQ+1", "SEQ+2", "SEQ+3", "TR+1", "TR+2", "TR+3", "ARP", "S+H#1", "S+H#2", "S+H#3", "S+H#4", "CV#1", "CV#2", "CV#3", "CV#4"};
 // ASR integer-sequence digit tables (vendor OC_strings.cpp:168+, verbatim).
 // Each holds the first kIntSeqLen terms the IntegerSequence source indexes.
 const uint8_t pi_digits[kIntSeqLen] = {

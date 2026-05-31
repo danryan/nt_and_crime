@@ -379,7 +379,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE DQ ASR QQ CHORDS
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE DQ ASR QQ CHORDS SEQ
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -495,6 +495,16 @@ VENDOR_DEP_HOST_SRCS_QQ := $(HEM_SRC_DIR)/peaks_bytebeat.cpp
 # input-maps, and braids-scales headers are header-only and portable as-is.
 VENDOR_DEPS_CHORDS          := build/arm/vendor_src/OC_chords.o build/arm/vendor_src/OC_input_map.o
 VENDOR_DEP_HOST_SRCS_CHORDS := $(HEM_SRC_DIR)/OC_chords.cpp $(HEM_SRC_DIR)/OC_input_map.cpp
+
+# SEQ (APP_SEQ / Sequins) links four vendor deps: OC_patterns.cpp (the pattern
+# storage + pattern_names_short table), OC_input_map.cpp (the CV-to-index input
+# maps the S+H / CV playmodes use, same as PASSENCORE/CHORDS), and the peaks
+# multistage-envelope DSP pair (the aux output, same as ENVGEN). braids_quantizer
+# + OC_scales ride the OC shim-impl aggregation; the pattern-editor, scale-editor,
+# input-maps, arp, trigger-delay, and dspinst headers are header-only and portable
+# as-is.
+VENDOR_DEPS_SEQ          := build/arm/vendor_src/OC_patterns.o build/arm/vendor_src/OC_input_map.o build/arm/vendor_src/peaks_multistage_envelope.o build/arm/vendor_src/peaks_resources.o
+VENDOR_DEP_HOST_SRCS_SEQ := $(HEM_SRC_DIR)/OC_patterns.cpp $(HEM_SRC_DIR)/OC_input_map.cpp $(HEM_SRC_DIR)/peaks_multistage_envelope.cpp $(HEM_SRC_DIR)/peaks_resources.cpp
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

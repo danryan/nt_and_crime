@@ -401,6 +401,28 @@ struct SettingsListItem {
       graphics.invertRect(x, y, kDisplayWidth - x, kMenuLineH - 1);
   }
 
+  // SEQ (APP_SEQ.h:2490) draws the pulse-width row with a caller-supplied name
+  // string rather than the setting's own attr.name. Identical to Draw_PW_Value
+  // except for the DrawCharName(name_string) lead-in. Vendor OC_menus.h:316.
+  inline void Draw_PW_Value_Char(int value, const settings::value_attr &attr, const char* name_string) const {
+    DrawCharName(name_string);
+
+    graphics.setPrintPos(endx, y + kTextDy);
+    if (attr.value_names)
+      graphics.print_right(attr.value_names[value]);
+    else if (value == 0x0)
+      graphics.print_right("echo");
+    else if (value == 0xFF)
+      graphics.print_right("50%");
+    else
+      graphics.pretty_print_right(value);
+
+    if (editing)
+      menu::DrawEditIcon(valuex, y, value, attr);
+    if (selected)
+      graphics.invertRect(x, y, kDisplayWidth - x, kMenuLineH - 1);
+  }
+
   inline void SetPrintPos() const {
     graphics.setPrintPos(x + kIndentDx, y + kTextDy);
   }

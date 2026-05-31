@@ -38,6 +38,13 @@ extern const char* const no_yes[];
 extern const char* const bytebeat_equation_names[];
 // POLYLFO (APP_POLYLFO) Tap-tempo bool label. Vendor OC_strings.cpp:117.
 extern const char* const off_on[];
+// ENVGEN (APP_ENVGEN) envelope-setting value labels. Vendor OC_strings.cpp:131,156,160.
+extern const char* const envelope_shapes[];
+extern const char* const reset_behaviours[];
+extern const char* const falling_gate_behaviours[];
+// Trigger-or-CV-or-internal source labels with a leading "none". Vendor
+// OC_strings.cpp:75 (ENVGEN Trigger-input + Eucl-reset settings).
+extern const char* const trigger_input_names_none[];
 }
 
 // Harrington 1200 trigger delay ticks lookup. Vendor OC_strings.h:70.

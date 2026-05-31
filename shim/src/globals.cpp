@@ -104,6 +104,16 @@ const char* const bytebeat_equation_names[] = {
 };
 // POLYLFO (APP_POLYLFO) Tap-tempo bool label. Vendor OC_strings.cpp:117.
 const char* const off_on[] = { "off", "on" };
+// ENVGEN (APP_ENVGEN) envelope-setting value labels. Vendor OC_strings.cpp:131,156,160.
+const char* const envelope_shapes[11] = {
+    "Lin", "Exp", "Quart", "Sine", "Ledge", "Cliff", "Gate", "BgDip", "MeDip", "LtDip", "Wiggl"
+};
+const char* const reset_behaviours[] = { "None", "SP", "SLP", "SL", "P" };
+const char* const falling_gate_behaviours[] = { "Ignor", "Honor" };
+// Vendor OC_strings.cpp:75 (non-Teensy41 layout: 13 entries).
+const char* const trigger_input_names_none[] = {
+    " - ", "TR1", "TR2", "TR3", "TR4", "CV1", "CV2", "CV3", "CV4", "A", "B", "C", "D"
+};
 }
 // Trigger-delay tick counts. Vendor OC_strings.cpp:341 (namespace OC, not
 // OC::Strings). Harrington 1200's TriggerDelays::Process indexes this by the

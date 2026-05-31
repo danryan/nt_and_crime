@@ -149,6 +149,53 @@ private:
 void DrawEditIcon(weegfx::coord_t x, weegfx::coord_t y, int value, int min_value, int max_value);
 void DrawEditIcon(weegfx::coord_t x, weegfx::coord_t y, int value, const settings::value_attr &attr);
 
+// Euclidean-rhythm mask widget (vendor OC_menus.h:189-230). Renders `count`
+// step cells from a bitmask: a filled step draws a tall bar, an empty step a
+// floor tick; the 5-arg overload additionally marks the active step. ENVGEN's
+// OC::EuclideanMaskDraw (vendor OC_euclidean_mask_draw.h) instantiates
+// DrawMask<false, 32, 7, 1>; SEQ reuses it. Pure graphics.drawRect, so the
+// hand-port is byte-for-byte the vendor body. Dropped from the foundation shim
+// (no validation app drew a mask); re-added here for ENVGEN.
+template <bool rtl, size_t max_bits, weegfx::coord_t height, weegfx::coord_t padding>
+void DrawMask(weegfx::coord_t x, weegfx::coord_t y, uint32_t mask, size_t count) {
+  weegfx::coord_t dx;
+  if (count > max_bits) count = max_bits;
+  if (rtl) {
+    x -= 3;
+    dx = -(2 + padding);
+  } else {
+    x -= count * 3;
+    dx = (2 + padding);
+  }
+  for (size_t i = 0; i < count; ++i, mask >>= 1, x += dx) {
+    if (mask & 0x1)
+      graphics.drawRect(x, y + 1, 2, height);
+    else
+      graphics.drawRect(x, y + height, 2, 1);
+  }
+}
+
+template <bool rtl, size_t max_bits, weegfx::coord_t height, weegfx::coord_t padding>
+void DrawMask(weegfx::coord_t x, weegfx::coord_t y, uint32_t mask, size_t count, uint8_t clock_indicator) {
+  weegfx::coord_t dx;
+  if (count > max_bits) count = max_bits;
+  if (rtl) {
+    x -= 3;
+    dx = -(2 + padding);
+  } else {
+    x -= count * 3;
+    dx = (2 + padding);
+  }
+  for (size_t i = 0; i < count; ++i, mask >>= 1, x += dx) {
+    if (mask & 0x1)
+      graphics.drawRect(x, y + 1, 2, height);
+    else
+      graphics.drawRect(x, y + height, 2, 1);
+    if (clock_indicator == i)
+      graphics.drawRect(x, y + height + 2, 2, 2);
+  }
+}
+
 // Gate/clock activity indicator (vendor OC_menus.h:232). state is a 0..255
 // envelope quantized to a 0..64 brightness step, then drawn from the gate
 // bitmap.
@@ -231,6 +278,25 @@ struct SettingsListItem {
 
     if (editing)
       menu::DrawEditIcon(valuex, y, value, attr);
+    if (selected)
+      graphics.invertRect(x, y, kDisplayWidth - x, kMenuLineH - 1);
+  }
+
+  // Like DrawDefault(int, attr) but draws the edit icon against a runtime _max
+  // instead of attr.max_ (vendor OC_menus.h:360). ENVGEN uses it for settings
+  // whose effective maximum varies with another setting (e.g. euclidean fill vs
+  // length). The shim drops nothing else from DrawDefault.
+  inline void DrawValueMax(int value, const settings::value_attr &attr, int16_t _max) const {
+    DrawName(attr);
+
+    graphics.setPrintPos(endx, y + kTextDy);
+    if (attr.value_names)
+      graphics.print_right(attr.value_names[value]);
+    else
+      graphics.pretty_print_right(value);
+
+    if (editing)
+      menu::DrawEditIcon(valuex, y, value, attr.min_, _max);
     if (selected)
       graphics.invertRect(x, y, kDisplayWidth - x, kMenuLineH - 1);
   }

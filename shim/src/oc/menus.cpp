@@ -67,6 +67,12 @@ const uint8_t bitmap_indicator_4x8[] = {
   0x00, 0x18, 0x18, 0x00,
 };
 
+// Loop start/end markers (vendor OC_bitmaps.cpp:58, bytes verbatim).
+const uint8_t bitmap_loop_markers_8[kBitmapLoopMarkerW * 2] = {
+  0x07, 0x02,
+  0x02, 0x07,
+};
+
 // --- Tonnetz note-circle LUT (vendor OC_menus.cpp:14-35) ----------------------
 
 namespace {

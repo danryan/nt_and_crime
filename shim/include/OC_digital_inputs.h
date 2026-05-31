@@ -9,6 +9,7 @@
 #define OC_DIGITAL_INPUTS_H_
 #endif
 #include <cstdint>
+#include "OC_config.h"   // OC_CORE_ISR_FREQ for DigitalInputDisplay
 
 // O_C-only shim digital-input accessor. Net-new; shadows vendor
 // OC_digital_inputs.h (which pulls vendor OC_config.h / OC_gpio.h and the
@@ -90,6 +91,38 @@ public:
   static inline bool read_immediate(DigitalInput input) {
     return oc_io::trigger(input);
   }
+};
+
+// Trigger-activity display animator (vendor OC_digital_inputs.h:148). ENVGEN
+// holds one per channel; Update() ramps a phase that getState() quantizes to a
+// 0..15 brightness for the trigger-flash indicator. Header-only, byte-for-byte
+// the vendor body. kDisplayTime uses OC_CORE_ISR_FREQ (shim OC_config.h).
+class DigitalInputDisplay {
+public:
+  static constexpr uint32_t kDisplayTime = OC_CORE_ISR_FREQ / 8;
+  static constexpr uint32_t kPhaseInc = (0xfu << 28) / kDisplayTime;
+
+  void Init() { phase_ = 0; }
+
+  void Update(uint32_t ticks, bool clocked) {
+    uint32_t phase_inc = ticks * kPhaseInc;
+    if (clocked) {
+      phase_ = 0xffffffff;
+    } else {
+      uint32_t phase = phase_;
+      if (phase) {
+        if (phase < phase_inc)
+          phase_ = 0;
+        else
+          phase_ = phase - phase_inc;
+      }
+    }
+  }
+
+  uint8_t getState() const { return phase_ >> 28; }
+
+private:
+  uint32_t phase_;
 };
 
 }  // namespace OC

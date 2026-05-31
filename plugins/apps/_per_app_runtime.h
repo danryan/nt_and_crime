@@ -86,11 +86,16 @@ constexpr int kNumCvOutputs  = 4;
 constexpr int kNumTrigInputs = 4;
 constexpr int kIoParamCount  = kNumCvInputs + kNumCvOutputs + kNumTrigInputs;
 
-// Maximum app settings supported. BYTEBEATGEN (APP_BYTEBEATGEN.h) is the first
-// app to exceed 64: it flattens 4 channels x 19 settings = 76 NT parameter rows.
-// 80 covers it with headroom. Raising this only enlarges the static per-instance
-// v_storage/parameters_storage arrays; no behavior change for smaller apps.
-constexpr int kMaxSettings = 80;
+// Maximum app settings supported. ENVGEN (APP_ENVGEN.h) is the largest: it
+// flattens 4 channels x 33 settings = 132 NT parameter rows. 160 covers it with
+// headroom. Raising this only enlarges the static per-instance
+// v_storage/parameters_storage arrays (DATA counted in req.sram, allocated in the
+// runtime SRAM pool); it leaves every app's .text/.data byte-identical (verified:
+// H1200 text=27344, POLYLFO text=29674 unchanged at 80 vs 160), so the ~82 KB
+// .text scan-time cap is untouched. The only on-device consequence is the
+// documented SRAM-cache reboot: after deploying an enlarged build, previously
+// scanned apps fail to ADD until one power cycle re-caches calculateRequirements.
+constexpr int kMaxSettings = 160;
 
 // Total maximum parameter count.
 constexpr int kMaxParams = kIoParamCount + kMaxSettings;

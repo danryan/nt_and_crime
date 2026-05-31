@@ -58,4 +58,9 @@ extern const uint8_t bitmap_indicator_4x8[];
 static constexpr int16_t kBitmapLoopMarkerW = 2;
 extern const uint8_t bitmap_loop_markers_8[];
 
+// 4x8 frame and end-marker glyphs drawn by PASSENCORE's scale editor (vendor
+// OC_bitmaps.h:31-32 / OC_bitmaps.cpp:28,32).
+extern const uint8_t bitmap_empty_frame4x8[];
+extern const uint8_t bitmap_end_marker4x8[];
+
 }  // namespace OC

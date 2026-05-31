@@ -114,6 +114,17 @@ const char* const falling_gate_behaviours[] = { "Ignor", "Honor" };
 const char* const trigger_input_names_none[] = {
     " - ", "TR1", "TR2", "TR3", "TR4", "CV1", "CV2", "CV3", "CV4", "A", "B", "C", "D"
 };
+// PASSENCORE (APP_PASSENCORE) scale-editor / chord-editor labels. The vendor
+// OC_scale_edit.h and OC_chords_edit.h (both pulled by APP_PASSENCORE.h, even
+// with the chord editor commented out) reference these at template-definition
+// scope, so they must resolve. Bytes verbatim from vendor OC_strings.cpp.
+const char* const scale_degrees_maj[] = { "I", "II", "III", "IV", "V", "VI", "VII" };
+const char* const scale_degrees_min[] = { "i", "ii", "iii", "iv", "v", "vi", "vii" };
+const char* const accidentals[] = { "bb", "b", "", "#", "##" };
+const char* const scale_id[] = { ">#1", ">#2", ">#3", ">#4", " #1", " #2", " #3", " #4" };
+const char* const channel_id[4] = { "#A", "#B", "#C", "#D" };
+const char* const scaling_string[] = { "scaling " };
+const char* const chord_property_names[] = { "Q", "V", "I", "B", "O" };
 }
 // Trigger-delay tick counts. Vendor OC_strings.cpp:341 (namespace OC, not
 // OC::Strings). Harrington 1200's TriggerDelays::Process indexes this by the

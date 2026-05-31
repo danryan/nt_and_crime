@@ -21,10 +21,30 @@ enum AppEvent {
   APP_EVENT_SCREENSAVER_OFF
 };
 
-// Forward declaration for UI::Event
+// UI::Event binding inside namespace OC. Two regimes, selected by whether the
+// real vendor event type (::UI from UI/ui_events.h) is already in scope:
+//
+//   * Default (UI-free TUs, and every app whose .cpp includes ui_events.h only
+//     AFTER the runtime): forward-declare a distinct incomplete OC::UI::Event.
+//     OC::App's handler pointers need only an incomplete type, and per-app .cpp
+//     TUs reinterpret_cast the vendor ::UI::Event-taking thunks onto these
+//     pointers. Core TUs that never touch UI stay UI-free.
+//
+//   * When ui_events.h has already been included (a per-app .cpp that pulls
+//     "UI/ui_events.h" BEFORE the runtime, e.g. PASSENCORE, which instantiates a
+//     vendor UI editor like OC::ScaleEditor): alias OC::UI to the global ::UI so
+//     OC::UI::Event IS ::UI::Event. A vendor editor template living in namespace
+//     OC then resolves bare `UI::Event` / `UI::EVENT_*` to the complete global
+//     type, and the app can pass its ::UI::Event straight into the editor. The
+//     per-app reinterpret_cast onto OC::App's handler pointers degenerates to an
+//     identity cast and still compiles, so this is backward-compatible.
+#ifdef UI_EVENTS_H_
+namespace UI = ::UI;
+#else
 namespace UI {
   struct Event;
 }
+#endif
 
 struct App {
   uint16_t id;

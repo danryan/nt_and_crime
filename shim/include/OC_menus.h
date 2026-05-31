@@ -313,6 +313,19 @@ struct SettingsListItem {
       graphics.invertRect(x, y, kDisplayWidth - x, kMenuLineH - 1);
   }
 
+  // Draws the name and (when editable+editing) the edit icon, but no value
+  // column (vendor OC_menus.h:387). PASSENCORE_menu uses it for the MASK row,
+  // which renders its mask widget separately instead of a numeric value.
+  template <bool editable>
+  inline void DrawNoValue(int value, const settings::value_attr &attr) const {
+    DrawName(attr);
+
+    if (editable && editing)
+      menu::DrawEditIcon(valuex, y, value, attr);
+    if (selected)
+      graphics.invertRect(x, y, kDisplayWidth - x, kMenuLineH - 1);
+  }
+
   inline void DrawCustom() const {
     if (selected)
       graphics.invertRect(x, y, kDisplayWidth - x, kMenuLineH - 1);

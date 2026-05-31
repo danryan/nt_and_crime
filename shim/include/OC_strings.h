@@ -45,6 +45,17 @@ extern const char* const falling_gate_behaviours[];
 // Trigger-or-CV-or-internal source labels with a leading "none". Vendor
 // OC_strings.cpp:75 (ENVGEN Trigger-input + Eucl-reset settings).
 extern const char* const trigger_input_names_none[];
+// PASSENCORE (APP_PASSENCORE) scale-editor / chord-editor labels. Vendor
+// OC_strings.h:26-48. Referenced at template-definition scope by the vendor
+// OC_scale_edit.h and OC_chords_edit.h that APP_PASSENCORE.h pulls in (even with
+// the chord editor commented out, the template bodies are parsed).
+extern const char* const scale_degrees_maj[];
+extern const char* const scale_degrees_min[];
+extern const char* const accidentals[];
+extern const char* const scale_id[];
+extern const char* const channel_id[];
+extern const char* const scaling_string[];
+extern const char* const chord_property_names[];
 }
 
 // Harrington 1200 trigger delay ticks lookup. Vendor OC_strings.h:70.

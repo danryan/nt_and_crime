@@ -183,6 +183,12 @@ inline uint8_t get_voltage_scaling(uint8_t /*channel_id*/) {
     return VOLTAGE_SCALING_1V_PER_OCT;
 }
 
+// Vendor stores a per-channel output scaling (OC_DAC.h:90); PASSENCORE's scale
+// editor calls set_scaling when the SCALING edit page changes. The NT bus is
+// 1V/oct only, so the shim collapses every scaling to 1V/oct and the setter is
+// a no-op kept for vendor call-site compatibility.
+inline void set_scaling(uint8_t /*scaling*/, uint8_t /*channel_id*/) {}
+
 // Falls through to the standard semitone path: every alternate scaling is
 // collapsed to 1V/oct, so voltage_scaling is ignored.
 template <DAC_CHANNEL &channel>

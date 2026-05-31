@@ -378,7 +378,7 @@ ALL_APPLET_OBJS   := $(PILOT_APPLET_OBJS)
 # the test binary). The stub needs neither.
 # ---------------------------------------------------------------------------
 
-OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ
+OC_APP_LIST := StubApp Low_rents Harrington1200 FPART BBGEN BYTEBEATGEN POLYLFO ENVGEN AUTOMATONNETZ PASSENCORE
 
 VENDOR_DEPS_StubApp          :=
 VENDOR_DEP_HOST_SRCS_StubApp :=
@@ -446,6 +446,17 @@ VENDOR_DEP_HOST_SRCS_ENVGEN := $(HEM_SRC_DIR)/peaks_multistage_envelope.cpp $(HE
 # are shim-owned (globals.cpp), like Harrington1200.
 VENDOR_DEPS_AUTOMATONNETZ          :=
 VENDOR_DEP_HOST_SRCS_AUTOMATONNETZ :=
+
+# PASSENCORE (APP_PASSENCORE) links the two vendor non-header-only deps it pulls:
+# OC_chords.cpp (the chord-presets table accessor) and OC_input_map.cpp (the
+# CV-to-index input maps). The braids quantizer + OC_scales implementations ride
+# the OC shim-impl aggregation (oc_shim_impl.h), so they need no per-app dep; the
+# scale-editor, chord-editor, trigger-delay, input-maps, and braids-scales headers
+# are header-only and portable as-is (their risky transitive includes -- Arduino.h,
+# FS.h, OC_DAC/bitmaps/strings -- are all already shim-shadowed). Neither vendor
+# .cpp reaches ARM-only asm (util/util_math.h, arm_math.h), so no force-include.
+VENDOR_DEPS_PASSENCORE          := build/arm/vendor_src/OC_chords.o build/arm/vendor_src/OC_input_map.o
+VENDOR_DEP_HOST_SRCS_PASSENCORE := $(HEM_SRC_DIR)/OC_chords.cpp $(HEM_SRC_DIR)/OC_input_map.cpp
 
 # $(1) = app name (e.g. StubApp). $(2) = expanded VENDOR_DEPS_<app>.
 # Identical pipeline to BUILD_PER_APPLET: compile the per-app TU with

@@ -79,6 +79,15 @@ const uint8_t bitmap_loop_markers_8[kBitmapLoopMarkerW * 2] = {
   0x02, 0x07,
 };
 
+// Scale-editor frame and end-marker glyphs (vendor OC_bitmaps.cpp:28,32,
+// bytes verbatim). Drawn by PASSENCORE's scale editor.
+const uint8_t bitmap_empty_frame4x8[] = {
+  0xff, 0x81, 0x81, 0xff
+};
+const uint8_t bitmap_end_marker4x8[] = {
+  0x66, 0x6f, 0x6f, 0x66
+};
+
 // --- Tonnetz note-circle LUT (vendor OC_menus.cpp:14-35) ----------------------
 
 namespace {

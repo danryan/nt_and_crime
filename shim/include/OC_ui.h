@@ -29,6 +29,17 @@ const UiControl CONTROL_BUTTON_B = CONTROL_BUTTON_DOWN;
 // model, so this is a no-op. Defined inline so no globals.cpp entry is needed.
 struct UiOps {
   void encoder_enable_acceleration(UiControl /*control*/, bool /*enabled*/) {}
+
+  // PASSENCORE's scale editor (vendor OC_scale_edit.h) calls these. On hardware
+  // OC_ui.cpp's Ui implements physical-button polling, a press-ignore mask, and
+  // a screensaver-preempt flag. The shim drives all input through the per-app
+  // customUi router (no immediate polling, no ignore mask, no screensaver
+  // preempt), so each is a no-op: read_immediate reports no button held,
+  // and the mask / preempt setters do nothing.
+  bool read_immediate(UiControl /*control*/) { return false; }
+  void SetButtonIgnoreMask() {}
+  void IgnoreButton(UiControl /*control*/) {}
+  void _preemptScreensaver(bool /*v*/) {}
 };
 inline UiOps ui;
 

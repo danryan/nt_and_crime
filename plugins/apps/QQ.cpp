@@ -86,7 +86,18 @@ namespace {
 
 using ManifestNS = oc_app::QQ;
 
-struct QQInstance : public oc_runtime::AppAlgorithm {};
+constexpr int kNumChannels       = 4;
+constexpr int kMaskIndex         = CHANNEL_SETTING_MASK;             // 2
+constexpr int kExposedPerChannel = CHANNEL_SETTING_LAST - 1;         // 50
+constexpr int kNumSettings       = kNumChannels * kExposedPerChannel;  // 200
+
+// Channel-prefixed parameter names live INSIDE the per-instance struct (in the
+// firmware-allocated ptrs.sram), NOT a file-scope .bss array: the firmware reads
+// parameters[].name during add-algorithm, and a pointer into the plugin's global
+// .bss hard-faults the firmware on dereference. See DQ.cpp for the full rationale.
+struct QQInstance : public oc_runtime::AppAlgorithm {
+    char names[kNumSettings][16];
+};
 QQInstance* g_instance = nullptr;
 
 using OcEventFn = void (*)(const OC::UI::Event&);
@@ -107,29 +118,20 @@ const OC::App the_qq_app = {
     /* isr */               QQ_isr,
 };
 
-constexpr int kNumChannels       = 4;
-constexpr int kMaskIndex         = CHANNEL_SETTING_MASK;             // 2
-constexpr int kExposedPerChannel = CHANNEL_SETTING_LAST - 1;         // 50
-constexpr int kNumSettings       = kNumChannels * kExposedPerChannel;  // 200
-
 // Within-channel logical row -> physical setting, skipping the single U16 mask at
 // kMaskIndex.
 constexpr int phys_in_channel(int w) {
     return w < kMaskIndex ? w : w + 1;
 }
 
-// Channel-prefixed parameter names ("1 Scale" .. "4 ..."), filled once at
-// construct. The NT parameter .name pointer must outlive construct; this
-// file-scope static satisfies it.
-char g_names[kNumSettings][16];
-
-void build_names() {
+// Fill the per-instance name buffer (firmware-allocated SRAM, firmware-readable).
+void build_names(QQInstance* inst) {
     for (int ch = 0; ch < kNumChannels; ++ch) {
         for (int w = 0; w < kExposedPerChannel; ++w) {
             const int i = ch * kExposedPerChannel + w;
             const char* vn =
                 QuantizerChannel::value_attr(static_cast<size_t>(phys_in_channel(w))).name;
-            char* dst = g_names[i];
+            char* dst = inst->names[i];
             dst[0] = static_cast<char>('1' + ch);
             dst[1] = ' ';
             size_t len = std::strlen(vn);
@@ -164,7 +166,9 @@ oc_runtime::SettingsFacade make_quad_facade() {
         return &QuantizerChannel::value_attr(
             static_cast<size_t>(phys_in_channel(idx % kExposedPerChannel)));
     };
-    f.param_name = [](void* /*self*/, int idx) -> const char* { return g_names[idx]; };
+    f.param_name = [](void* /*self*/, int idx) -> const char* {
+        return g_instance->names[idx];
+    };
     return f;
 }
 
@@ -183,7 +187,7 @@ _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
                               const int32_t*) {
     auto* inst = new (ptrs.sram) QQInstance();
     g_instance = inst;
-    build_names();
+    build_names(inst);
     oc_runtime::construct_with_facade(*inst, &the_qq_app, make_quad_facade(),
                                       kNumSettings);
     return inst;

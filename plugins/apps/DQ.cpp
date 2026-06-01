@@ -72,7 +72,23 @@ namespace {
 
 using ManifestNS = oc_app::DQ;
 
-struct DQInstance : public oc_runtime::AppAlgorithm {};
+constexpr int kNumChannels       = NUMCHANNELS;                       // 2
+constexpr int kMaskFirst         = DQ_CHANNEL_SETTING_MASK1;          // 9
+constexpr int kNumMasks          = 4;                                 // MASK1..MASK4
+constexpr int kExposedPerChannel = DQ_CHANNEL_SETTING_LAST - kNumMasks;  // 27
+constexpr int kNumSettings       = kNumChannels * kExposedPerChannel;   // 54
+
+// Channel-prefixed parameter names ("1 scale" .. "2 > LFSR TRIG") live INSIDE the
+// per-instance struct, NOT a file-scope .bss array. The firmware reads
+// parameters[].name during add-algorithm; a pointer into the plugin's global .bss
+// hard-faults the firmware on dereference (a plugin-global .bss address is not in
+// the firmware-mapped working set), whereas this `names` buffer sits in the SRAM
+// the firmware itself allocates via ptrs.sram (the same block parameters_storage
+// lives in), which the firmware reads safely. Single-instance apps avoid the issue
+// by leaving param_name null and using the .rodata va->name.
+struct DQInstance : public oc_runtime::AppAlgorithm {
+    char names[kNumSettings][16];
+};
 DQInstance* g_instance = nullptr;
 
 using OcEventFn = void (*)(const OC::UI::Event&);
@@ -93,30 +109,22 @@ const OC::App the_dq_app = {
     /* isr */               DQ_isr,
 };
 
-constexpr int kNumChannels       = NUMCHANNELS;                       // 2
-constexpr int kMaskFirst         = DQ_CHANNEL_SETTING_MASK1;          // 9
-constexpr int kNumMasks          = 4;                                 // MASK1..MASK4
-constexpr int kExposedPerChannel = DQ_CHANNEL_SETTING_LAST - kNumMasks;  // 27
-constexpr int kNumSettings       = kNumChannels * kExposedPerChannel;   // 54
-
 // Within-channel logical row -> physical setting, skipping the four contiguous
 // U16 masks at [kMaskFirst, kMaskFirst + kNumMasks).
 constexpr int phys_in_channel(int w) {
     return w < kMaskFirst ? w : w + kNumMasks;
 }
 
-// Channel-prefixed parameter names ("1 scale" .. "2 > LFSR TRIG"), filled once
-// at construct. The NT parameter .name pointer must outlive construct; this
-// file-scope static satisfies it.
-char g_names[kNumSettings][16];
-
-void build_names() {
+// Fill the per-instance name buffer (in firmware-allocated SRAM). The NT
+// parameter .name pointer must outlive construct; inst->names satisfies it and is
+// firmware-readable (unlike a file-scope .bss array).
+void build_names(DQInstance* inst) {
     for (int ch = 0; ch < kNumChannels; ++ch) {
         for (int w = 0; w < kExposedPerChannel; ++w) {
             const int i = ch * kExposedPerChannel + w;
             const char* vn =
                 DQ_QuantizerChannel::value_attr(static_cast<size_t>(phys_in_channel(w))).name;
-            char* dst = g_names[i];
+            char* dst = inst->names[i];
             dst[0] = static_cast<char>('1' + ch);
             dst[1] = ' ';
             size_t len = std::strlen(vn);
@@ -151,7 +159,12 @@ oc_runtime::SettingsFacade make_dual_facade() {
         return &DQ_QuantizerChannel::value_attr(
             static_cast<size_t>(phys_in_channel(idx % kExposedPerChannel)));
     };
-    f.param_name = [](void* /*self*/, int idx) -> const char* { return g_names[idx]; };
+    // Names live in the per-instance SRAM buffer (g_instance->names), filled by
+    // build_names at construct. Returning an SRAM pointer (not a .bss one) is what
+    // keeps the firmware's parameters[].name dereference from hard-faulting.
+    f.param_name = [](void* /*self*/, int idx) -> const char* {
+        return g_instance->names[idx];
+    };
     return f;
 }
 
@@ -170,7 +183,7 @@ _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
                               const int32_t*) {
     auto* inst = new (ptrs.sram) DQInstance();
     g_instance = inst;
-    build_names();
+    build_names(inst);
     oc_runtime::construct_with_facade(*inst, &the_dq_app, make_dual_facade(),
                                       kNumSettings);
     return inst;

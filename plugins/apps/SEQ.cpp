@@ -89,7 +89,19 @@ namespace {
 
 using ManifestNS = oc_app::SEQ;
 
-struct SeqInstance : public oc_runtime::AppAlgorithm {};
+constexpr int kNumChannels       = NUM_CHANNELS;                          // 2
+constexpr int kMaskFirst         = SEQ_CHANNEL_SETTING_SCALE_MASK;        // 10
+constexpr int kNumMasks          = 5;  // SCALE_MASK + MASK1..MASK4, contiguous
+constexpr int kExposedPerChannel = SEQ_CHANNEL_SETTING_LAST - kNumMasks;  // 53
+constexpr int kNumSettings       = kNumChannels * kExposedPerChannel;     // 106
+
+// Channel-prefixed parameter names live INSIDE the per-instance struct (in the
+// firmware-allocated ptrs.sram), NOT a file-scope .bss array: the firmware reads
+// parameters[].name during add-algorithm, and a pointer into the plugin's global
+// .bss hard-faults the firmware on dereference. See DQ.cpp for the full rationale.
+struct SeqInstance : public oc_runtime::AppAlgorithm {
+    char names[kNumSettings][16];
+};
 SeqInstance* g_instance = nullptr;
 
 using OcEventFn = void (*)(const OC::UI::Event&);
@@ -110,30 +122,20 @@ const OC::App the_seq_app = {
     /* isr */               SEQ_isr,
 };
 
-constexpr int kNumChannels       = NUM_CHANNELS;                          // 2
-constexpr int kMaskFirst         = SEQ_CHANNEL_SETTING_SCALE_MASK;        // 10
-constexpr int kNumMasks          = 5;  // SCALE_MASK + MASK1..MASK4, contiguous
-constexpr int kExposedPerChannel = SEQ_CHANNEL_SETTING_LAST - kNumMasks;  // 53
-constexpr int kNumSettings       = kNumChannels * kExposedPerChannel;     // 106
-
 // Within-channel logical row -> physical setting, skipping the five contiguous
 // U16 masks at [kMaskFirst, kMaskFirst + kNumMasks).
 constexpr int phys_in_channel(int w) {
     return w < kMaskFirst ? w : w + kNumMasks;
 }
 
-// Channel-prefixed parameter names ("1 aux. mode" .. "2 dec/rel reset"), filled
-// once at construct. The NT parameter .name pointer must outlive construct; this
-// file-scope static satisfies it.
-char g_names[kNumSettings][16];
-
-void build_names() {
+// Fill the per-instance name buffer (firmware-allocated SRAM, firmware-readable).
+void build_names(SeqInstance* inst) {
     for (int ch = 0; ch < kNumChannels; ++ch) {
         for (int w = 0; w < kExposedPerChannel; ++w) {
             const int i = ch * kExposedPerChannel + w;
             const char* vn =
                 SEQ_Channel::value_attr(static_cast<size_t>(phys_in_channel(w))).name;
-            char* dst = g_names[i];
+            char* dst = inst->names[i];
             dst[0] = static_cast<char>('1' + ch);
             dst[1] = ' ';
             size_t len = std::strlen(vn);
@@ -168,7 +170,9 @@ oc_runtime::SettingsFacade make_dual_facade() {
         return &SEQ_Channel::value_attr(
             static_cast<size_t>(phys_in_channel(idx % kExposedPerChannel)));
     };
-    f.param_name = [](void* /*self*/, int idx) -> const char* { return g_names[idx]; };
+    f.param_name = [](void* /*self*/, int idx) -> const char* {
+        return g_instance->names[idx];
+    };
     return f;
 }
 
@@ -187,7 +191,7 @@ _NT_algorithm* construct_impl(const _NT_algorithmMemoryPtrs& ptrs,
                               const int32_t*) {
     auto* inst = new (ptrs.sram) SeqInstance();
     g_instance = inst;
-    build_names();
+    build_names(inst);
     oc_runtime::construct_with_facade(*inst, &the_seq_app, make_dual_facade(),
                                       kNumSettings);
     return inst;

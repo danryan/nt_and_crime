@@ -38,6 +38,8 @@ public:
     void ResetCursor() { HS::cursor_countdown[hemisphere] = HEMISPHERE_CURSOR_TICKS; }
     void CursorToggle() { HS::enc_edit[hemisphere].isEditing ^= 1; ResetCursor(); }
     inline bool EditMode() const { return HS::enc_edit[hemisphere].isEditing; }
+    // Mirrors vendor HemisphereApplet.h:125. Sets aux_action flag for AuxButton label.
+    void SetAux(bool aux) { HS::enc_edit[hemisphere].aux_action = aux; }
 
     template <typename T>
     void MoveCursor(T& cursor, int direction, int max) {
@@ -177,6 +179,22 @@ public:
     void gfxPrint(int x_adv, int n) {
         for (int c = 0; c < (x_adv / 6); c++) gfxPrint(" ");
         gfxPrint(n);
+    }
+    // Mirrors vendor HemisphereApplet.h:379. Renders quantizer scale/root/octave.
+    void gfxPrint(int x, int y, HS::QuantEngine& q_eng, bool overlay = true) {
+        if (overlay) {
+            gfxClear(x - 2, y - 2, 29, 22);
+            gfxFrame(x - 1, y - 2, 27, 21, true);
+        }
+        gfxPrint(x, y, OC::scale_names_short[q_eng.scale]);
+        gfxPrint(
+            (q_eng.octave == 0 ? x + 6 : x),
+            y + 10,
+            OC::Strings::note_names_unpadded[q_eng.root_note]
+        );
+        if (q_eng.octave != 0) {
+            gfxPrint(x + 12, y + 10, q_eng.octave);
+        }
     }
 
     void gfxFrame(int x, int y, int w, int h)  {

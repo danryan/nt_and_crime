@@ -43,3 +43,13 @@ extern const uint8_t DOWN_ARROWS_BTT[18];
 extern const uint8_t SMALL_ONE[3];
 extern const uint8_t TEENS_8X8[20 * 8];
 extern const uint8_t NOTE_NAMES[12 * 8];
+
+// Added for epic #72 batch 2 MiniSeq-cluster applet ports (Seq32, SeqPlay7,
+// SwitchSeq). Bitmaps mirror upstream Phazerville HSicons.h.
+extern const uint8_t SLEW_ICON[8];
+extern const uint8_t RECORD_ICON[8];
+extern const uint8_t STOP_ICON[8];
+extern const uint8_t PULSES_ICON[8];
+extern const uint8_t LEFT_BTN_ICON[8];
+extern const uint8_t RIGHT_BTN_ICON[8];
+extern const uint8_t RIGHT_BTN_ICON_UNFILLED[8];

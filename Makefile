@@ -278,7 +278,8 @@ ALL_APPLET_LIST := \
   DualQuant OffsetQuant MultiScale ScaleDuet EnsOscKey Calibr8 Carpeggio \
   Chordinator EnigmaJr Pigeons Squanch Shredder Strum \
   Metronome ResetClock Shuffle Xfader Scope ClkToGate ClockSkip PolyDiv \
-  ADEG ADSREG RunglBook LowerRenz Combin8
+  ADEG ADSREG RunglBook LowerRenz Combin8 \
+  Seq32 SeqPlay7 SwitchSeq
 
 # Backwards-compat alias; existing rules still reference PILOT_APPLET_LIST.
 PILOT_APPLET_LIST := $(ALL_APPLET_LIST)
@@ -338,6 +339,9 @@ VENDOR_DEPS_ADSREG             :=
 VENDOR_DEPS_RunglBook          :=
 VENDOR_DEPS_LowerRenz          := build/arm/vendor_src/streams_resources.o build/arm/vendor_src/streams_lorenz_generator.o
 VENDOR_DEPS_Combin8            :=
+VENDOR_DEPS_Seq32              :=
+VENDOR_DEPS_SeqPlay7           :=
+VENDOR_DEPS_SwitchSeq          :=
 
 # $(1) = applet name (e.g. Compare). $(2) = expanded VENDOR_DEPS_<applet>.
 define BUILD_PER_APPLET

@@ -49,4 +49,8 @@ extern const uint8_t resetClk[8];
 extern const uint8_t shuffle[8];
 extern const uint8_t mixerBal[8];
 extern const uint8_t scope[8];
+// Added for epic #72 batch 2 MiniSeq-cluster applet ports.
+extern const uint8_t seq32[8];
+extern const uint8_t seqPlay7[8];
+extern const uint8_t switchSeq[8];
 }

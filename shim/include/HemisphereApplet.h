@@ -99,6 +99,26 @@ public:
     void ClockOut(int ch, int ticks = HEMISPHERE_CLOCK_TICKS) { HS::frame.ClockOut((DAC_CHANNEL)(ch + channel_offset()), ticks); }
     void GateOut(int ch, bool high)     { Out(ch, high ? (PULSE_VOLTAGE * ONE_OCTAVE) : 0); }
 
+    // Vendor HemisphereApplet.h:190 SmoothedOut (deprecated upstream, kept for
+    // source compat). Glide helper used by the MiniSeq sequencers (Seq32,
+    // SeqPlay7): once every kSmoothing ticks, moves the output toward target.
+    void SmoothedOut(int ch, int value, int kSmoothing) const {
+        if (OC::CORE::ticks % kSmoothing == 0) {
+            DAC_CHANNEL channel = (DAC_CHANNEL)(ch + channel_offset());
+            value = (HS::frame.outputs[channel].get_target() * (kSmoothing - 1) + value) / kSmoothing;
+            HS::frame.outputs[channel].set(value);
+        }
+    }
+
+    // Vendor HemisphereApplet.h:436 gfxPrintfn. Positioned print with a
+    // variadic format; ignores the n (max-chars) hint and delegates to
+    // graphics.printf. Used by SwitchSeq.
+    template <typename... Args>
+    void gfxPrintfn(int x, int y, int /*n*/, const char* format, Args... args) {
+        gfxPos(x, y);
+        graphics.printf(format, args...);
+    }
+
     int  ProportionCV(int cv, int max_pixels, int max_cv = HEMISPHERE_MAX_CV) const {
         long prop = (long)cv * max_pixels / (max_cv > 0 ? max_cv : 1);
         return constrain((int)prop, 0, max_pixels);

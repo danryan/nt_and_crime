@@ -43,3 +43,18 @@ extern const uint8_t DOWN_ARROWS_BTT[18];
 extern const uint8_t SMALL_ONE[3];
 extern const uint8_t TEENS_8X8[20 * 8];
 extern const uint8_t NOTE_NAMES[12 * 8];
+
+// Added for epic #72 batch 1 sequencer/quantizer applet ports. Bitmaps mirror
+// upstream Phazerville HSicons.h; defined in shim/src/icons.cpp.
+extern const uint8_t RIGHT_ICON[8];
+extern const uint8_t PULSES_ICON[8];
+extern const uint8_t LEFT_BTN_ICON[8];
+extern const uint8_t LOCK_ICON[8];
+extern const uint8_t SLEW_ICON[8];
+extern const uint8_t TOSS_ICON[8];
+extern const uint8_t LENGTH_ICON[8];
+extern const uint8_t ROTATE_ICON[8];
+extern const uint8_t OFFSET_ICON[8];
+extern const uint8_t RECORD_ICON[8];
+extern const uint8_t SUP_ONE[3];
+extern const uint8_t SUB_TWO[3];

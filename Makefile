@@ -278,7 +278,8 @@ ALL_APPLET_LIST := \
   DualQuant OffsetQuant MultiScale ScaleDuet EnsOscKey Calibr8 Carpeggio \
   Chordinator EnigmaJr Pigeons Squanch Shredder Strum \
   Metronome ResetClock Shuffle Xfader Scope ClkToGate ClockSkip PolyDiv \
-  ADEG ADSREG RunglBook LowerRenz Combin8
+  ADEG ADSREG RunglBook LowerRenz Combin8 \
+  BitBeat
 
 # Backwards-compat alias; existing rules still reference PILOT_APPLET_LIST.
 PILOT_APPLET_LIST := $(ALL_APPLET_LIST)
@@ -338,6 +339,9 @@ VENDOR_DEPS_ADSREG             :=
 VENDOR_DEPS_RunglBook          :=
 VENDOR_DEPS_LowerRenz          := build/arm/vendor_src/streams_resources.o build/arm/vendor_src/streams_lorenz_generator.o
 VENDOR_DEPS_Combin8            :=
+# BitBeat uses peaks::ByteBeat (ProcessSingleSample/Configure): same vendor .cpp
+# that BYTEBEATGEN/ASR/QQ link.
+VENDOR_DEPS_BitBeat            := build/arm/vendor_src/peaks_bytebeat.o
 
 # $(1) = applet name (e.g. Compare). $(2) = expanded VENDOR_DEPS_<applet>.
 define BUILD_PER_APPLET
@@ -570,7 +574,8 @@ HOST_PLUGIN_OBJS := $(addprefix build/arm/, $(addsuffix .o, $(HOST_PLUGIN_LIST))
 # test .cpp files include only the vendor headers; these sources supply the
 # definitions so the vendor code links once without duplicate symbols.
 VENDOR_DEP_HOST_SRCS := $(HEM_SRC_DIR)/streams_resources.cpp \
-                       $(HEM_SRC_DIR)/streams_lorenz_generator.cpp
+                       $(HEM_SRC_DIR)/streams_lorenz_generator.cpp \
+                       $(HEM_SRC_DIR)/peaks_bytebeat.cpp
 
 # `make test-applets` is preserved as an alias for the per-applet test
 # runner. The bundled-host test binary that this target originally drove

@@ -153,7 +153,8 @@ extern const char* help_strings[HS::HELP_LABEL_COUNT];
 extern int cursor_countdown[HS::APPLET_CURSOR_COUNT];
 
 // EditMode toggle state per side. Logic uses just LEFT_HEMISPHERE.
-struct EncoderEditor { bool isEditing; };
+// aux_action mirrors vendor HemisphereApplet.h:62 (controls AuxButton label).
+struct EncoderEditor { bool isEditing; bool aux_action = false; };
 extern EncoderEditor enc_edit[HS::APPLET_CURSOR_COUNT];
 
 // Quantizer channel pool. Mirrors vendor HSUtils.h:97-107.
@@ -258,5 +259,8 @@ void NudgeScale(int ch, int dir);
 void QuantizerEdit(int ch);
 // Vendor HS::SetScale (HSUtils.cpp). Sets scale on channel ch's QuantEngine.
 void SetScale(int ch, int scale);
+
+// Trigger pulse length in ticks. Mirrors vendor HSUtils.h:213.
+extern uint8_t trig_length;
 
 }  // namespace HS

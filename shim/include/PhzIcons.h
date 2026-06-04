@@ -49,4 +49,22 @@ extern const uint8_t resetClk[8];
 extern const uint8_t shuffle[8];
 extern const uint8_t mixerBal[8];
 extern const uint8_t scope[8];
+// Added for epic #72 batch 1 applet ports. divSeq shared by DivSeq/DivSeq10;
+// DualTM shared by TwoRings/ShiftReg.
+extern const uint8_t divSeq[8];
+extern const uint8_t palimpsest[8];
+extern const uint8_t sequenceX[8];
+extern const uint8_t trigseq[8];
+extern const uint8_t trigseq16[8];
+extern const uint8_t DualTM[8];
+extern const uint8_t euclidX[8];
+extern const uint8_t tb3P0[8];
+extern const uint8_t probMeloD[8];
+extern const uint8_t cvRec[8];
+
+// Added for epic #72 batch 4 MIDI applet ports (hMIDIIn / hMIDIOut).
+extern const uint8_t midiIn[8];
+extern const uint8_t midiOut[8];
+extern const uint8_t filter[8];
+extern const uint8_t keyboard[16];
 }

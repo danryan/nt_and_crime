@@ -5,6 +5,8 @@
 #include "../src/globals.cpp"
 #include "../src/icons.cpp"
 #include "../src/graphics.cpp"
+// MIDI sub-frame: HS::MIDIFrame::ProcessMIDIMsg / Send / Send* bodies.
+#include "../src/midi_frame.cpp"
 // cv_map: bjorklund table + EuclideanFilter/EuclideanPattern.
 // bjorklund.h is included via CVInputMap.h; the .cpp provides the data table.
 #include "../src/cv_map/bjorklund.cpp"

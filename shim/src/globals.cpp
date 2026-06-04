@@ -53,6 +53,8 @@ ErrMsgIndex msg_idx = NO_ERROR;
 uint32_t popup_tick = 0;
 void PokePopup(PopupType /*pop*/, ErrMsgIndex /*err*/) {}
 void PokePopup(PopupType /*pop*/, const char* /*msg*/) {}
+// Trigger pulse length in ticks. Mirrors vendor HSUtils.h:213 / HSUtils.cpp.
+uint8_t trig_length = 2;
 }
 
 namespace OC {
@@ -210,6 +212,17 @@ uint32_t hem_rng_state = 0x12345678u;
 
 #include "HSIOFrame.h"
 HS::IOFrame HS::frame;
+
+// Initialise the MIDI sub-frame at static-init time. Same TU as HS::frame, so
+// the IOFrame is fully constructed before this runs. The vendor IOFrame called
+// MIDIState.Init() from its own Init(); the shim IOFrame has no construct-time
+// host call, so seed sensible MIDIMapping defaults here once.
+namespace {
+struct MidiFrameInitOnce {
+    MidiFrameInitOnce() { HS::frame.Init(); }
+};
+MidiFrameInitOnce s_midi_frame_init_once;
+}
 
 void HS::IOFrame::ClockOut(DAC_CHANNEL ch, int pulselength) {
     if (pulselength <= 0) pulselength = HEMISPHERE_CLOCK_TICKS;

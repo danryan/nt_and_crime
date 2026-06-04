@@ -220,6 +220,7 @@ COMPILER_RT_SRCS := \
     $(COMPILER_RT_DIR)/fixdfdi.c \
     $(COMPILER_RT_DIR)/fixunsdfdi.c \
     $(COMPILER_RT_DIR)/popcountdi2.c \
+    $(COMPILER_RT_DIR)/popcountsi2.c \
     $(COMPILER_RT_DIR)/arm/aeabi_div0.c \
     $(COMPILER_RT_DIR)/arm/aeabi_ldivmod.S \
     $(COMPILER_RT_DIR)/arm/aeabi_uldivmod.S
@@ -278,7 +279,10 @@ ALL_APPLET_LIST := \
   DualQuant OffsetQuant MultiScale ScaleDuet EnsOscKey Calibr8 Carpeggio \
   Chordinator EnigmaJr Pigeons Squanch Shredder Strum \
   Metronome ResetClock Shuffle Xfader Scope ClkToGate ClockSkip PolyDiv \
-  ADEG ADSREG RunglBook LowerRenz Combin8
+  ADEG ADSREG RunglBook LowerRenz Combin8 \
+  DivSeq DivSeq10 Palimpsest SequenceX TrigSeq TrigSeq16 TwoRings EuclidX \
+  ShiftReg TB3PO ProbabilityMelody CVRecV2 \
+  hMIDIIn hMIDIOut
 
 # Backwards-compat alias; existing rules still reference PILOT_APPLET_LIST.
 PILOT_APPLET_LIST := $(ALL_APPLET_LIST)
@@ -338,6 +342,20 @@ VENDOR_DEPS_ADSREG             :=
 VENDOR_DEPS_RunglBook          :=
 VENDOR_DEPS_LowerRenz          := build/arm/vendor_src/streams_resources.o build/arm/vendor_src/streams_lorenz_generator.o
 VENDOR_DEPS_Combin8            :=
+VENDOR_DEPS_DivSeq             :=
+VENDOR_DEPS_DivSeq10           :=
+VENDOR_DEPS_Palimpsest         :=
+VENDOR_DEPS_SequenceX          :=
+VENDOR_DEPS_TrigSeq            :=
+VENDOR_DEPS_TrigSeq16          :=
+VENDOR_DEPS_TwoRings           :=
+VENDOR_DEPS_EuclidX            :=
+VENDOR_DEPS_ShiftReg           :=
+VENDOR_DEPS_TB3PO              :=
+VENDOR_DEPS_ProbabilityMelody  :=
+VENDOR_DEPS_CVRecV2            :=
+VENDOR_DEPS_hMIDIIn            :=
+VENDOR_DEPS_hMIDIOut          :=
 
 # $(1) = applet name (e.g. Compare). $(2) = expanded VENDOR_DEPS_<applet>.
 define BUILD_PER_APPLET

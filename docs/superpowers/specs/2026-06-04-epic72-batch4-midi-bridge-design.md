@@ -31,8 +31,9 @@ Teensy). Required types (vendor `HSIOFrame.h:34-487` + `HSIOFrame.cpp`):
   bool gate; }`.
 - `MIDIMapSettings` + `MIDIMapping` (verbatim fields and methods: `IsClock`,
   `IsTrigger`, `clock_mod`, `ClockOut`, `ProcessClock`, `InRange`, Adjust*
-  setters, `AutoLearn`, `Pack`/`Unpack`). `ClockOut` uses `HEMISPHERE_CLOCK_TICKS
-  * HS::trig_length` (both shim-available after the batch-1 base).
+  setters, `AutoLearn`, `Pack`/`Unpack`). `ClockOut` uses
+  `HEMISPHERE_CLOCK_TICKS * HS::trig_length` (both shim-available after the
+  batch-1 base).
 - ADAPTATION (no heap): replace `using NoteBuffer = std::vector<MIDINoteData>`
   with a fixed-capacity inline container providing the EXACT subset used:
   default ctor, `size()`, `operator[]`, `push_back`, `clear`, `begin`/`end`,

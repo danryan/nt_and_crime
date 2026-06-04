@@ -39,6 +39,33 @@ void* __dso_handle = nullptr;
 // used (vendor applets may have legitimate uses; we route to nullptr so the
 // linker resolves and downstream code surfaces the bug at first use).
 #if defined(__arm__)
+#if defined(NT_HEM_NEED_HEAP_ARENA)
+// Bump-allocator operator new for the few applets whose vendor source uses the
+// `new` keyword for a one-time static singleton (e.g. ASR's RingBufferManager,
+// CVRecV2's recorder buffers). NT plug-ins have no heap, and the default stub
+// below returns nullptr which hard-faults the device when the result is
+// dereferenced at add-algorithm time. A TU opts in by defining
+// NT_HEM_NEED_HEAP_ARENA before the shim aggregation; it then gets a fixed
+// static arena (plug-in .bss). Allocation is one-shot at construct; operator
+// delete is the existing no-op, so nothing is ever freed (acceptable: the
+// instances live for the plug-in's lifetime). Out-of-arena returns nullptr,
+// preserving the original surfacing behavior if the budget is exceeded.
+#include <cstdint>
+namespace {
+constexpr std::size_t kHeapArenaBytes = 4096;
+alignas(8) unsigned char g_heap_arena[kHeapArenaBytes];
+std::size_t g_heap_arena_used = 0;
+void* heap_arena_alloc(std::size_t n) {
+    std::size_t aligned = (n + 7u) & ~std::size_t(7);
+    if (g_heap_arena_used + aligned > kHeapArenaBytes) return nullptr;
+    void* p = g_heap_arena + g_heap_arena_used;
+    g_heap_arena_used += aligned;
+    return p;
+}
+}  // namespace
+void* operator new(std::size_t n)                              { return heap_arena_alloc(n); }
+void* operator new[](std::size_t n)                            { return heap_arena_alloc(n); }
+#else
 // operator new stub for bare-metal arm. Returns nullptr; any call is a
 // bug surfaced as a null-pointer dereference downstream. The host build
 // links the real libstdc++ operator new (Catch2 + STL containers in the
@@ -48,6 +75,7 @@ void* __dso_handle = nullptr;
 void* operator new(std::size_t)                                { return nullptr; }
 void* operator new[](std::size_t)                              { return nullptr; }
 #pragma GCC diagnostic pop
+#endif
 #endif
 // operator delete is provided in shim/src/globals.cpp.
 // cxx_runtime_stubs.cpp adds the missing operator new on arm.

@@ -53,6 +53,8 @@ ErrMsgIndex msg_idx = NO_ERROR;
 uint32_t popup_tick = 0;
 void PokePopup(PopupType /*pop*/, ErrMsgIndex /*err*/) {}
 void PokePopup(PopupType /*pop*/, const char* /*msg*/) {}
+// Trigger pulse length in ticks. Mirrors vendor HSUtils.h:213 / HSUtils.cpp.
+uint8_t trig_length = 2;
 }
 
 namespace OC {

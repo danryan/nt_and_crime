@@ -61,4 +61,10 @@ extern const uint8_t euclidX[8];
 extern const uint8_t tb3P0[8];
 extern const uint8_t probMeloD[8];
 extern const uint8_t cvRec[8];
+
+// Added for epic #72 batch 4 MIDI applet ports (hMIDIIn / hMIDIOut).
+extern const uint8_t midiIn[8];
+extern const uint8_t midiOut[8];
+extern const uint8_t filter[8];
+extern const uint8_t keyboard[16];
 }

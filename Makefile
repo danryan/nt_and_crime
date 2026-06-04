@@ -281,7 +281,8 @@ ALL_APPLET_LIST := \
   Metronome ResetClock Shuffle Xfader Scope ClkToGate ClockSkip PolyDiv \
   ADEG ADSREG RunglBook LowerRenz Combin8 \
   DivSeq DivSeq10 Palimpsest SequenceX TrigSeq TrigSeq16 TwoRings EuclidX \
-  ShiftReg TB3PO ProbabilityMelody CVRecV2
+  ShiftReg TB3PO ProbabilityMelody CVRecV2 \
+  hMIDIIn hMIDIOut
 
 # Backwards-compat alias; existing rules still reference PILOT_APPLET_LIST.
 PILOT_APPLET_LIST := $(ALL_APPLET_LIST)
@@ -353,6 +354,8 @@ VENDOR_DEPS_ShiftReg           :=
 VENDOR_DEPS_TB3PO              :=
 VENDOR_DEPS_ProbabilityMelody  :=
 VENDOR_DEPS_CVRecV2            :=
+VENDOR_DEPS_hMIDIIn            :=
+VENDOR_DEPS_hMIDIOut          :=
 
 # $(1) = applet name (e.g. Compare). $(2) = expanded VENDOR_DEPS_<applet>.
 define BUILD_PER_APPLET

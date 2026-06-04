@@ -58,3 +58,7 @@ extern const uint8_t OFFSET_ICON[8];
 extern const uint8_t RECORD_ICON[8];
 extern const uint8_t SUP_ONE[3];
 extern const uint8_t SUB_TWO[3];
+
+// Added for epic #72 batch 4 MIDI applet ports (hMIDIIn / hMIDIOut).
+extern const uint8_t MIDI_ICON[8];
+extern const uint8_t AFTERTOUCH_ICON[8];

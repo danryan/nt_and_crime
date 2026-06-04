@@ -265,6 +265,40 @@ inline void route_custom_ui(_NT_algorithm* self, const _NT_uiData& data) {
     }
 }
 
+// MIDI receive wiring (Layer 0c). The NT firmware delivers MIDI to a plug-in
+// through two _NT_factory callbacks:
+//
+//   midiMessage(self, b0, b1, b2): a two/three-byte channel-voice message
+//       (status 0x80..0xE0). The status byte b0 carries the channel in its
+//       low nibble; HS::MIDIMessage wants a 1-based channel and the high
+//       nibble as its message field.
+//   midiRealtime(self, byte):     a one-byte system-realtime message (clock
+//       0xF8, start 0xFA, continue 0xFB, stop 0xFC, reset 0xFF). HS::MIDIFrame
+//       keys its realtime switch on the raw status byte in the message field
+//       and ignores channel for realtime, so channel is set to 1 (chan 0).
+//
+// Both feed HS::frame.MIDIState.ProcessMIDIMsg. frame.MIDIState is per-TU; the
+// MIDI-consuming applet (hMIDIIn) populates and reads it within the same TU, so
+// the per-TU-globals constraint holds. MIDI-producing applets (hMIDIOut) leave
+// these factory fields null.
+inline void route_midi_message(_NT_algorithm* /*self*/, uint8_t b0, uint8_t b1, uint8_t b2) {
+    HS::MIDIMessage msg;
+    msg.channel = (uint8_t)((b0 & 0x0F) + 1); // 1-based channel
+    msg.message = (uint8_t)(b0 & 0xF0);        // status high nibble
+    msg.data1   = b1;
+    msg.data2   = b2;
+    HS::frame.MIDIState.ProcessMIDIMsg(msg);
+}
+
+inline void route_midi_realtime(_NT_algorithm* /*self*/, uint8_t byte) {
+    HS::MIDIMessage msg;
+    msg.channel = 1;     // realtime has no channel; ProcessMIDIMsg uses message only
+    msg.message = byte;  // raw realtime status byte (0xF8 / 0xFA / 0xFC / ...)
+    msg.data1   = 0;
+    msg.data2   = 0;
+    HS::frame.MIDIState.ProcessMIDIMsg(msg);
+}
+
 // serialise / deserialise wrappers around vendor Hemisphere
 // OnDataRequest / OnDataReceive. Packs/unpacks the uint64_t state under
 // the JSON members "hemi_hi" + "hemi_lo".

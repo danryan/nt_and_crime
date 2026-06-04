@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cstdio>
+#include <vector>
 #include <distingnt/api.h>
 
 // Forward declaration to avoid a circular include with plugin_loader.h.
@@ -35,4 +36,27 @@ void   set_param_log(FILE* f);
 // global index in the harness, exactly as it would on hardware. reset_runtime
 // restores 0.
 void   set_parameter_offset(uint32_t offset);
+
+// --- MIDI simulator (Layer 0d, gated on NT_HEM_HOST_SIM) ---
+//
+// The host stubs for NT_sendMidi2ByteMessage / NT_sendMidi3ByteMessage /
+// NT_sendMidiByte record each outgoing message into a capture buffer. Tests
+// read it through midi_sent() and reset it through clear_midi_sent().
+// reset_runtime() also clears it.
+//
+// The inject seams send a MIDI message FROM the firmware INTO a loaded plug-in
+// by invoking its factory midiMessage / midiRealtime callbacks. They mirror the
+// *_test_inject_slot pattern and are no-ops if the plug-in defines no callback.
+#if defined(NT_HEM_HOST_SIM)
+struct MidiSent {
+    uint32_t destination;
+    uint8_t  length;  // 1, 2, or 3
+    uint8_t  bytes[3];
+};
+const std::vector<MidiSent>& midi_sent();
+void clear_midi_sent();
+
+void send_midi_to_plugin(LoadedPlugin* loaded, uint8_t b0, uint8_t b1, uint8_t b2);
+void send_midi_realtime(LoadedPlugin* loaded, uint8_t byte);
+#endif
 }

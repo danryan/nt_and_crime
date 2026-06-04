@@ -117,6 +117,11 @@ static std::map<std::pair<int,int>, bool> g_gray_out;
 // "idx value\n" here before calling parameterChanged.
 static FILE* g_param_log = nullptr;
 
+// MIDI capture buffer (Layer 0d). Every NT_sendMidi* call appends a record;
+// tests read it through nt::midi_sent(). Cleared by reset_runtime() and
+// nt::clear_midi_sent().
+static std::vector<nt::MidiSent> g_midi_sent;
+
 // Common-parameter prefix width. The device firmware injects common parameters
 // (Bypass and friends) ahead of a plug-in's own table, so plug-in parameter P
 // lives at global index P + NT_parameterOffset(). The harness defaults to 0 (no
@@ -151,8 +156,23 @@ void reset_runtime() {
     g_gray_out.clear();
     g_param_log = nullptr;
     g_param_offset = 0;
+    g_midi_sent.clear();
     nt::reset_plugin_loader();
 }
+
+#if defined(NT_HEM_HOST_SIM)
+const std::vector<MidiSent>& midi_sent() { return g_midi_sent; }
+void clear_midi_sent() { g_midi_sent.clear(); }
+
+void send_midi_to_plugin(LoadedPlugin* loaded, uint8_t b0, uint8_t b1, uint8_t b2) {
+    if (!loaded || !loaded->factory || !loaded->factory->midiMessage) return;
+    loaded->factory->midiMessage(loaded->algorithm, b0, b1, b2);
+}
+void send_midi_realtime(LoadedPlugin* loaded, uint8_t byte) {
+    if (!loaded || !loaded->factory || !loaded->factory->midiRealtime) return;
+    loaded->factory->midiRealtime(loaded->algorithm, byte);
+}
+#endif
 
 void set_param_log(FILE* f) {
     g_param_log = f;
@@ -282,12 +302,14 @@ void     NT_updateParameterPages(uint32_t algIdx) {
     (void)algIdx;
 }
 uint32_t NT_getCpuCycleCount(void) { return 0u; }
-void     NT_sendMidiByte(uint32_t dest, uint8_t b0) { (void)dest; (void)b0; }
+void     NT_sendMidiByte(uint32_t dest, uint8_t b0) {
+    g_midi_sent.push_back(nt::MidiSent{ dest, 1, { b0, 0, 0 } });
+}
 void     NT_sendMidi2ByteMessage(uint32_t dest, uint8_t b0, uint8_t b1) {
-    (void)dest; (void)b0; (void)b1;
+    g_midi_sent.push_back(nt::MidiSent{ dest, 2, { b0, b1, 0 } });
 }
 void     NT_sendMidi3ByteMessage(uint32_t dest, uint8_t b0, uint8_t b1, uint8_t b2) {
-    (void)dest; (void)b0; (void)b1; (void)b2;
+    g_midi_sent.push_back(nt::MidiSent{ dest, 3, { b0, b1, b2 } });
 }
 void     NT_sendMidiSysEx(uint32_t dest, const uint8_t* data, uint32_t count, bool end) {
     (void)dest; (void)data; (void)count; (void)end;

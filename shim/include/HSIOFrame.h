@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "OC_DAC.h"
+#include "HSMIDIFrame.h"
 
 namespace HS {
 
@@ -21,6 +22,13 @@ struct IOFrame {
     uint32_t cycle_ticks[4]   = { 0 };
     int  adc_lag_countdown[4] = { -1 };
     uint32_t tick             = 0;
+
+    // MIDI message queue/cache. The vendor MIDIFrame state read and written by
+    // hMIDIIn / hMIDIOut. Initialised by Init() (called from globals.cpp at
+    // static-init of HS::frame).
+    MIDIFrame MIDIState;
+
+    void Init() { MIDIState.Init(); }
 
     void Out(DAC_CHANNEL ch, int value) { outputs[ch].set(value); }
     int  ViewOut(int ch) const { return outputs[ch].value; }

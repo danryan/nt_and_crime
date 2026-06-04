@@ -43,3 +43,8 @@ extern const uint8_t DOWN_ARROWS_BTT[18];
 extern const uint8_t SMALL_ONE[3];
 extern const uint8_t TEENS_8X8[20 * 8];
 extern const uint8_t NOTE_NAMES[12 * 8];
+// Added for BitBeat (and future applets that use these icons).
+extern const uint8_t RIGHT_ICON[8];
+extern const uint8_t SUP_ONE[3];
+extern const uint8_t SUB_TWO[3];
+extern const uint8_t PARAM_MAP_ICONS[17 * 8];

@@ -61,4 +61,6 @@ extern const uint8_t euclidX[8];
 extern const uint8_t tb3P0[8];
 extern const uint8_t probMeloD[8];
 extern const uint8_t cvRec[8];
+// Added for ASRHemi (Hemisphere ASR applet port, build token ASRHemi).
+extern const uint8_t ASR[8];
 }

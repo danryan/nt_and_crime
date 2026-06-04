@@ -2,12 +2,14 @@
 //
 // CVRecV2 is a dual CV recorder and player.  It uses two dynamic int16_t arrays
 // (cv[0]/cv[1], each CVREC_MAX_STEP = 384 entries) that are allocated in Start()
-// via operator new.  On the host the real allocator satisfies these; on ARM the
-// operator-new stub returns nullptr, so cv playback is inactive until a hardware
-// operator-new implementation is provided or the buffers are moved to SRAM.
+// via operator new.  These would hard-fault on ARM (the default operator-new
+// stub returns nullptr), so this TU opts into the shim static-arena allocator
+// by defining NT_HEM_NEED_HEAP_ARENA before the shim aggregation. The two
+// buffers (1536 bytes) fit the 4 KB arena.
 //
 // SegmentDisplay::digit out-of-class definition lives in shim/src/globals.cpp;
 // no extra link step required.
+#define NT_HEM_NEED_HEAP_ARENA 1
 
 #include "../../shim/include/HemisphereApplet.h"
 #include "../../shim/include/PhzIcons.h"
